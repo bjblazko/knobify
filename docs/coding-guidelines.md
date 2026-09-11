@@ -18,6 +18,27 @@ without a board.
 Rule of thumb: if a function's unit test would need a real ESP32-S3 to
 pass, it's in the wrong layer.
 
+## File and module organization
+
+- Organize code by **domain**, not by technical layer — a `lib/playback/`
+  module owns everything about playback (state machine, its driver
+  interface, its native tests conceptually belong together), rather than
+  scattering "all state machines" and "all drivers" into layer-wide
+  buckets.
+- Keep files small and single-purpose. If a file is doing more than one
+  job, or you have to scroll to remember what's at the top, split it. As
+  a rough guide, reach for a split well before a file passes a few
+  hundred lines — the number matters less than whether the file still has
+  one clear reason to change.
+- Apply single-responsibility at the class/function level too: a class
+  should have one reason to change. A constructor that also parses files,
+  or a playback function that also touches the display, is a sign the
+  responsibilities need separating.
+- Prefer several small, well-named files over one large file with
+  sections — it's easier to navigate, easier to test in isolation, and
+  keeps hardware/logic separation (above) honest, since a mixed-concern
+  file is exactly where hardware calls tend to leak into logic code.
+
 ## Project layout
 
 - `src/` — application entry point and wiring (constructs concrete drivers,
@@ -57,3 +78,8 @@ pass, it's in the wrong layer.
   code that implements it — not written up after the fact from memory.
 - Update `docs/arc42/` sections as the pieces they describe actually get
   built, not speculatively ahead of the code.
+- Don't be shy about Mermaid diagrams in Markdown docs (arc42 especially)
+  — a component diagram, sequence diagram, or state chart is often
+  clearer than a paragraph of prose for building-block/runtime views.
+  Reach for one whenever a picture would answer the reader's question
+  faster than text.

@@ -6,6 +6,11 @@ code) are stubbed with a note on when they'll be completed — they are not
 skipped silently, so the document's own state is honest about what's
 designed vs. undesigned.
 
+Don't be shy about Mermaid diagrams (component, sequence, state) wherever
+a picture would answer the reader's question faster than prose — Context
+and Scope, Building Block View, and Runtime View are the sections most
+likely to want one.
+
 ## 1. Introduction and Goals
 
 `knobify` is offline music player firmware for a Waveshare
