@@ -27,22 +27,14 @@ which way round the USB-C cable is plugged in** — unplug it, flip it
 
 ## Restoring
 
-```sh
-# Find the correct port first (see above) — it will differ from the
-# examples below if the cable is plugged the other way around.
-
-# Primary ESP32-S3:
-esptool.py --port /dev/cu.usbmodemXXXX write_flash 0x0 esp32s3_primary_mcu_16MB_factory.bin
-
-# Secondary ESP32-U4WDH:
-esptool.py --port /dev/cu.usbserial-XXXX write_flash 0x0 u4wdh_secondary_mcu_4MB_factory.bin
-```
-
-If the system `esptool.py` isn't set up (missing `pyserial`), use the one
-bundled with this project's PlatformIO installation instead:
+Use `restore.sh` — it lists the connected serial ports, asks which one to
+write to, and confirms before overwriting anything:
 
 ```sh
-/opt/homebrew/Cellar/platformio/<version>/libexec/bin/python \
-  ~/.platformio/packages/tool-esptoolpy/esptool.py \
-  --port <port> write_flash 0x0 <file>
+./restore.sh primary    # ESP32-S3
+./restore.sh secondary  # ESP32-U4WDH
 ```
+
+It uses PlatformIO's bundled `esptool.py` and Python automatically (the
+system Python's `esptool` typically lacks `pyserial`), so no extra setup
+is needed beyond having run `pio run` at least once in the project root.
