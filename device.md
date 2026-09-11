@@ -65,7 +65,9 @@ This board uses a single CH340 USB-serial chip paired with a CH445P analog switc
   MCU actually receives flashing/serial traffic. When flashing or
   debugging, if the expected MCU (the primary ESP32-S3R8 for this
   project) doesn't respond, try the cable the other way round before
-  assuming a wiring or code problem.
+  assuming a wiring or code problem. `scripts/flash-primary-mcu.sh` (and
+  the `flash-device` skill wrapping it) automates this check when
+  flashing.
 
 ## Sources
 
