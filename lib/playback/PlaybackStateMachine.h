@@ -20,6 +20,12 @@ enum class PlaybackState { Stopped, Playing, Paused };
 // Callers pass explicit timestamps (millis()-style) to volume methods and
 // tick() rather than this class reading a clock itself, so debounced
 // persistence is host-testable without real timing.
+//
+// The constructor deliberately does NOT touch the driver or volume
+// store -- when this object is a global (as it is in src/main.cpp),
+// its constructor runs during C++ static initialization, before
+// Arduino's runtime has initialized NVS or called any driver's begin().
+// Call begin() explicitly from setup(), once both are actually ready.
 class PlaybackStateMachine {
  public:
   static constexpr uint8_t kMinVolume = 0;
@@ -27,7 +33,12 @@ class PlaybackStateMachine {
   static constexpr uint32_t kVolumeSaveDebounceMs = 1000;
 
   PlaybackStateMachine(PlaybackDriver &driver, VolumePersistence &volumeStore)
-      : driver_(driver), volumeStore_(volumeStore), volume_(volumeStore.load()) {
+      : driver_(driver), volumeStore_(volumeStore) {}
+
+  // Loads the persisted volume and applies it to the driver. Must be
+  // called once, after the driver's own begin() has run.
+  void begin() {
+    volume_ = volumeStore_.load();
     driver_.setVolume(volume_);
   }
 
@@ -111,7 +122,7 @@ class PlaybackStateMachine {
   std::vector<std::string> playlist_;
   size_t index_ = 0;
   PlaybackState state_ = PlaybackState::Stopped;
-  uint8_t volume_;
+  uint8_t volume_ = 0;
   bool pendingVolumeSave_ = false;
   uint32_t lastVolumeChangeMs_ = 0;
 };

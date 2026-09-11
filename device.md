@@ -98,6 +98,16 @@ init/driver code ported from that demo.
 
 ## Hardware quirks observed
 
+- **The primary ESP32-S3R8 also enumerates via its own native
+  USB-Serial-JTAG peripheral** (Espressif VID `0x303A`, PID `0x1001`),
+  separately from the CH340 path this board was originally identified
+  through (see "How it was identified" above). On 2026-09-11, flashing
+  succeeded directly over this native port (`pio run -t upload` /
+  `esptool.py` reported "Chip is ESP32-S3 (QFN56) ... Embedded PSRAM
+  8MB", confirming the primary MCU) without going through the CH340 at
+  all. `scripts/flash-primary-mcu.sh` auto-detects both VID:PID
+  candidates.
+
 - **USB-C cable orientation matters for which MCU you talk to.** Despite
   USB-C's connector being physically reversible, this board's single
   CH340-based USB-serial port is switched between the two onboard MCUs

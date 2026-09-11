@@ -31,24 +31,30 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# This board's USB-serial chip is a CH340 (idVendor 0x1A86, idProduct
-# 0x7523 -- see device.md). Auto-detect it specifically, rather than
-# grabbing the first serial port found, since other unrelated
-# boards/debug consoles commonly show up too.
+# This board reaches the primary ESP32-S3R8 two possible ways: the
+# shared CH340 USB-serial chip (idVendor 0x1A86, idProduct 0x7523 --
+# original identification in device.md) switched via the CH445P analog
+# switch, OR the ESP32-S3's own native USB-Serial-JTAG peripheral
+# (Espressif's VID 0x303A, PID 0x1001) if that's what this connector/mode
+# exposes -- confirmed working via the latter on 2026-09-11. Auto-detect
+# either, rather than grabbing the first serial port found, since other
+# unrelated boards/debug consoles commonly show up too.
 if [[ -z "$PORT" ]]; then
   PORT="$(pio device list --json-output 2>/dev/null \
     | python3 -c '
 import json, sys
 devices = json.load(sys.stdin)
+candidates = ["VID:PID=1A86:7523", "VID:PID=303A:1001"]
 for d in devices:
-    hwid = d.get("hwid", "")
-    if "VID:PID=1A86:7523" in hwid.upper():
+    hwid = d.get("hwid", "").upper()
+    if any(c in hwid for c in candidates):
         print(d["port"])
         break
 ' || true)"
 
   if [[ -z "$PORT" ]]; then
-    echo "Could not auto-detect the board's CH340 serial port." >&2
+    echo "Could not auto-detect the board's serial port (neither the" >&2
+    echo "CH340 nor the native USB-Serial-JTAG VID:PID was found)." >&2
     echo "Plug it in, or pass one explicitly: $0 --port /dev/cu.XXXX" >&2
     echo "" >&2
     echo "Available serial ports:" >&2

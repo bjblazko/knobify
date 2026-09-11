@@ -120,32 +120,73 @@ wired up in `src/main.cpp`, using the pinout in `device.md` (sourced
 from a community reference for this exact board, not yet independently
 verified against the physical hardware).
 
-**Display/touch/UI are now implemented too.** The ST77916 QSPI init
-sequence and CST816 I2C touch protocol were ported verbatim from
-Waveshare's own official demo for this board (via the
+**Display/touch/UI are implemented and confirmed working on the physical
+board** (2026-09-11/12). The ST77916 QSPI init sequence and CST816 I2C
+touch protocol were ported verbatim from Waveshare's own official demo
+for this board (via the
 [Sandjab/Waveshare-Knob](https://github.com/Sandjab/Waveshare-Knob) demo
 mirror), not reconstructed from a summary — see
-`lib/drivers-display/Sh8601InitCmds.h` and `lib/drivers-touch/Cst816Driver.h`.
-The vendored `esp_lcd_sh8601.c`/`.h` panel driver needed adapting in
-several places for API drift between the ESP-IDF version that demo
-targets and the older one (4.4.x) bundled with this project's
-PlatformIO/Arduino core — see comments at each adapted spot (color space
-field rename, `disp_off` field rename with inverted boolean, no
-`quad_mode` flag on `esp_lcd_panel_io_spi_config_t` in this IDF version).
-None of this has been verified on the physical board yet — compilation
-succeeding is not the same as the display actually working; the
-`quad_mode` omission in particular is flagged as unverified until tested.
+`lib/drivers-display/St77916InitOps.h` and
+`lib/drivers-touch/Cst816Driver.h`. Two real bugs surfaced only by
+flashing real hardware, neither visible from compilation alone:
+
+- **ESP-IDF's `esp_lcd_panel_io_spi` never actually drove the panel.**
+  The first display implementation vendored Waveshare's `esp_lcd_sh8601`
+  driver against ESP-IDF's `esp_lcd` component (adapting several API
+  differences between the newer IDF that demo targets and the older
+  4.4.x bundled with this project's PlatformIO/Arduino core — color
+  space field rename, `disp_off` field rename, no `quad_mode` flag on
+  `esp_lcd_panel_io_spi_config_t`). It compiled and every call returned
+  `ESP_OK`, but nothing ever reached the panel — QSPI (4-line)
+  transaction support in that API was added in a later ESP-IDF than this
+  platform bundles. **Fix**: replaced it with
+  [Arduino_GFX](https://github.com/moononournation/Arduino_GFX)'s
+  `Arduino_ESP32QSPI` bus class, which implements QSPI itself directly
+  against `spi_master` rather than going through `esp_lcd_panel_io_spi`.
+  Pinned to v1.4.9 specifically (see `platformio.ini`): newer releases
+  require `esp32-hal-periman.h`, an Arduino-ESP32 3.x/ESP-IDF 5.x header
+  this project's core doesn't have. That version's own `Arduino_ST77916`
+  class doesn't accept a custom init table (added later), so
+  `lib/drivers-display/KnobSt77916.h` is a small vendored equivalent
+  built against that version's still-stable `Arduino_TFT`/
+  `Arduino_DataBus` base classes, using this project's own verified init
+  sequence.
+- **Missing COLMOD command → washed-out grey instead of color.** The
+  original `esp_lcd_sh8601.c` driver always sends `COLMOD=0x55` (16bpp
+  RGB565) and `MADCTL` automatically before applying the vendor-specific
+  command table — logic that didn't carry over when porting to
+  `KnobSt77916`. Without it the panel stayed in its power-on default
+  pixel format; a solid-color test rendered as uniform grey/white tones
+  instead of distinct colors, which looked enough like a partial-fill
+  addressing bug (worth noting: initial hardware photos were taken at an
+  angle, making horizontal test bands look diagonal and briefly
+  suggesting a QSPI stride bug that didn't exist) to cost real
+  debugging time before the missing command was found. Fixed by adding
+  `COLMOD`/`MADCTL` explicitly at the start of `St77916InitOps.h`.
 
 `lib/ui/ScreenManager` implements all five screen kinds (Artists, Albums,
 Tracks, Folder, NowPlaying) plus the mini-bar in one file rather than
-split per screen, deliberately, since the layout hasn't been validated on
-real hardware yet (round-display safe areas, touch target sizes) --
-splitting further before that happens would be premature. The gesture-hint
-nudge animation and screen-transition animation (decisions 11-12) are
-NOT yet implemented; screens currently hard-cut. `lv_conf.h` is copied
-from the installed LVGL package's template with `LV_COLOR_16_SWAP` and
-`LV_TICK_CUSTOM` (via Arduino `millis()`) enabled to match Waveshare's
-config.
+split per screen, deliberately, since the layout was still being
+validated on real hardware when this was written (round-display safe
+areas, touch target sizes) -- splitting further before that settles
+would be premature. The gesture-hint nudge animation and
+screen-transition animation (decisions 11-12) are NOT yet implemented;
+screens currently hard-cut. `lv_conf.h` is copied from the installed
+LVGL package's template with `LV_COLOR_16_SWAP` and `LV_TICK_CUSTOM`
+(via Arduino `millis()`) enabled to match Waveshare's config.
+
+**UI is functional but not yet well-designed.** The first on-device look
+used no explicit LVGL theme (falling back to LVGL's own dated default)
+combined with hand-rolled highlight colors that didn't set text color,
+making unfocused list rows' text invisible (dark-on-dark). Fixed by
+calling `lv_theme_default_init()` with a deliberate dark/blue palette in
+`LvglGlue::begin()`, and switching `ScreenManager::applyHighlight()` from
+manual `bg_color` overrides to toggling `LV_STATE_CHECKED` (with list
+buttons marked `LV_OBJ_FLAG_CHECKABLE`), so the theme's own
+contrast-correct checked/unchecked styling applies instead of ad hoc
+colors. User feedback after that fix: "better" but not yet fully
+resolved — visual design of the screens (typography, spacing, motion)
+is real follow-up work, not a solved problem.
 
 ## Consequences
 

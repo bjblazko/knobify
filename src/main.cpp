@@ -116,10 +116,15 @@ void setup() {
 
   g_encoder.begin();
   g_audioDriver.begin();
+  // Must run after g_audioDriver.begin() (needs a real driver to push the
+  // loaded volume into) -- see PlaybackStateMachine's constructor comment
+  // for why this isn't done eagerly in the constructor itself.
+  g_playback.begin();
 
   if (!g_touch.begin()) {
     Serial.println("Touch init FAILED -- check wiring/pinout in device.md");
   }
+
   if (!g_lvglGlue.begin(g_display, g_touch)) {
     Serial.println("Display init FAILED -- check wiring/pinout in device.md");
   } else {

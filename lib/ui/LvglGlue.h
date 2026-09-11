@@ -1,6 +1,5 @@
 #pragma once
 
-#include <esp_lcd_panel_io.h>
 #include <lvgl.h>
 
 #include "Cst816Driver.h"
@@ -21,11 +20,7 @@ class LvglGlue {
  private:
   static void flushCb(lv_disp_drv_t *drv, const lv_area_t *area,
                        lv_color_t *colorMap);
-  static void rounderCb(lv_disp_drv_t *drv, lv_area_t *area);
   static void touchReadCb(lv_indev_drv_t *drv, lv_indev_data_t *data);
-  static bool colorTransDoneCb(esp_lcd_panel_io_handle_t io,
-                                esp_lcd_panel_io_event_data_t *edata,
-                                void *userCtx);
 
   lv_disp_draw_buf_t drawBuf_{};
   lv_disp_drv_t dispDrv_{};

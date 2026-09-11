@@ -12,7 +12,7 @@ bool LvglGlue::begin(drivers::St77916Driver &display,
                       drivers::Cst816Driver &touch) {
   touch_ = &touch;
 
-  if (!display.begin(&LvglGlue::colorTransDoneCb, &dispDrv_)) {
+  if (!display.begin()) {
     return false;
   }
 
@@ -30,9 +30,8 @@ bool LvglGlue::begin(drivers::St77916Driver &display,
   dispDrv_.hor_res = drivers::kLcdHorRes;
   dispDrv_.ver_res = drivers::kLcdVerRes;
   dispDrv_.flush_cb = &LvglGlue::flushCb;
-  dispDrv_.rounder_cb = &LvglGlue::rounderCb;
   dispDrv_.draw_buf = &drawBuf_;
-  dispDrv_.user_data = display.panelHandle();
+  dispDrv_.user_data = display.gfx();
   lv_disp_t *disp = lv_disp_drv_register(&dispDrv_);
 
   lv_indev_drv_init(&indevDrv_);
@@ -42,23 +41,40 @@ bool LvglGlue::begin(drivers::St77916Driver &display,
   indevDrv_.user_data = this;
   lv_indev_drv_register(&indevDrv_);
 
+  // A deliberate dark theme -- registering no theme explicitly still
+  // gets LVGL's own built-in default (a dated, unstyled teal-on-white
+  // look with poor contrast for our manual highlight overrides), which
+  // is what shipped in the first on-device look at this screen
+  // (2026-09-11) and read as "a 90s website". Blue accent, dark
+  // background, LVGL's default font.
+  lv_theme_t *theme = lv_theme_default_init(
+      disp, lv_palette_main(LV_PALETTE_BLUE), lv_palette_main(LV_PALETTE_GREY),
+      /*dark_mode=*/true, LV_FONT_DEFAULT);
+  lv_disp_set_theme(disp, theme);
+
   return true;
 }
 
 void LvglGlue::flushCb(lv_disp_drv_t *drv, const lv_area_t *area,
                         lv_color_t *colorMap) {
-  auto panelHandle = static_cast<esp_lcd_panel_handle_t>(drv->user_data);
-  esp_lcd_panel_draw_bitmap(panelHandle, area->x1, area->y1, area->x2 + 1,
-                             area->y2 + 1, colorMap);
-}
-
-void LvglGlue::rounderCb(lv_disp_drv_t *, lv_area_t *area) {
-  // The QSPI panel needs even coordinate boundaries -- ported from
-  // Waveshare's demo (example_lvgl_rounder_cb).
-  area->x1 = (area->x1 >> 1) << 1;
-  area->y1 = (area->y1 >> 1) << 1;
-  area->x2 = ((area->x2 >> 1) << 1) + 1;
-  area->y2 = ((area->y2 >> 1) << 1) + 1;
+  auto *gfx = static_cast<Arduino_TFT *>(drv->user_data);
+  int32_t w = area->x2 - area->x1 + 1;
+  int32_t h = area->y2 - area->y1 + 1;
+  // Arduino_GFX's generic draw16bitRGBBitmap writes one pixel at a time
+  // (its own writeAddrWindow(x,y,1,1) call per pixel) -- correct but far
+  // too slow for a responsive UI. Setting the address window once for
+  // the whole flushed rect and bulk-pushing the pixels is the fast path
+  // Arduino_TFT itself uses internally for fillRect, confirmed working
+  // on this board's QSPI setup during hardware bring-up (2026-09-11).
+  gfx->startWrite();
+  gfx->writeAddrWindow(area->x1, area->y1, w, h);
+  gfx->writePixels(reinterpret_cast<uint16_t *>(colorMap), w * h);
+  gfx->endWrite();
+  // This call is synchronous (blocks until the QSPI transaction
+  // completes), so flush_ready is called immediately after -- no async
+  // "transfer done" callback needed, unlike the esp_lcd-based approach
+  // this replaced.
+  lv_disp_flush_ready(drv);
 }
 
 void LvglGlue::touchReadCb(lv_indev_drv_t *drv, lv_indev_data_t *data) {
@@ -69,14 +85,6 @@ void LvglGlue::touchReadCb(lv_indev_drv_t *drv, lv_indev_data_t *data) {
   data->point.y = sample.y;
   data->state = sample.pressed ? LV_INDEV_STATE_PRESSED
                                 : LV_INDEV_STATE_RELEASED;
-}
-
-bool LvglGlue::colorTransDoneCb(esp_lcd_panel_io_handle_t,
-                                 esp_lcd_panel_io_event_data_t *,
-                                 void *userCtx) {
-  auto *drv = static_cast<lv_disp_drv_t *>(userCtx);
-  lv_disp_flush_ready(drv);
-  return false;
 }
 
 }  // namespace knobify::ui

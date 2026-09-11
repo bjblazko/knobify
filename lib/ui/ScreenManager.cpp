@@ -86,6 +86,10 @@ void ScreenManager::renderList(
 
   for (size_t i = 0; i < items.size(); ++i) {
     lv_obj_t *btn = lv_list_add_btn(list_, nullptr, items[i].first.c_str());
+    // Checkable + the theme's own checked style (rather than a manual
+    // bg_color override) keeps text contrast correct for free -- see
+    // applyHighlight().
+    lv_obj_add_flag(btn, LV_OBJ_FLAG_CHECKABLE);
 
     auto ctx = std::make_unique<ItemContext>();
     ctx->self = this;
@@ -166,15 +170,17 @@ void ScreenManager::renderNowPlaying() {
 
 void ScreenManager::applyHighlight() {
   if (!list_) return;
-  const lv_color_t highlightColor = lv_color_make(0x30, 0x60, 0xA0);
-  const lv_color_t normalColor = lv_color_make(0x20, 0x20, 0x20);
+  // Toggling LV_STATE_CHECKED and letting the theme render it (rather
+  // than overriding bg_color by hand) guarantees the theme's own
+  // contrast-correct text/background pairing for both states.
   uint32_t count = lv_obj_get_child_cnt(list_);
   for (uint32_t i = 0; i < count; ++i) {
     lv_obj_t *btn = lv_obj_get_child(list_, i);
-    lv_obj_set_style_bg_color(
-        btn, static_cast<int>(i) == highlightedIndex_ ? highlightColor
-                                                        : normalColor,
-        0);
+    if (static_cast<int>(i) == highlightedIndex_) {
+      lv_obj_add_state(btn, LV_STATE_CHECKED);
+    } else {
+      lv_obj_clear_state(btn, LV_STATE_CHECKED);
+    }
   }
 }
 

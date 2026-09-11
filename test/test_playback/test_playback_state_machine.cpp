@@ -62,6 +62,7 @@ void test_play_starts_playing_selected_track() {
   FakeStore store;
   VolumePersistence volume(store);
   PlaybackStateMachine sm(driver, volume);
+  sm.begin();
 
   sm.play({"/a.mp3", "/b.mp3"}, 1);
 
@@ -74,6 +75,7 @@ void test_toggle_play_pause() {
   FakeStore store;
   VolumePersistence volume(store);
   PlaybackStateMachine sm(driver, volume);
+  sm.begin();
   sm.play({"/a.mp3"}, 0);
 
   sm.togglePlayPause();
@@ -90,6 +92,7 @@ void test_next_and_prev_move_through_playlist() {
   FakeStore store;
   VolumePersistence volume(store);
   PlaybackStateMachine sm(driver, volume);
+  sm.begin();
   sm.play({"/a.mp3", "/b.mp3", "/c.mp3"}, 0);
 
   sm.next();
@@ -108,6 +111,7 @@ void test_track_finished_auto_advances() {
   FakeStore store;
   VolumePersistence volume(store);
   PlaybackStateMachine sm(driver, volume);
+  sm.begin();
   sm.play({"/a.mp3", "/b.mp3"}, 0);
 
   sm.onTrackFinished();
@@ -121,6 +125,7 @@ void test_track_finished_stops_after_last_track() {
   FakeStore store;
   VolumePersistence volume(store);
   PlaybackStateMachine sm(driver, volume);
+  sm.begin();
   sm.play({"/a.mp3"}, 0);
 
   sm.onTrackFinished();
@@ -133,6 +138,7 @@ void test_volume_clamps_to_bounds() {
   FakeStore store;
   VolumePersistence volume(store);
   PlaybackStateMachine sm(driver, volume);
+  sm.begin();
 
   sm.adjustVolume(-100, 0);
   TEST_ASSERT_EQUAL_UINT8(0, sm.volume());
@@ -146,6 +152,7 @@ void test_volume_persists_only_after_debounce_settles() {
   FakeStore store;
   VolumePersistence volume(store);
   PlaybackStateMachine sm(driver, volume);
+  sm.begin();
 
   sm.adjustVolume(2, 1000);
   sm.tick(1200);  // Too soon -- still within debounce window.
@@ -155,13 +162,14 @@ void test_volume_persists_only_after_debounce_settles() {
   TEST_ASSERT_EQUAL_INT(1, store.saveCount);
 }
 
-void test_loads_persisted_volume_on_construction() {
+void test_loads_persisted_volume_on_begin() {
   FakeDriver driver;
   FakeStore store;
   store.values[VolumePersistence::kKey] = 15;
   VolumePersistence volume(store);
 
   PlaybackStateMachine sm(driver, volume);
+  sm.begin();
 
   TEST_ASSERT_EQUAL_UINT8(15, sm.volume());
   TEST_ASSERT_EQUAL_UINT8(15, driver.lastVolume);
@@ -176,6 +184,6 @@ int main(int argc, char **argv) {
   RUN_TEST(test_track_finished_stops_after_last_track);
   RUN_TEST(test_volume_clamps_to_bounds);
   RUN_TEST(test_volume_persists_only_after_debounce_settles);
-  RUN_TEST(test_loads_persisted_volume_on_construction);
+  RUN_TEST(test_loads_persisted_volume_on_begin);
   return UNITY_END();
 }
