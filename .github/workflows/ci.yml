@@ -1,0 +1,28 @@
+# Dormant until this repo has a GitHub remote — see
+# docs/adr/0003-testing-strategy.md. Runs the same checks as
+# scripts/check.sh, which is the actual local, day-to-day verification
+# loop.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Run native unit tests
+        run: pio test -e native
+
+      - name: Compile firmware (esp32-s3, no flashing)
+        run: pio run -e esp32-s3

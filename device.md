@@ -1,0 +1,63 @@
+# Device: Waveshare ESP32-S3-Knob-Touch-LCD-1.8
+
+*Last modified: 2026-09-11*
+
+## Links
+
+- Product page: https://www.waveshare.com/esp32-s3-knob-touch-lcd-1.8.htm
+- Wiki: https://www.waveshare.com/wiki/ESP32-S3-Knob-Touch-LCD-1.8
+
+## How it was identified
+
+The board is attached via USB and enumerates as a serial device at `/dev/cu.usbserial-120`. Its USB descriptor reports:
+
+- `idVendor = 0x1A86` (6790) — WCH (Jiangsu Qinheng Electronics)
+- `idProduct = 0x7523` (29987) — CH340 USB-to-serial converter
+- Product string: "USB Serial"
+
+This board uses a single CH340 USB-serial chip paired with a CH445P analog switch, which lets one USB connection program either of the board's two onboard MCUs — a signature of this specific Waveshare model. The identification was confirmed visually by the owner: a 1.8" round capacitive touch display in a CNC-machined metal knob housing, matching this model exactly.
+
+## Capabilities
+
+**MCUs (dual-chip design):**
+- ESP32-S3R8 — dual-core Tensilica LX7 up to 240 MHz, 8 MB PSRAM, Wi-Fi 4, Bluetooth 5.0 LE + Mesh
+- ESP32-U4WDH — dual-core Xtensa LX6 up to 240 MHz, 4 MB embedded flash, Wi-Fi 4, Classic Bluetooth
+
+**Storage:**
+- 16 MB SPI flash
+- microSD card socket
+
+**Display & touch:**
+- 1.8" IPS LCD, 360×360 px, 262K colors, ~600 cd/m² brightness, 1200:1 contrast
+- ST77916 display driver (QSPI)
+- CST816 capacitive touch controller
+
+**Input:**
+- Dual rotary encoders (one per MCU)
+
+**Audio:**
+- PCM5100A I2S stereo DAC, output via 3.5mm jack (external/amplified speaker or headphones required — no onboard amp/speaker)
+- Digital MEMS microphone
+
+**Haptics:**
+- DRV2605 vibration/LRA motor driver
+
+**Connectivity:**
+- USB-C for power and programming (CH340 USB-serial + CH445P analog switch, single-port dual-MCU programming)
+- 2.4 GHz Wi-Fi 802.11 b/g/n
+- Bluetooth 5 LE + Classic
+- Ceramic antennas
+
+**Power:**
+- 5V USB-C input
+- Optional 3.7V 800 mAh battery via PH1.25 connector, onboard charging circuit
+
+**Physical:**
+- CNC-machined metal enclosure
+
+## Sources
+
+- https://www.waveshare.com/esp32-s3-knob-touch-lcd-1.8.htm
+- https://www.waveshare.com/wiki/ESP32-S3-Knob-Touch-LCD-1.8
+- https://www.cnx-software.com/2025/06/25/battery-powered-knob-display-board-pairs-esp32-s3-and-esp32-wireless-socs-features-audio-dac-for-audio-visualization/
+- https://github.com/KrX3D/WaveShare-Knob-Esp32S3
