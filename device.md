@@ -55,6 +55,18 @@ This board uses a single CH340 USB-serial chip paired with a CH445P analog switc
 **Physical:**
 - CNC-machined metal enclosure
 
+## Hardware quirks observed
+
+- **USB-C cable orientation matters for which MCU you talk to.** Despite
+  USB-C's connector being physically reversible, this board's single
+  CH340-based USB-serial port is switched between the two onboard MCUs
+  (ESP32-S3R8 primary / ESP32-U4WDH secondary) via the CH445P analog
+  switch. In practice, flipping the cable's orientation can change which
+  MCU actually receives flashing/serial traffic. When flashing or
+  debugging, if the expected MCU (the primary ESP32-S3R8 for this
+  project) doesn't respond, try the cable the other way round before
+  assuming a wiring or code problem.
+
 ## Sources
 
 - https://www.waveshare.com/esp32-s3-knob-touch-lcd-1.8.htm

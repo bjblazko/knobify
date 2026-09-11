@@ -45,10 +45,24 @@ pass, it's in the wrong layer.
   injects them into logic classes).
 - `lib/` — internal libraries, one directory per module, each with a clear
   single responsibility (e.g. `lib/playback/`, `lib/library/`,
-  `lib/drivers/display/`).
+  `lib/drivers-display/`). **Each module directory must be a single flat
+  level directly under `lib/`** — PlatformIO's library auto-detection
+  (and therefore both the include path and source compilation) only
+  picks up a `lib/<name>/` folder with files directly inside it; a
+  second level of nesting (`lib/library/tags/`) is silently never
+  compiled. A module that groups several related concerns (e.g. the
+  library domain's model/tags/scan/index code) keeps them as
+  distinctly-named files in one flat directory rather than subfolders;
+  a family of related drivers (display, touch, audio, ...) gets
+  hyphenated sibling directories (`lib/drivers-display/`,
+  `lib/drivers-touch/`) instead of `lib/drivers/<name>/`.
 - `include/` — shared headers, if any live outside `lib/`.
-- `test/test_native/` — host-native unit tests (Unity), one test file per
-  module under test, no hardware dependencies.
+- `test/test_<module>/` — host-native unit tests (Unity), one directory
+  per module under test, no hardware dependencies. Each directory is a
+  separate PlatformIO test suite (its files are linked into one binary
+  with a single `main()`), so a module's tests get their own directory
+  rather than sharing one flat `test_native/` folder with everyone
+  else's.
 
 ## Style
 

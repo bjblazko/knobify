@@ -12,3 +12,4 @@ supersedes the old one (and the old one is marked "Superseded by NNNN").
 | [0001](0001-language-and-framework-choice.md) | Language and framework choice | Accepted |
 | [0002](0002-v1-format-and-mcu-scope.md) | v1 format and MCU scope | Accepted |
 | [0003](0003-testing-strategy.md) | Testing strategy | Accepted |
+| [0004](0004-navigation-library-and-index-architecture.md) | Navigation, library indexing, and index cache architecture | Accepted |

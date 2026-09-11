@@ -42,9 +42,32 @@ AAC/M4A native decoding, the secondary MCU.
 
 ## 3. Context and Scope
 
-*To be completed once the SD card library format, and the boundary
-between "what's on the SD card" vs. "what the firmware assumes/indexes",
-is designed — next session's UX/design work.*
+The SD card holds only raw audio files (MP3/WAV/OGG) in whatever folder
+layout the user already has — the firmware does not require or enforce a
+particular folder structure. Everything the firmware derives from that —
+the tag-based Artist/Album/Track index and its on-disk cache
+(`/knobify/library.idx`) — is **derived state**, not authoritative: it can
+always be rebuilt from the SD card's actual files, and a mismatch between
+cache and card content is detected and repaired automatically on boot
+(see [ADR 0004](../adr/0004-navigation-library-and-index-architecture.md)).
+
+```mermaid
+flowchart LR
+    SD[("SD card\n(raw audio files,\nany folder layout)")]
+    FW["knobify firmware\n(ESP32-S3R8)"]
+    Cache[("/knobify/library.idx\n(derived cache)")]
+    User(("User"))
+    Jack(["3.5mm audio jack"])
+
+    SD -- "scanned + tag-parsed" --> FW
+    FW -- "persists / loads" --> Cache
+    User -- "touch + rotary knob" --> FW
+    FW -- "I2S audio" --> Jack
+```
+
+External context: no network, no cloud, no other devices — a single
+offline system boundary around the primary MCU, its SD card, display/
+touch, encoder, and audio output.
 
 ## 4. Solution Strategy
 
@@ -56,15 +79,128 @@ is designed — next session's UX/design work.*
 
 ## 5. Building Block View
 
-*To be completed once `lib/` modules exist — this session only scaffolds
-the project layout described in
-[`coding-guidelines.md`](../coding-guidelines.md#project-layout), it
-doesn't yet contain real building blocks.*
+Designed this session (see [ADR 0004](../adr/0004-navigation-library-and-index-architecture.md));
+implementation follows. Modules are organized by domain under `lib/`, per
+[`coding-guidelines.md`](../coding-guidelines.md#project-layout).
+
+```mermaid
+flowchart TB
+    subgraph Logic["Host-testable logic (no hardware/LVGL deps)"]
+        Nav["lib/navigation\nNavigationStack, TabController"]
+        Lib["lib/library\nmodel, tags, scan, index"]
+        Play["lib/playback\nPlaybackStateMachine, VolumePersistence"]
+        Input["lib/input\nGestureRecognizer, InputRouter"]
+    end
+    subgraph UI["lib/ui (hardware-facing, thin)"]
+        Screens["ArtistsScreen, AlbumsScreen, TracksScreen,\nFolderScreen, NowPlayingScreen, MiniBar"]
+        ScreenMgr["ScreenManager\n(transition animations)"]
+        Hint["GestureHintOverlay"]
+    end
+    subgraph Drivers["lib/drivers (thin hardware adapters)"]
+        SdDrv["sd/ (SdFileLister)"]
+        DispDrv["display/ (St77916Driver)"]
+        TouchDrv["touch/ (Cst816Driver)"]
+        EncDrv["encoder/ (GpioEncoderDriver)"]
+        AudioDrv["audio/ (Esp32AudioI2SDriver)"]
+        NvsDrv["storage/ (NvsKeyValueStore)"]
+    end
+    Main["src/main.cpp\n(wiring)"]
+
+    Main --> Nav
+    Main --> Lib
+    Main --> Play
+    Main --> Input
+    Main --> UI
+    Main --> Drivers
+
+    Input --> Nav
+    Input --> Play
+    UI --> Nav
+    UI --> Lib
+    UI --> Play
+    UI --> Input
+    Lib --> SdDrv
+    Play --> AudioDrv
+    Play --> NvsDrv
+    Hint --> NvsDrv
+    UI --> DispDrv
+    UI --> TouchDrv
+    Input --> EncDrv
+```
+
+- **`lib/navigation`** — `NavigationStack` (injectable-root screen
+  stack) and `TabController` (owns the Library/Files tabs, decides
+  pop-vs-tab-switch on a swipe).
+- **`lib/library`** — `model` (plain Artist/Album/Track structs), `tags`
+  (hand-rolled ID3v2/Vorbis-comment/RIFF-INFO parsers behind a
+  `TagReader`/`RawFile` interface), `scan` (`FileLister` interface,
+  `LibraryScanner`, `FolderBrowser` for live Files-mode listing),
+  `index` (`IndexCache` — the `/knobify/library.idx` format and
+  staleness-signature check).
+- **`lib/playback`** — `PlaybackStateMachine` driving a `PlaybackDriver`
+  interface (wraps `ESP32-audioI2S`), plus `VolumePersistence` over a
+  `KeyValueStore` interface (wraps NVS).
+- **`lib/input`** — `GestureRecognizer` (raw touch points → tap/swipe
+  with direction) and `InputRouter` (context-sensitive encoder routing:
+  list-scroll vs. volume, by current screen kind).
+- **`lib/ui`** — LVGL screens, `ScreenManager` (dispatch + transition
+  animation), `GestureHintOverlay` (one-time nudge). Hardware-facing but
+  kept thin; not host-tested.
+- **`lib/drivers`** — one thin adapter per peripheral, each the sole
+  place its hardware API (Arduino `SD`, LVGL flush callbacks, `CST816`
+  reads, GPIO quadrature reads, `ESP32-audioI2S`, `Preferences`/NVS) is
+  called from.
+- **`src/main.cpp`** — constructs concrete drivers and injects them into
+  the logic layer; no logic of its own.
 
 ## 6. Runtime View
 
-*To be completed once there's a concrete playback/browsing flow to
-describe — next session.*
+**Boot → library ready:**
+
+```mermaid
+sequenceDiagram
+    participant Main as main.cpp
+    participant Scan as LibraryScanner
+    participant SD as SdFileLister
+    participant Cache as IndexCache
+
+    Main->>Scan: scan(fileLister, tagReader)
+    Scan->>SD: stat-only walk (count, size, mtime)
+    Scan->>Cache: compare signature
+    alt cache matches
+        Cache-->>Scan: load cached LibraryIndex
+    else cache missing/stale
+        Scan->>SD: full walk + tag parse per file
+        Scan->>Cache: save(LibraryIndex)
+    end
+    Scan-->>Main: LibraryIndex ready
+    Main->>Main: show Artists (Library tab root)
+```
+
+**Browsing to playback:**
+
+```mermaid
+sequenceDiagram
+    participant U as User (touch)
+    participant UI as Screen (Artists/Albums/Tracks)
+    participant Nav as NavigationStack
+    participant PB as PlaybackStateMachine
+    participant Drv as PlaybackDriver
+
+    U->>UI: tap Artist
+    UI->>Nav: push(Albums, artistId)
+    U->>UI: tap Album
+    UI->>Nav: push(Tracks, albumId)
+    U->>UI: tap Track
+    UI->>PB: Play(trackId, filePath)
+    PB->>Drv: playFile(filePath)
+    UI->>Nav: push(NowPlaying)
+    Note over U,Drv: encoder now adjusts volume (NowPlaying);\nit scrolled lists on the prior screens
+```
+
+A left-right swipe pops one level (`NavigationStack::pop`) at any depth,
+or switches the Library/Files tab when already at a tab root
+(`TabController`) — see [ADR 0004](../adr/0004-navigation-library-and-index-architecture.md).
 
 ## 7. Deployment View
 
@@ -77,8 +213,12 @@ per project goals.
 - **Hardware/logic separation** — see
   [`coding-guidelines.md`](../coding-guidelines.md).
 - **Testing strategy** — see [ADR 0003](../adr/0003-testing-strategy.md).
-- *UI/UX concepts (navigation model, screen structure) — to be designed
-  next session.*
+- **UI/UX concepts** — navigation model (injectable-root screen stack +
+  Library/Files tabs), context-sensitive encoder behavior, swipe-based
+  back/tab-switch navigation, one-time gesture-hint animation, and
+  screen-transition animation. See
+  [ADR 0004](../adr/0004-navigation-library-and-index-architecture.md)
+  for the full rationale.
 
 ## 9. Architecture Decisions
 
