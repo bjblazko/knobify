@@ -107,6 +107,33 @@ navigation stack transition) to make the whole app feel polished, rather
 than building several one-off effects. Further animation ideas (e.g. Now
 Playing flourishes) are deferred.
 
+## Implementation status
+
+Navigation (`NavigationStack`/`TabController`), library indexing (tag
+parsers, `LibraryScanner`, `FolderBrowser`, `IndexCache`), playback
+(`PlaybackStateMachine`, debounced `VolumePersistence`), and input
+routing (`GestureRecognizer`, `InputRouter`) are implemented and
+host-tested (`scripts/check.sh`). Hardware drivers for SD (`SD_MMC`,
+4-wire), the rotary encoder (interrupt-driven quadrature on GPIO7/8),
+NVS (`Preferences`), and audio (`ESP32-audioI2S`, pinned v2.3.0) are
+wired up in `src/main.cpp`, using the pinout in `device.md` (sourced
+from a community reference for this exact board, not yet independently
+verified against the physical hardware).
+
+**Not yet implemented**: the display driver (ST77916, QSPI), touch
+driver (CST816, I2C), and all `lib/ui/` LVGL screens — including the
+gesture-hint nudge animation and screen-transition animation from
+decisions 11-12. `lvgl` is pinned to v8.3.x in `platformio.ini` (matching
+Waveshare's own official demo for this board, referenced in `device.md`)
+but has no project `lv_conf.h` yet and is not included by any code.
+Porting the ST77916 init sequence and LVGL setup should be done directly
+from that demo's source (`lcd_bsp.c`/`esp_lcd_sh8601.c` in the
+[Sandjab/Waveshare-Knob](https://github.com/Sandjab/Waveshare-Knob) demo
+mirror) once real hardware bring-up starts, rather than reconstructed
+from a summary. Until then there is no visible UI and no way to select a
+track to play; `main.cpp`'s wiring exists to let the SD/encoder/NVS/audio
+pieces be verified on hardware independently of the display work.
+
 ## Consequences
 
 - The navigation/tab/gesture logic (`NavigationStack`, `TabController`,

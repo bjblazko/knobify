@@ -55,6 +55,47 @@ This board uses a single CH340 USB-serial chip paired with a CH445P analog switc
 **Physical:**
 - CNC-machined metal enclosure
 
+## GPIO pinout (primary ESP32-S3R8)
+
+Sourced from [Sandjab/Waveshare-Knob](https://github.com/Sandjab/Waveshare-Knob),
+a community project targeting this exact board (which itself organizes
+Waveshare's own official demo code) — not independently verified against
+the physical board yet; confirm with a multimeter/continuity check or a
+successful flash before trusting blindly.
+
+| Peripheral | Signal | GPIO |
+|---|---|---|
+| Display (ST77916, QSPI) | CLK | 13 |
+| | D0–D3 | 15, 16, 17, 18 |
+| | CS | 14 |
+| | RST | 21 |
+| | Backlight (PWM) | 47 |
+| Touch (CST816) | SDA | 11 (shared I2C bus) |
+| | SCL | 12 (shared I2C bus) |
+| | INT | 9 |
+| | RST | 10 |
+| | I2C address | 0x15 |
+| Haptics (DRV2605, out of v1 scope) | I2C | shared bus (11/12) |
+| | I2C address | 0x5A |
+| Rotary encoder (primary) | A (CLK) | 8 |
+| | B (DT) | 7 |
+| | Push button | **none documented** — matches this project's own web-research finding (see "Hardware quirks observed" and ADR 0004) |
+| SD card (SDMMC 4-wire) | CMD | 3 |
+| | CLK | 4 |
+| | D0–D3 | 5, 6, 42, 2 |
+| I2S audio DAC (PCM5100A) | BCLK | 39 |
+| | WS/LRCK | 40 |
+| | DOUT | 41 |
+| Other | Battery ADC | 1 |
+| | Mic (PDM) | CLK 45, DATA 46 |
+| | Inter-MCU UART (out of v1 scope) | TX 43, RX 44 |
+
+Waveshare's own official Arduino demo for this board (mirrored in the
+same community repo) targets **LVGL v8.3.11** (RGB565 color depth,
+byte-swapped for QSPI) — knobify's `lib_deps` should pin the same major
+version rather than LVGL v9, to stay compatible with any ST77916 QSPI
+init/driver code ported from that demo.
+
 ## Hardware quirks observed
 
 - **USB-C cable orientation matters for which MCU you talk to.** Despite
