@@ -120,19 +120,32 @@ wired up in `src/main.cpp`, using the pinout in `device.md` (sourced
 from a community reference for this exact board, not yet independently
 verified against the physical hardware).
 
-**Not yet implemented**: the display driver (ST77916, QSPI), touch
-driver (CST816, I2C), and all `lib/ui/` LVGL screens — including the
-gesture-hint nudge animation and screen-transition animation from
-decisions 11-12. `lvgl` is pinned to v8.3.x in `platformio.ini` (matching
-Waveshare's own official demo for this board, referenced in `device.md`)
-but has no project `lv_conf.h` yet and is not included by any code.
-Porting the ST77916 init sequence and LVGL setup should be done directly
-from that demo's source (`lcd_bsp.c`/`esp_lcd_sh8601.c` in the
+**Display/touch/UI are now implemented too.** The ST77916 QSPI init
+sequence and CST816 I2C touch protocol were ported verbatim from
+Waveshare's own official demo for this board (via the
 [Sandjab/Waveshare-Knob](https://github.com/Sandjab/Waveshare-Knob) demo
-mirror) once real hardware bring-up starts, rather than reconstructed
-from a summary. Until then there is no visible UI and no way to select a
-track to play; `main.cpp`'s wiring exists to let the SD/encoder/NVS/audio
-pieces be verified on hardware independently of the display work.
+mirror), not reconstructed from a summary — see
+`lib/drivers-display/Sh8601InitCmds.h` and `lib/drivers-touch/Cst816Driver.h`.
+The vendored `esp_lcd_sh8601.c`/`.h` panel driver needed adapting in
+several places for API drift between the ESP-IDF version that demo
+targets and the older one (4.4.x) bundled with this project's
+PlatformIO/Arduino core — see comments at each adapted spot (color space
+field rename, `disp_off` field rename with inverted boolean, no
+`quad_mode` flag on `esp_lcd_panel_io_spi_config_t` in this IDF version).
+None of this has been verified on the physical board yet — compilation
+succeeding is not the same as the display actually working; the
+`quad_mode` omission in particular is flagged as unverified until tested.
+
+`lib/ui/ScreenManager` implements all five screen kinds (Artists, Albums,
+Tracks, Folder, NowPlaying) plus the mini-bar in one file rather than
+split per screen, deliberately, since the layout hasn't been validated on
+real hardware yet (round-display safe areas, touch target sizes) --
+splitting further before that happens would be premature. The gesture-hint
+nudge animation and screen-transition animation (decisions 11-12) are
+NOT yet implemented; screens currently hard-cut. `lv_conf.h` is copied
+from the installed LVGL package's template with `LV_COLOR_16_SWAP` and
+`LV_TICK_CUSTOM` (via Arduino `millis()`) enabled to match Waveshare's
+config.
 
 ## Consequences
 

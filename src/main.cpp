@@ -1,29 +1,25 @@
 // Entry point and wiring only, per docs/coding-guidelines.md: construct
 // concrete drivers and inject them into the logic layer.
-//
-// This wires up everything that doesn't need the display: SD card,
-// library scan/cache, encoder, volume/NVS, and audio playback. Display,
-// touch, and the LVGL screens (lib/ui/, lib/drivers-display/,
-// lib/drivers-touch/) are NOT wired yet -- see
-// docs/adr/0004-navigation-library-and-index-architecture.md's "display/
-// touch bring-up" note. Until then there is no visible UI and no way to
-// actually choose a track to play; this stage exists to get the
-// lower-risk hardware pieces (SD, encoder, NVS, audio) verified on real
-// hardware independently of the display work.
 #include <Arduino.h>
 #include <SD_MMC.h>
 
+#include "Cst816Driver.h"
 #include "EncoderPins.h"
 #include "Esp32AudioI2SDriver.h"
+#include "GestureRecognizer.h"
 #include "GpioEncoderDriver.h"
 #include "IndexCache.h"
 #include "InputRouter.h"
 #include "LibraryScanner.h"
+#include "LvglGlue.h"
 #include "NvsKeyValueStore.h"
 #include "PlaybackStateMachine.h"
+#include "ScreenManager.h"
+#include "SdDirectoryReader.h"
 #include "SdFileLister.h"
 #include "SdFileOpener.h"
 #include "SdInit.h"
+#include "St77916Driver.h"
 #include "TabController.h"
 #include "Version.h"
 #include "VolumePersistence.h"
@@ -35,14 +31,6 @@ namespace {
 // about SD card layout pending real-hardware verification.
 constexpr const char *kMusicRoot = "/Music";
 constexpr const char *kIndexCachePath = "/knobify/library.idx";
-
-// InputRouter needs a ListMoveSink to forward browse-screen scrolling
-// to, but there's no list UI yet (lib/ui/ isn't built). This placeholder
-// just swallows the intent until a real screen exists to consume it.
-class NoOpListMoveSink : public knobify::input::ListMoveSink {
- public:
-  void onListMove(int16_t) override {}
-};
 
 std::vector<uint8_t> readIndexCacheFile() {
   std::vector<uint8_t> bytes;
@@ -90,6 +78,7 @@ knobify::library::LibraryIndex loadOrBuildLibraryIndex(
 
 knobify::drivers::SdFileLister g_fileLister(kMusicRoot);
 knobify::drivers::SdFileOpener g_fileOpener;
+knobify::drivers::SdDirectoryReader g_directoryReader;
 knobify::drivers::GpioEncoderDriver g_encoder(knobify::drivers::kEncoderPinA,
                                                knobify::drivers::kEncoderPinB);
 knobify::drivers::NvsKeyValueStore g_nvsStore;
@@ -97,10 +86,16 @@ knobify::playback::VolumePersistence g_volume(g_nvsStore);
 knobify::drivers::Esp32AudioI2SDriver g_audioDriver;
 knobify::playback::PlaybackStateMachine g_playback(g_audioDriver, g_volume);
 knobify::navigation::TabController g_tabs;
-NoOpListMoveSink g_listSink;
-knobify::input::InputRouter g_inputRouter(g_tabs, g_playback, g_listSink);
 
+knobify::drivers::St77916Driver g_display;
+knobify::drivers::Cst816Driver g_touch;
+knobify::ui::LvglGlue g_lvglGlue;
 knobify::library::LibraryIndex g_libraryIndex;
+knobify::ui::ScreenManager g_screenManager(g_tabs, g_libraryIndex,
+                                            g_directoryReader, g_playback);
+knobify::input::InputRouter g_inputRouter(g_tabs, g_playback, g_screenManager);
+knobify::input::GestureRecognizer g_gestureRecognizer;
+
 bool g_wasPlaying = false;
 
 }  // namespace
@@ -121,14 +116,40 @@ void setup() {
 
   g_encoder.begin();
   g_audioDriver.begin();
+
+  if (!g_touch.begin()) {
+    Serial.println("Touch init FAILED -- check wiring/pinout in device.md");
+  }
+  if (!g_lvglGlue.begin(g_display, g_touch)) {
+    Serial.println("Display init FAILED -- check wiring/pinout in device.md");
+  } else {
+    g_screenManager.begin();
+  }
 }
 
 void loop() {
   g_audioDriver.loop();
+  g_lvglGlue.pump();
 
   int16_t encoderDelta = g_encoder.readDelta();
   if (encoderDelta != 0) {
     g_inputRouter.onEncoderDelta(encoderDelta, millis());
+  }
+
+  // LVGL's own touch indev (registered in LvglGlue) handles taps on
+  // widgets directly. This second poll of the same driver feeds the
+  // separate gesture recognizer, which only cares about the
+  // swipe-to-go-back/switch-tab gesture -- LVGL widgets don't know about
+  // that gesture at all. Polling the same I2C register twice per loop is
+  // a deliberate simplicity-over-efficiency tradeoff for this first cut.
+  knobify::input::TouchSample touchSample{};
+  g_touch.poll(touchSample);
+  auto gesture = g_gestureRecognizer.feed(touchSample);
+  if (gesture) {
+    g_inputRouter.onGesture(*gesture);
+    if (gesture->type == knobify::input::GestureType::SwipeLeftToRight) {
+      g_screenManager.render();
+    }
   }
 
   g_playback.tick(millis());
@@ -142,10 +163,7 @@ void loop() {
       g_playback.state() == knobify::playback::PlaybackState::Playing;
   if (g_wasPlaying && isPlayingNow && !g_audioDriver.isRunning()) {
     g_playback.onTrackFinished();
+    g_screenManager.render();
   }
   g_wasPlaying = isPlayingNow;
-
-  // No display/touch yet -- see the file header comment. Once
-  // lib/drivers-display/ and lib/ui/ exist, this loop also pumps
-  // lv_timer_handler() and touch polling.
 }

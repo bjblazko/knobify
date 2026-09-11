@@ -24,10 +24,14 @@ Arduino, native + esp32-s3 environments) are in place — see
 [`docs/adr/`](docs/adr/README.md) and [`docs/arc42/arc42.md`](docs/arc42/arc42.md)
 for what was decided and why.
 
-No player features exist yet (no SD reading, decoding, UI screens, or
-encoder handling). v1 scope: play MP3/WAV/OGG from an SD card, browse a
-library by artist/album, control via touch + one rotary encoder, fully
-offline — see [ADR 0002](docs/adr/0002-v1-format-and-mcu-scope.md).
+v1 UX is designed and implemented end-to-end (navigation, library
+indexing, playback, input routing, display/touch/LVGL screens) but not
+yet verified on real hardware — see
+[ADR 0004](docs/adr/0004-navigation-library-and-index-architecture.md)
+for what's built and what's still unverified. v1 scope: play MP3/WAV/OGG
+from an SD card, browse a library by artist/album (or raw folders),
+control via touch + one rotary encoder, fully offline — see
+[ADR 0002](docs/adr/0002-v1-format-and-mcu-scope.md).
 
 ## Starting a new session here
 
