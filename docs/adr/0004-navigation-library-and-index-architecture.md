@@ -230,6 +230,26 @@ each one only visible by actually tapping through the UI on hardware:
   clipped or crowded.** Added `pad_top` on the list widget and confirmed
   the back button's top-center position (12px inset) clears the round
   bezel cleanly.
+- **The rotary encoder didn't respond to volume changes at all**, after
+  also going through two failed attempts at fixing an earlier jitter/
+  reversed-direction report (a divide-by-fixed-constant debounce, then a
+  fixed-time debounce, then a textbook full-step Gray-code state
+  machine) that produced progressively worse or still-jittery results.
+  The actual root cause, found by logging every raw pin state the ISR
+  observed during a real turn (see the temporary `drainLog()` diagnostic
+  added and removed in this pass) rather than continuing to guess: this
+  encoder's raw states *never include `00`* (both contacts closed) --
+  only `11` (rest), `01`, and `10`. Every decoder tried up to that point
+  assumed the standard 4-state Gray-code cycle and keyed "count a step"
+  off passing through `00`, so none of them could ever fire on this
+  hardware. Replaced with a decoder matching the real 3-state behavior
+  (track which single contact closed since the last rest state, count on
+  release back to rest) plus a short 3ms refractory window after each
+  counted step to reject overshoot between fast consecutive detents. See
+  `lib/drivers-encoder/GpioEncoderDriver.h` and the hardware-gotchas
+  index in `AGENTS.md`. Lesson generalized there: when an input decoder
+  doesn't behave as expected, capture the actual raw hardware signal
+  before writing another decoder attempt against an assumed model.
 
 ## Consequences
 

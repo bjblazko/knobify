@@ -45,6 +45,13 @@ class ScreenManager : public input::ListMoveSink {
 
   void onListMove(int16_t delta) override;
 
+  // Cheap live update of just the volume readout on the Now Playing
+  // screen (if that's what's currently shown) -- call after any encoder
+  // tick that adjusted volume. Deliberately not a full render(): that
+  // would delete/recreate every widget on screen for what's often a
+  // rapid sequence of small ticks.
+  void updateVolumeDisplay();
+
  private:
   void renderList(const std::vector<std::pair<std::string, int>> &items,
                    bool showMiniBar);
@@ -52,6 +59,7 @@ class ScreenManager : public input::ListMoveSink {
   void renderBackButtonIfNeeded();
   void applyHighlight();
   void goToNowPlaying();
+  static std::string friendlyName(const std::string &path);
 
   static void onListItemClicked(lv_event_t *e);
   static void onBackClicked(lv_event_t *e);
@@ -68,6 +76,8 @@ class ScreenManager : public input::ListMoveSink {
   lv_obj_t *screen_ = nullptr;
   lv_obj_t *list_ = nullptr;
   lv_obj_t *miniBar_ = nullptr;
+  lv_obj_t *volumeBar_ = nullptr;
+  lv_obj_t *volumeLabel_ = nullptr;
   int highlightedIndex_ = 0;
 
   // Kind IDs stashed on each clickable object via lv_obj_set_user_data so

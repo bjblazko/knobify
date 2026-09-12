@@ -4,11 +4,16 @@ namespace knobify::drivers {
 
 GpioEncoderDriver *GpioEncoderDriver::instance_ = nullptr;
 
+namespace {
+constexpr uint8_t kRest = 0b11;
+constexpr uint8_t kAClosed = 0b01;
+constexpr uint8_t kBClosed = 0b10;
+}  // namespace
+
 void GpioEncoderDriver::begin() {
   pinMode(pinA_, INPUT_PULLUP);
   pinMode(pinB_, INPUT_PULLUP);
   instance_ = this;
-  lastState_ = readState();
   attachInterrupt(digitalPinToInterrupt(pinA_), &GpioEncoderDriver::isr,
                    CHANGE);
   attachInterrupt(digitalPinToInterrupt(pinB_), &GpioEncoderDriver::isr,
@@ -20,16 +25,42 @@ uint8_t IRAM_ATTR GpioEncoderDriver::readState() const {
 }
 
 void IRAM_ATTR GpioEncoderDriver::handleInterrupt() {
-  // Standard quadrature direction table, indexed by (previous state << 2
-  // | new state); +1/-1 for valid single-step transitions, 0 for
-  // bounce/invalid transitions.
-  static const int8_t kTransitionTable[16] = {
-      0, -1, 1, 0, 1, 0, 0, -1, -1, 0, 0, 1, 0, 1, -1, 0,
-  };
-  uint8_t newState = readState();
-  uint8_t index = static_cast<uint8_t>((lastState_ << 2) | newState);
-  position_ = static_cast<int16_t>(position_ + kTransitionTable[index]);
-  lastState_ = newState;
+  uint8_t s = readState();
+  if (s == kRest) {
+    // A detent completed if exactly one contact closed and released --
+    // count it now, using whichever contact led. If neither contact
+    // closed (spurious double-edge) there's nothing to count.
+    if (pending_ == PendingContact::kA) {
+      // Confirmed against real hardware feedback 2026-09-12: contact A
+      // leading (this sign) is clockwise, which is what a user expects
+      // to make it louder.
+      position_ = static_cast<int16_t>(position_ + 1);
+      lastCountMicros_ = micros();
+    } else if (pending_ == PendingContact::kB) {
+      position_ = static_cast<int16_t>(position_ - 1);
+      lastCountMicros_ = micros();
+    }
+    pending_ = PendingContact::kNone;
+  } else if (s == kAClosed) {
+    // The brief refractory window after a just-counted step rejects
+    // mechanical overshoot at the boundary between two consecutive fast
+    // detents (turning quickly can dip briefly through the *other*
+    // contact right as the previous one releases) -- without it, a
+    // continuous fast turn would occasionally register one stray step
+    // backwards. Found from real hardware feedback 2026-09-12.
+    if (pending_ == PendingContact::kNone &&
+        micros() - lastCountMicros_ >= kRefractoryMicros) {
+      pending_ = PendingContact::kA;
+    }
+  } else if (s == kBClosed) {
+    if (pending_ == PendingContact::kNone &&
+        micros() - lastCountMicros_ >= kRefractoryMicros) {
+      pending_ = PendingContact::kB;
+    }
+  }
+  // s == 0 (both contacts closed) has never been observed on this
+  // hardware; if it ever occurs, treat it as ambiguous and ignore --
+  // pending_ is left as whatever it already was.
 }
 
 void IRAM_ATTR GpioEncoderDriver::isr() {

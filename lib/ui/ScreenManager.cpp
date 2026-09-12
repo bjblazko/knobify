@@ -1,6 +1,7 @@
 #include "ScreenManager.h"
 
 #include <algorithm>
+#include <cstdio>
 
 #include "St77916Driver.h"
 
@@ -34,6 +35,8 @@ void ScreenManager::render() {
   }
   list_ = nullptr;
   miniBar_ = nullptr;
+  volumeBar_ = nullptr;
+  volumeLabel_ = nullptr;
 
   Screen current = tabs_.activeStack().current();
 
@@ -159,11 +162,19 @@ void ScreenManager::renderList(
   }
 
   if (showMiniBar) {
+    // Narrower than full width and inset from the very bottom edge --
+    // flush-bottom, full-width was clipped by the round bezel down to a
+    // sliver, which read as "too small, stuck in a corner" (found on
+    // real hardware 2026-09-12). This width/inset keeps it within the
+    // round-safe area at this height.
     miniBar_ = lv_obj_create(screen_);
-    lv_obj_set_size(miniBar_, drivers::kLcdHorRes, 40);
-    lv_obj_align(miniBar_, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_size(miniBar_, 260, 48);
+    lv_obj_align(miniBar_, LV_ALIGN_BOTTOM_MID, 0, -14);
     lv_obj_t *label = lv_label_create(miniBar_);
-    lv_label_set_text(label, playback_.currentPath().c_str());
+    lv_label_set_text(label, friendlyName(playback_.currentPath()).c_str());
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_16, 0);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(label, 220);
     lv_obj_center(label);
     lv_obj_add_flag(miniBar_, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(miniBar_, &ScreenManager::onMiniBarClicked,
@@ -193,10 +204,31 @@ void ScreenManager::renderBackButtonIfNeeded() {
 
 void ScreenManager::renderNowPlaying() {
   lv_obj_t *label = lv_label_create(screen_);
-  lv_label_set_text(label, playback_.currentPath().c_str());
-  lv_obj_align(label, LV_ALIGN_TOP_MID, 0, 60);
-  lv_obj_set_width(label, drivers::kLcdHorRes - 80);
+  lv_label_set_text(label, friendlyName(playback_.currentPath()).c_str());
+  lv_obj_set_style_text_font(label, &lv_font_montserrat_20, 0);
+  lv_obj_align(label, LV_ALIGN_TOP_MID, 0, 56);
+  lv_obj_set_width(label, drivers::kLcdHorRes - 100);
   lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+
+  // Knob turns adjust volume on this screen (decision 3, ADR 0004) --
+  // this makes that change visible instead of silent (found on real
+  // hardware 2026-09-12: "when I turn the knob, nothing happens
+  // visually"). updateVolumeDisplay() keeps these two in sync afterward
+  // without a full re-render.
+  volumeBar_ = lv_bar_create(screen_);
+  lv_obj_set_size(volumeBar_, 180, 14);
+  lv_obj_align(volumeBar_, LV_ALIGN_CENTER, 0, -34);
+  lv_bar_set_range(volumeBar_, playback::PlaybackStateMachine::kMinVolume,
+                    playback::PlaybackStateMachine::kMaxVolume);
+  lv_bar_set_value(volumeBar_, playback_.volume(), LV_ANIM_OFF);
+
+  volumeLabel_ = lv_label_create(screen_);
+  lv_obj_align_to(volumeLabel_, volumeBar_, LV_ALIGN_OUT_TOP_MID, 0, -6);
+  char volText[16];
+  snprintf(volText, sizeof(volText), "Volume %d/%d", playback_.volume(),
+           playback::PlaybackStateMachine::kMaxVolume);
+  lv_label_set_text(volumeLabel_, volText);
 
   // Buttons sit inset from the edges, safely within the round display's
   // visible area rather than at the literal corners -- see decision 6,
@@ -246,6 +278,25 @@ void ScreenManager::applyHighlight() {
       lv_obj_clear_state(btn, LV_STATE_CHECKED);
     }
   }
+}
+
+void ScreenManager::updateVolumeDisplay() {
+  if (!volumeBar_ || !volumeLabel_) return;
+  lv_bar_set_value(volumeBar_, playback_.volume(), LV_ANIM_OFF);
+  char volText[16];
+  snprintf(volText, sizeof(volText), "Volume %d/%d", playback_.volume(),
+            playback::PlaybackStateMachine::kMaxVolume);
+  lv_label_set_text(volumeLabel_, volText);
+}
+
+std::string ScreenManager::friendlyName(const std::string &path) {
+  auto slash = path.find_last_of('/');
+  std::string name = (slash == std::string::npos) ? path : path.substr(slash + 1);
+  auto dot = name.find_last_of('.');
+  if (dot != std::string::npos) {
+    name = name.substr(0, dot);
+  }
+  return name;
 }
 
 void ScreenManager::onListMove(int16_t delta) {

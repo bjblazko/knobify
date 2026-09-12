@@ -139,6 +139,10 @@ void loop() {
   int16_t encoderDelta = g_encoder.readDelta();
   if (encoderDelta != 0) {
     g_inputRouter.onEncoderDelta(encoderDelta, millis());
+    // Cheap (no full re-render) so it can run on every tick -- see
+    // ScreenManager::updateVolumeDisplay(). A no-op on any screen other
+    // than Now Playing.
+    g_screenManager.updateVolumeDisplay();
   }
 
   // Touch is polled exactly once here and fed to both consumers --
