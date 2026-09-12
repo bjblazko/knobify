@@ -49,10 +49,12 @@ class ScreenManager : public input::ListMoveSink {
   void renderList(const std::vector<std::pair<std::string, int>> &items,
                    bool showMiniBar);
   void renderNowPlaying();
+  void renderBackButtonIfNeeded();
   void applyHighlight();
   void goToNowPlaying();
 
   static void onListItemClicked(lv_event_t *e);
+  static void onBackClicked(lv_event_t *e);
   static void onMiniBarClicked(lv_event_t *e);
   static void onPrevClicked(lv_event_t *e);
   static void onPlayPauseClicked(lv_event_t *e);

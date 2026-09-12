@@ -8,10 +8,7 @@ namespace {
 constexpr int kBufHeight = drivers::kLcdVerRes / 10;
 }
 
-bool LvglGlue::begin(drivers::St77916Driver &display,
-                      drivers::Cst816Driver &touch) {
-  touch_ = &touch;
-
+bool LvglGlue::begin(drivers::St77916Driver &display) {
   if (!display.begin()) {
     return false;
   }
@@ -79,12 +76,10 @@ void LvglGlue::flushCb(lv_disp_drv_t *drv, const lv_area_t *area,
 
 void LvglGlue::touchReadCb(lv_indev_drv_t *drv, lv_indev_data_t *data) {
   auto *self = static_cast<LvglGlue *>(drv->user_data);
-  input::TouchSample sample{};
-  self->touch_->poll(sample);
-  data->point.x = sample.x;
-  data->point.y = sample.y;
-  data->state = sample.pressed ? LV_INDEV_STATE_PRESSED
-                                : LV_INDEV_STATE_RELEASED;
+  data->point.x = self->latestTouch_.x;
+  data->point.y = self->latestTouch_.y;
+  data->state = self->latestTouch_.pressed ? LV_INDEV_STATE_PRESSED
+                                            : LV_INDEV_STATE_RELEASED;
 }
 
 }  // namespace knobify::ui

@@ -125,7 +125,7 @@ void setup() {
     Serial.println("Touch init FAILED -- check wiring/pinout in device.md");
   }
 
-  if (!g_lvglGlue.begin(g_display, g_touch)) {
+  if (!g_lvglGlue.begin(g_display)) {
     Serial.println("Display init FAILED -- check wiring/pinout in device.md");
   } else {
     g_screenManager.begin();
@@ -141,14 +141,16 @@ void loop() {
     g_inputRouter.onEncoderDelta(encoderDelta, millis());
   }
 
-  // LVGL's own touch indev (registered in LvglGlue) handles taps on
-  // widgets directly. This second poll of the same driver feeds the
-  // separate gesture recognizer, which only cares about the
-  // swipe-to-go-back/switch-tab gesture -- LVGL widgets don't know about
-  // that gesture at all. Polling the same I2C register twice per loop is
-  // a deliberate simplicity-over-efficiency tradeoff for this first cut.
+  // Touch is polled exactly once here and fed to both consumers --
+  // LVGL's touch indev (via feedTouch(), for taps on widgets) and the
+  // separate gesture recognizer (for the swipe-to-go-back/switch-tab
+  // gesture, which LVGL widgets don't know about). Polling twice
+  // independently used to feed each one a slightly different sample
+  // (real capacitive touch coordinates jitter between reads), which
+  // could make a single tap also register as a swipe -- see LvglGlue.h.
   knobify::input::TouchSample touchSample{};
   g_touch.poll(touchSample);
+  g_lvglGlue.feedTouch(touchSample);
   auto gesture = g_gestureRecognizer.feed(touchSample);
   if (gesture) {
     g_inputRouter.onGesture(*gesture);

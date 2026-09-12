@@ -17,11 +17,21 @@ void ScreenManager::render() {
   itemContexts_.clear();
   highlightedIndex_ = 0;
 
-  if (screen_) {
-    lv_obj_del(screen_);
-  }
+  // Deleting the old screen synchronously here would free it (and the
+  // button that's the current event's target, if render() was called
+  // from a click handler) while LVGL is still processing that very
+  // event -- corrupts LVGL's input state. lv_obj_del_async() defers the
+  // actual deletion until after event processing finishes. Found on
+  // real hardware 2026-09-12: tapping a list item appeared to navigate
+  // forward then immediately revert, because the corrupted input state
+  // led to a bogus click on whatever ended up at that freed memory
+  // address in the new screen.
+  lv_obj_t *oldScreen = screen_;
   screen_ = lv_obj_create(nullptr);
   lv_scr_load(screen_);
+  if (oldScreen) {
+    lv_obj_del_async(oldScreen);
+  }
   list_ = nullptr;
   miniBar_ = nullptr;
 
@@ -29,45 +39,51 @@ void ScreenManager::render() {
 
   if (current.kind == ScreenKind::NowPlaying) {
     renderNowPlaying();
-    return;
-  }
-
-  std::vector<std::pair<std::string, int>> items;
-  switch (current.kind) {
-    case ScreenKind::Artists:
-      for (const auto &artist : library_.artists) {
-        items.emplace_back(artist.name, static_cast<int>(artist.id));
-      }
-      break;
-    case ScreenKind::Albums:
-      for (auto albumId : library_.albumsFor(current.params.artistId)) {
-        for (const auto &album : library_.albums) {
-          if (album.id == albumId) items.emplace_back(album.title, albumId);
+  } else {
+    std::vector<std::pair<std::string, int>> items;
+    switch (current.kind) {
+      case ScreenKind::Artists:
+        for (const auto &artist : library_.artists) {
+          items.emplace_back(artist.name, static_cast<int>(artist.id));
         }
-      }
-      break;
-    case ScreenKind::Tracks:
-      for (auto trackId : library_.tracksFor(current.params.albumId)) {
-        for (const auto &track : library_.tracks) {
-          if (track.id == trackId) items.emplace_back(track.title, trackId);
+        break;
+      case ScreenKind::Albums:
+        for (auto albumId : library_.albumsFor(current.params.artistId)) {
+          for (const auto &album : library_.albums) {
+            if (album.id == albumId) items.emplace_back(album.title, albumId);
+          }
         }
+        break;
+      case ScreenKind::Tracks:
+        for (auto trackId : library_.tracksFor(current.params.albumId)) {
+          for (const auto &track : library_.tracks) {
+            if (track.id == trackId) items.emplace_back(track.title, trackId);
+          }
+        }
+        break;
+      case ScreenKind::Folder: {
+        auto entries = library::FolderBrowser::list(
+            directoryReader_, current.params.folderPath);
+        for (size_t i = 0; i < entries.size(); ++i) {
+          std::string label =
+              entries[i].isDirectory ? entries[i].name + "/" : entries[i].name;
+          items.emplace_back(label, static_cast<int>(i));
+        }
+        break;
       }
-      break;
-    case ScreenKind::Folder: {
-      auto entries =
-          library::FolderBrowser::list(directoryReader_, current.params.folderPath);
-      for (size_t i = 0; i < entries.size(); ++i) {
-        std::string label =
-            entries[i].isDirectory ? entries[i].name + "/" : entries[i].name;
-        items.emplace_back(label, static_cast<int>(i));
-      }
-      break;
+      default:
+        break;
     }
-    default:
-      break;
+    renderList(items, playback_.state() != playback::PlaybackState::Stopped);
   }
 
-  renderList(items, playback_.state() != playback::PlaybackState::Stopped);
+  // Created last (on top of the list widget, which otherwise spans the
+  // whole screen and would draw over -- and steal taps from -- a button
+  // created earlier at the same top-center position). Found on real
+  // hardware 2026-09-12: the back button worked on Now Playing (no
+  // full-screen widget there) but was invisible/unclickable on every
+  // list screen.
+  renderBackButtonIfNeeded();
 }
 
 void ScreenManager::renderList(
@@ -77,6 +93,24 @@ void ScreenManager::renderList(
   lv_obj_set_size(list_, drivers::kLcdHorRes,
                    showMiniBar ? drivers::kLcdVerRes - 40 : drivers::kLcdVerRes);
   lv_obj_align(list_, LV_ALIGN_TOP_MID, 0, 0);
+  // The default scrollbar sits flush against the right edge, which on a
+  // round display gets clipped by the bezel there (looked like a
+  // stray pink line, cut off mid-stroke) -- the highlighted item already
+  // shows position for knob-driven scrolling, so the scrollbar itself
+  // isn't needed. Side padding keeps row text off the round-unsafe
+  // edges too.
+  lv_obj_set_scrollbar_mode(list_, LV_SCROLLBAR_MODE_OFF);
+  // Asymmetric: text reads left-to-right from its start, so pushing the
+  // left edge in further than the right keeps the start of each row's
+  // text clear of the round bezel's curve without wasting space on the
+  // (less legibility-critical) trailing/ellipsis end.
+  lv_obj_set_style_pad_left(list_, 44, 0);
+  lv_obj_set_style_pad_right(list_, 24, 0);
+  // The round bezel clips much more aggressively near the very top than
+  // the sides do -- without this, the first row's text got cut off
+  // (found on real hardware 2026-09-12). Also clears space for the back
+  // button (see renderBackButtonIfNeeded()) on non-root screens.
+  lv_obj_set_style_pad_top(list_, 40, 0);
 
   std::vector<library::FolderEntry> folderEntries;
   if (current.kind == ScreenKind::Folder) {
@@ -90,6 +124,18 @@ void ScreenManager::renderList(
     // bg_color override) keeps text contrast correct for free -- see
     // applyHighlight().
     lv_obj_add_flag(btn, LV_OBJ_FLAG_CHECKABLE);
+    lv_obj_set_style_pad_top(btn, 10, 0);
+    lv_obj_set_style_pad_bottom(btn, 10, 0);
+
+    // lv_list_add_btn's label defaults to a scrolling marquee for long
+    // text and the small default font -- a bigger font plus a clean
+    // ellipsis truncation reads better on a small round display than
+    // several artist/album names all mid-scroll at once.
+    lv_obj_t *label = lv_obj_get_child(btn, 0);
+    if (label) {
+      lv_obj_set_style_text_font(label, &lv_font_montserrat_20, 0);
+      lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
+    }
 
     auto ctx = std::make_unique<ItemContext>();
     ctx->self = this;
@@ -125,6 +171,24 @@ void ScreenManager::renderList(
   }
 
   applyHighlight();
+}
+
+void ScreenManager::renderBackButtonIfNeeded() {
+  // Swiping left-to-right also goes back (decision 5, ADR 0004), but
+  // real usage showed that's not discoverable on its own -- a user
+  // reaching Now Playing had no visible way back at all. This is a
+  // supplementary, always-visible affordance for the same action.
+  // Positioned top-center rather than a corner: the round bezel clips
+  // corners much more aggressively than top-center at this height.
+  if (!tabs_.activeStack().canGoBack()) return;
+  lv_obj_t *backBtn = lv_btn_create(screen_);
+  lv_obj_set_size(backBtn, 56, 32);
+  lv_obj_align(backBtn, LV_ALIGN_TOP_MID, 0, 12);
+  lv_obj_t *backLabel = lv_label_create(backBtn);
+  lv_label_set_text(backLabel, LV_SYMBOL_LEFT);
+  lv_obj_center(backLabel);
+  lv_obj_add_event_cb(backBtn, &ScreenManager::onBackClicked, LV_EVENT_CLICKED,
+                       this);
 }
 
 void ScreenManager::renderNowPlaying() {
@@ -246,6 +310,12 @@ void ScreenManager::onListItemClicked(lv_event_t *e) {
     default:
       break;
   }
+}
+
+void ScreenManager::onBackClicked(lv_event_t *e) {
+  auto *self = static_cast<ScreenManager *>(lv_event_get_user_data(e));
+  self->tabs_.activeStack().pop();
+  self->render();
 }
 
 void ScreenManager::onMiniBarClicked(lv_event_t *e) {

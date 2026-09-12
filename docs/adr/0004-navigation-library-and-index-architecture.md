@@ -188,6 +188,49 @@ colors. User feedback after that fix: "better" but not yet fully
 resolved — visual design of the screens (typography, spacing, motion)
 is real follow-up work, not a solved problem.
 
+**Further real bugs found through iterative on-device use (2026-09-12)**,
+each one only visible by actually tapping through the UI on hardware:
+
+- **LVGL's own colors rendered wrong (theme blue appeared bright
+  green).** `LV_COLOR_16_SWAP` was left at `1`, copied from Waveshare's
+  original esp_lcd-based demo (which needed it for that raw SPI
+  transmission path). Arduino_GFX's `writePixels()`/`write16()` already
+  send bytes in the order this panel expects, so the swap was
+  double-handling byte order for every LVGL-drawn color. The earlier
+  `fillScreen`/`fillRect` hardware diagnostics never caught this because
+  they called Arduino_GFX directly, bypassing LVGL's color pipeline
+  entirely — a real gap in that testing. Fixed: `LV_COLOR_16_SWAP 0` in
+  `include/lv_conf.h`.
+- **Tapping a list item briefly navigated forward, then immediately
+  reverted.** `ScreenManager::render()` called `lv_obj_del()` on the old
+  screen synchronously from inside the very click-event handler that
+  triggered the navigation — deleting a widget (and its screen) while
+  LVGL is still processing that widget's event corrupts LVGL's input
+  state. Fixed with `lv_obj_del_async()`, which defers the deletion until
+  after event processing completes.
+- **A single tap could also register as a swipe-back.** Touch was polled
+  twice per `loop()` iteration — once inside LVGL's own indev callback,
+  once separately for `GestureRecognizer`'s swipe detection — each doing
+  its own fresh I2C read. Real capacitive touch coordinates jitter
+  slightly between consecutive reads, so the two consumers could see
+  different enough coordinates for the same physical tap that one read
+  it as a plain click and the other read it as a >=40px swipe. Fixed by
+  polling once per loop in `src/main.cpp` and feeding that single sample
+  to both `LvglGlue::feedTouch()` and `GestureRecognizer` — LVGL's indev
+  no longer polls the driver itself.
+- **The supplementary back button (added after user feedback that swipe
+  alone wasn't discoverable) was invisible/unclickable on every list
+  screen, though it worked fine on Now Playing.** It was being created
+  *before* the full-screen list widget, which drew on top of it and
+  intercepted its taps; Now Playing has no full-screen widget covering
+  that area, so it stayed visible there. Fixed by creating the back
+  button last in `ScreenManager::render()`, regardless of which screen
+  kind is being rendered, so it's always the topmost/frontmost child.
+- **List rows' top edge, and the round-safe back-button area, were
+  clipped or crowded.** Added `pad_top` on the list widget and confirmed
+  the back button's top-center position (12px inset) clears the round
+  bezel cleanly.
+
 ## Consequences
 
 - The navigation/tab/gesture logic (`NavigationStack`, `TabController`,
