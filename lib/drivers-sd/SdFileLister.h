@@ -43,11 +43,25 @@ class SdFileLister : public library::FileLister {
     return ext == "mp3" || ext == "ogg" || ext == "wav";
   }
 
+  // macOS creates a "._<name>" AppleDouble sidecar file next to any file
+  // or folder it copies (e.g. a real "06 Merge.mp3" gets a
+  // "._06 Merge.mp3" alongside it) -- these are metadata blobs, not real
+  // audio, but they otherwise pass isAudioFile() since they keep the
+  // real file's extension. Without this check they get scanned as
+  // "tracks" that fail to read correctly. Found on real hardware
+  // 2026-09-12 (a library copied via a Mac).
+  static bool isAppleDoubleSidecar(const std::string &name) {
+    return name.size() >= 2 && name[0] == '.' && name[1] == '_';
+  }
+
   void walk(fs::File &dir) {
     for (fs::File entry = dir.openNextFile(); entry;
          entry = dir.openNextFile()) {
       std::string name = entry.name();
-      if (entry.isDirectory()) {
+      if (isAppleDoubleSidecar(name)) {
+        // Skip entirely -- neither recurse into it (for a directory's
+        // sidecar) nor consider it a track candidate.
+      } else if (entry.isDirectory()) {
         walk(entry);
       } else if (isAudioFile(name)) {
         entries_.push_back(library::FileEntry{

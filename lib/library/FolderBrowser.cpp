@@ -16,6 +16,13 @@ bool isAudioFile(const std::string &name) {
   return ext == "mp3" || ext == "ogg" || ext == "wav";
 }
 
+// macOS AppleDouble sidecar (e.g. "._06 Merge.mp3") -- see
+// lib/drivers-sd/SdFileLister.h's isAppleDoubleSidecar() for why this
+// needs to be filtered separately from the extension check.
+bool isAppleDoubleSidecar(const std::string &name) {
+  return name.size() >= 2 && name[0] == '.' && name[1] == '_';
+}
+
 }  // namespace
 
 std::vector<FolderEntry> FolderBrowser::list(DirectoryReader &reader,
@@ -23,6 +30,7 @@ std::vector<FolderEntry> FolderBrowser::list(DirectoryReader &reader,
   std::vector<FolderEntry> all = reader.listChildren(path);
   std::vector<FolderEntry> filtered;
   for (auto &entry : all) {
+    if (isAppleDoubleSidecar(entry.name)) continue;
     if (entry.isDirectory || isAudioFile(entry.name)) {
       filtered.push_back(entry);
     }

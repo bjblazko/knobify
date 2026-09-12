@@ -64,7 +64,7 @@ void test_play_starts_playing_selected_track() {
   PlaybackStateMachine sm(driver, volume);
   sm.begin();
 
-  sm.play({"/a.mp3", "/b.mp3"}, 1);
+  sm.play({"/a.mp3", "/b.mp3"}, 1, 0);
 
   TEST_ASSERT_TRUE(sm.state() == PlaybackState::Playing);
   TEST_ASSERT_EQUAL_STRING("/b.mp3", driver.lastPlayed.c_str());
@@ -76,13 +76,13 @@ void test_toggle_play_pause() {
   VolumePersistence volume(store);
   PlaybackStateMachine sm(driver, volume);
   sm.begin();
-  sm.play({"/a.mp3"}, 0);
+  sm.play({"/a.mp3"}, 0, 0);
 
-  sm.togglePlayPause();
+  sm.togglePlayPause(0);
   TEST_ASSERT_TRUE(sm.state() == PlaybackState::Paused);
   TEST_ASSERT_FALSE(driver.running);
 
-  sm.togglePlayPause();
+  sm.togglePlayPause(0);
   TEST_ASSERT_TRUE(sm.state() == PlaybackState::Playing);
   TEST_ASSERT_TRUE(driver.running);
 }
@@ -93,16 +93,16 @@ void test_next_and_prev_move_through_playlist() {
   VolumePersistence volume(store);
   PlaybackStateMachine sm(driver, volume);
   sm.begin();
-  sm.play({"/a.mp3", "/b.mp3", "/c.mp3"}, 0);
+  sm.play({"/a.mp3", "/b.mp3", "/c.mp3"}, 0, 0);
 
-  sm.next();
+  sm.next(0);
   TEST_ASSERT_EQUAL_STRING("/b.mp3", driver.lastPlayed.c_str());
-  sm.next();
+  sm.next(0);
   TEST_ASSERT_EQUAL_STRING("/c.mp3", driver.lastPlayed.c_str());
-  sm.next();  // Already at last track -- no-op.
+  sm.next(0);  // Already at last track -- no-op.
   TEST_ASSERT_EQUAL_STRING("/c.mp3", driver.lastPlayed.c_str());
 
-  sm.prev();
+  sm.prev(0);
   TEST_ASSERT_EQUAL_STRING("/b.mp3", driver.lastPlayed.c_str());
 }
 
@@ -112,9 +112,9 @@ void test_track_finished_auto_advances() {
   VolumePersistence volume(store);
   PlaybackStateMachine sm(driver, volume);
   sm.begin();
-  sm.play({"/a.mp3", "/b.mp3"}, 0);
+  sm.play({"/a.mp3", "/b.mp3"}, 0, 0);
 
-  sm.onTrackFinished();
+  sm.onTrackFinished(0);
 
   TEST_ASSERT_TRUE(sm.state() == PlaybackState::Playing);
   TEST_ASSERT_EQUAL_STRING("/b.mp3", driver.lastPlayed.c_str());
@@ -126,9 +126,9 @@ void test_track_finished_stops_after_last_track() {
   VolumePersistence volume(store);
   PlaybackStateMachine sm(driver, volume);
   sm.begin();
-  sm.play({"/a.mp3"}, 0);
+  sm.play({"/a.mp3"}, 0, 0);
 
-  sm.onTrackFinished();
+  sm.onTrackFinished(0);
 
   TEST_ASSERT_TRUE(sm.state() == PlaybackState::Stopped);
 }
@@ -162,6 +162,37 @@ void test_volume_persists_only_after_debounce_settles() {
   TEST_ASSERT_EQUAL_INT(1, store.saveCount);
 }
 
+void test_elapsed_ms_excludes_paused_time() {
+  FakeDriver driver;
+  FakeStore store;
+  VolumePersistence volume(store);
+  PlaybackStateMachine sm(driver, volume);
+  sm.begin();
+
+  sm.play({"/a.mp3"}, 0, 1000);
+  TEST_ASSERT_EQUAL_UINT32(0, sm.elapsedMs(1000));
+  TEST_ASSERT_EQUAL_UINT32(2000, sm.elapsedMs(3000));
+
+  sm.togglePlayPause(3000);  // Pause at the 2s mark.
+  TEST_ASSERT_EQUAL_UINT32(2000, sm.elapsedMs(6000));  // Paused: frozen.
+
+  sm.togglePlayPause(6000);  // Resume after a 3s pause.
+  TEST_ASSERT_EQUAL_UINT32(2500, sm.elapsedMs(6500));
+
+  sm.play({"/b.mp3"}, 0, 8000);  // A new track resets the clock.
+  TEST_ASSERT_EQUAL_UINT32(0, sm.elapsedMs(8000));
+}
+
+void test_elapsed_ms_zero_when_stopped() {
+  FakeDriver driver;
+  FakeStore store;
+  VolumePersistence volume(store);
+  PlaybackStateMachine sm(driver, volume);
+  sm.begin();
+
+  TEST_ASSERT_EQUAL_UINT32(0, sm.elapsedMs(5000));
+}
+
 void test_loads_persisted_volume_on_begin() {
   FakeDriver driver;
   FakeStore store;
@@ -184,6 +215,8 @@ int main(int argc, char **argv) {
   RUN_TEST(test_track_finished_stops_after_last_track);
   RUN_TEST(test_volume_clamps_to_bounds);
   RUN_TEST(test_volume_persists_only_after_debounce_settles);
+  RUN_TEST(test_elapsed_ms_excludes_paused_time);
+  RUN_TEST(test_elapsed_ms_zero_when_stopped);
   RUN_TEST(test_loads_persisted_volume_on_begin);
   return UNITY_END();
 }

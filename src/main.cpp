@@ -50,8 +50,8 @@ void writeIndexCacheFile(const std::vector<uint8_t> &bytes) {
 }
 
 knobify::library::LibraryIndex loadOrBuildLibraryIndex(
-    knobify::drivers::SdFileLister &lister,
-    knobify::library::FileOpener &opener) {
+    knobify::drivers::SdFileLister &lister, knobify::library::FileOpener &opener,
+    knobify::library::ScanProgressListener *progress) {
   using knobify::library::IndexCache;
   using knobify::library::LibraryIndex;
   using knobify::library::LibrarySignature;
@@ -71,10 +71,35 @@ knobify::library::LibraryIndex loadOrBuildLibraryIndex(
   }
 
   Serial.println("Scanning SD card for library (cache missing/stale)...");
-  LibraryIndex freshIndex = LibraryScanner::scan(lister, opener);
+  LibraryIndex freshIndex = LibraryScanner::scan(lister, opener, progress);
   writeIndexCacheFile(IndexCache::encode(freshIndex, currentSignature));
   return freshIndex;
 }
+
+// Shows scan progress on-screen -- there's no other feedback on a device
+// with no LEDs, and a slow or SD-error-prone scan (see AGENTS.md) could
+// otherwise look identical to a dead board. Found from real hardware
+// feedback 2026-09-12.
+class BootProgressListener : public knobify::library::ScanProgressListener {
+ public:
+  explicit BootProgressListener(lv_obj_t *label) : label_(label) {}
+
+  void onFileScanned(size_t filesScannedSoFar) override {
+    char text[48];
+    snprintf(text, sizeof(text), "Scanning library...\n%u files",
+             static_cast<unsigned>(filesScannedSoFar));
+    lv_label_set_text(label_, text);
+    // Actually flushing to the panel on every single file would slow
+    // the scan down for no real benefit -- every 5th file is still
+    // clearly "moving" to a human, without adding meaningful overhead.
+    if (filesScannedSoFar % 5 == 0) {
+      lv_timer_handler();
+    }
+  }
+
+ private:
+  lv_obj_t *label_;
+};
 
 knobify::drivers::SdFileLister g_fileLister(kMusicRoot);
 knobify::drivers::SdFileOpener g_fileOpener;
@@ -104,16 +129,6 @@ void setup() {
   Serial.begin(115200);
   Serial.printf("knobify %s starting\n", knobify::kVersion);
 
-  if (!knobify::drivers::initSdCard()) {
-    Serial.println("SD card init FAILED -- check wiring/pinout in device.md");
-  } else {
-    g_libraryIndex = loadOrBuildLibraryIndex(g_fileLister, g_fileOpener);
-    Serial.printf("Library: %u artists, %u albums, %u tracks\n",
-                   static_cast<unsigned>(g_libraryIndex.artists.size()),
-                   static_cast<unsigned>(g_libraryIndex.albums.size()),
-                   static_cast<unsigned>(g_libraryIndex.tracks.size()));
-  }
-
   g_encoder.begin();
   g_audioDriver.begin();
   // Must run after g_audioDriver.begin() (needs a real driver to push the
@@ -125,10 +140,50 @@ void setup() {
     Serial.println("Touch init FAILED -- check wiring/pinout in device.md");
   }
 
-  if (!g_lvglGlue.begin(g_display)) {
+  // Display comes up FIRST, before the SD card is even touched, and
+  // shows a boot/progress screen immediately -- this board has no LEDs,
+  // so with the old ordering (display initialized only after the whole
+  // library scan completed) a slow or SD-error-prone scan looked
+  // indistinguishable from a dead board. Found from real hardware
+  // feedback 2026-09-12; see AGENTS.md.
+  lv_obj_t *bootScreen = nullptr;
+  lv_obj_t *bootLabel = nullptr;
+  bool displayOk = g_lvglGlue.begin(g_display);
+  if (!displayOk) {
     Serial.println("Display init FAILED -- check wiring/pinout in device.md");
   } else {
+    bootScreen = lv_obj_create(nullptr);
+    lv_scr_load(bootScreen);
+    lv_obj_t *title = lv_label_create(bootScreen);
+    lv_label_set_text(title, "knobify");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+    lv_obj_align(title, LV_ALIGN_CENTER, 0, -30);
+    bootLabel = lv_label_create(bootScreen);
+    lv_label_set_text(bootLabel, "Starting...");
+    lv_obj_set_style_text_align(bootLabel, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(bootLabel, LV_ALIGN_CENTER, 0, 20);
+    lv_timer_handler();  // Flush immediately so something appears right away.
+  }
+
+  if (!knobify::drivers::initSdCard()) {
+    Serial.println("SD card init FAILED -- check wiring/pinout in device.md");
+    if (bootLabel) {
+      lv_label_set_text(bootLabel, "SD card init FAILED");
+      lv_timer_handler();
+    }
+  } else {
+    BootProgressListener progressListener(bootLabel);
+    g_libraryIndex = loadOrBuildLibraryIndex(
+        g_fileLister, g_fileOpener, bootLabel ? &progressListener : nullptr);
+    Serial.printf("Library: %u artists, %u albums, %u tracks\n",
+                   static_cast<unsigned>(g_libraryIndex.artists.size()),
+                   static_cast<unsigned>(g_libraryIndex.albums.size()),
+                   static_cast<unsigned>(g_libraryIndex.tracks.size()));
+  }
+
+  if (displayOk) {
     g_screenManager.begin();
+    if (bootScreen) lv_obj_del(bootScreen);
   }
 }
 
@@ -164,6 +219,9 @@ void loop() {
   }
 
   g_playback.tick(millis());
+  // Cheap (no full re-render), a no-op on any screen other than Now
+  // Playing -- see ScreenManager::updateElapsedTimeDisplay().
+  g_screenManager.updateElapsedTimeDisplay();
 
   // Detect track-finished as a Playing->not-running transition. Pausing
   // also makes isRunning() report false, so this only applies while we
@@ -173,7 +231,7 @@ void loop() {
   bool isPlayingNow =
       g_playback.state() == knobify::playback::PlaybackState::Playing;
   if (g_wasPlaying && isPlayingNow && !g_audioDriver.isRunning()) {
-    g_playback.onTrackFinished();
+    g_playback.onTrackFinished(millis());
     g_screenManager.render();
   }
   g_wasPlaying = isPlayingNow;

@@ -52,6 +52,11 @@ class ScreenManager : public input::ListMoveSink {
   // rapid sequence of small ticks.
   void updateVolumeDisplay();
 
+  // Cheap live update of the elapsed-time readout on the Now Playing
+  // screen -- call every loop() iteration. A no-op if that screen isn't
+  // currently shown or nothing is playing.
+  void updateElapsedTimeDisplay();
+
  private:
   void renderList(const std::vector<std::pair<std::string, int>> &items,
                    bool showMiniBar);
@@ -78,6 +83,7 @@ class ScreenManager : public input::ListMoveSink {
   lv_obj_t *miniBar_ = nullptr;
   lv_obj_t *volumeBar_ = nullptr;
   lv_obj_t *volumeLabel_ = nullptr;
+  lv_obj_t *elapsedLabel_ = nullptr;
   int highlightedIndex_ = 0;
 
   // Kind IDs stashed on each clickable object via lv_obj_set_user_data so

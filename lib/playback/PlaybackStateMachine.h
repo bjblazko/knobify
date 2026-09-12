@@ -12,14 +12,20 @@ namespace knobify::playback {
 enum class PlaybackState { Stopped, Playing, Paused };
 
 // Playback logic: which track is current, play/pause/next/prev, volume
-// (clamped 0-21, debounced-persisted). Pure logic over the PlaybackDriver
-// interface -- see docs/adr/0004-navigation-library-and-index-architecture.md
-// and docs/adr/0003-testing-strategy.md. Auto-advances within the current
+// (clamped 0-21, debounced-persisted), and elapsed play time. Pure logic
+// over the PlaybackDriver interface -- see
+// docs/adr/0004-navigation-library-and-index-architecture.md and
+// docs/adr/0003-testing-strategy.md. Auto-advances within the current
 // playlist on TrackFinished; stops after the last track (no repeat in v1).
 //
-// Callers pass explicit timestamps (millis()-style) to volume methods and
-// tick() rather than this class reading a clock itself, so debounced
-// persistence is host-testable without real timing.
+// Callers pass explicit timestamps (millis()-style) rather than this
+// class reading a clock itself, so debounced volume persistence and
+// elapsed-time tracking are both host-testable without real timing.
+// Elapsed time is wall-clock time since the current track started minus
+// time spent paused -- not the decoder's actual playback position (the
+// PlaybackDriver interface doesn't expose one) -- close enough for a
+// simple on-screen readout, but it will drift from the real position if
+// the codec itself stalls or buffers.
 //
 // The constructor deliberately does NOT touch the driver or volume
 // store -- when this object is a global (as it is in src/main.cpp),
@@ -42,34 +48,39 @@ class PlaybackStateMachine {
     driver_.setVolume(volume_);
   }
 
-  void play(std::vector<std::string> playlist, size_t startIndex) {
+  void play(std::vector<std::string> playlist, size_t startIndex,
+            uint32_t nowMs) {
     if (startIndex >= playlist.size()) return;
     playlist_ = std::move(playlist);
     index_ = startIndex;
     if (driver_.playFile(playlist_[index_])) {
       state_ = PlaybackState::Playing;
+      trackStartMs_ = nowMs;
+      pausedAccumMs_ = 0;
     }
   }
 
-  void togglePlayPause() {
+  void togglePlayPause(uint32_t nowMs) {
     if (state_ == PlaybackState::Playing) {
       driver_.pause();
       state_ = PlaybackState::Paused;
+      pauseStartMs_ = nowMs;
     } else if (state_ == PlaybackState::Paused) {
       driver_.resume();
       state_ = PlaybackState::Playing;
+      pausedAccumMs_ += nowMs - pauseStartMs_;
     }
   }
 
-  void next() { advance(1); }
-  void prev() { advance(-1); }
+  void next(uint32_t nowMs) { advance(1, nowMs); }
+  void prev(uint32_t nowMs) { advance(-1, nowMs); }
 
   // Call when the driver reports the current file finished (e.g.
   // isRunning() transitioned true->false while we expected Playing).
-  void onTrackFinished() {
+  void onTrackFinished(uint32_t nowMs) {
     if (state_ != PlaybackState::Playing) return;
     if (index_ + 1 < playlist_.size()) {
-      advance(1);
+      advance(1, nowMs);
     } else {
       driver_.stop();
       state_ = PlaybackState::Stopped;
@@ -104,8 +115,19 @@ class PlaybackStateMachine {
   uint8_t volume() const { return volume_; }
   bool hasPendingVolumeSave() const { return pendingVolumeSave_; }
 
+  // Milliseconds of actual playback since the current track started,
+  // excluding time spent paused. 0 when stopped.
+  uint32_t elapsedMs(uint32_t nowMs) const {
+    if (state_ == PlaybackState::Stopped) return 0;
+    uint32_t pausedSoFar = pausedAccumMs_;
+    if (state_ == PlaybackState::Paused) {
+      pausedSoFar = static_cast<uint32_t>(pausedSoFar + (nowMs - pauseStartMs_));
+    }
+    return static_cast<uint32_t>(nowMs - trackStartMs_ - pausedSoFar);
+  }
+
  private:
-  void advance(int direction) {
+  void advance(int direction, uint32_t nowMs) {
     if (playlist_.empty()) return;
     long newIndex = static_cast<long>(index_) + direction;
     if (newIndex < 0 || newIndex >= static_cast<long>(playlist_.size())) {
@@ -114,6 +136,8 @@ class PlaybackStateMachine {
     index_ = static_cast<size_t>(newIndex);
     if (driver_.playFile(playlist_[index_])) {
       state_ = PlaybackState::Playing;
+      trackStartMs_ = nowMs;
+      pausedAccumMs_ = 0;
     }
   }
 
@@ -125,6 +149,9 @@ class PlaybackStateMachine {
   uint8_t volume_ = 0;
   bool pendingVolumeSave_ = false;
   uint32_t lastVolumeChangeMs_ = 0;
+  uint32_t trackStartMs_ = 0;
+  uint32_t pausedAccumMs_ = 0;
+  uint32_t pauseStartMs_ = 0;
 };
 
 }  // namespace knobify::playback

@@ -1,5 +1,7 @@
 #include "ScreenManager.h"
 
+#include <Arduino.h>
+
 #include <algorithm>
 #include <cstdio>
 
@@ -37,6 +39,7 @@ void ScreenManager::render() {
   miniBar_ = nullptr;
   volumeBar_ = nullptr;
   volumeLabel_ = nullptr;
+  elapsedLabel_ = nullptr;
 
   Screen current = tabs_.activeStack().current();
 
@@ -262,6 +265,16 @@ void ScreenManager::renderNowPlaying() {
   lv_obj_center(nextLabel);
   lv_obj_add_event_cb(nextBtn, &ScreenManager::onNextClicked, LV_EVENT_CLICKED,
                        this);
+
+  // Elapsed play time -- requested after real hardware testing made it
+  // clear there was no way to tell whether playback was actually
+  // progressing. Wall-clock time since the track started minus paused
+  // time (see PlaybackStateMachine::elapsedMs()), not the decoder's own
+  // position -- close enough for a simple readout.
+  elapsedLabel_ = lv_label_create(screen_);
+  lv_obj_align(elapsedLabel_, LV_ALIGN_CENTER, 0, 110);
+  lv_label_set_text(elapsedLabel_, "0:00");
+  updateElapsedTimeDisplay();
 }
 
 void ScreenManager::applyHighlight() {
@@ -287,6 +300,17 @@ void ScreenManager::updateVolumeDisplay() {
   snprintf(volText, sizeof(volText), "Volume %d/%d", playback_.volume(),
             playback::PlaybackStateMachine::kMaxVolume);
   lv_label_set_text(volumeLabel_, volText);
+}
+
+void ScreenManager::updateElapsedTimeDisplay() {
+  if (!elapsedLabel_) return;
+  uint32_t totalSeconds = playback_.elapsedMs(millis()) / 1000;
+  uint32_t minutes = totalSeconds / 60;
+  uint32_t seconds = totalSeconds % 60;
+  char text[16];
+  snprintf(text, sizeof(text), "%u:%02u", static_cast<unsigned>(minutes),
+           static_cast<unsigned>(seconds));
+  lv_label_set_text(elapsedLabel_, text);
 }
 
 std::string ScreenManager::friendlyName(const std::string &path) {
@@ -344,7 +368,7 @@ void ScreenManager::onListItemClicked(lv_event_t *e) {
           }
         }
       }
-      self->playback_.play(playlist, startIndex);
+      self->playback_.play(playlist, startIndex, millis());
       self->goToNowPlaying();
       break;
     }
@@ -354,7 +378,7 @@ void ScreenManager::onListItemClicked(lv_event_t *e) {
             Screen{ScreenKind::Folder, ScreenParams{.folderPath = ctx->path}});
         self->render();
       } else {
-        self->playback_.play({ctx->path}, 0);
+        self->playback_.play({ctx->path}, 0, millis());
         self->goToNowPlaying();
       }
       break;
@@ -376,19 +400,19 @@ void ScreenManager::onMiniBarClicked(lv_event_t *e) {
 
 void ScreenManager::onPrevClicked(lv_event_t *e) {
   auto *self = static_cast<ScreenManager *>(lv_event_get_user_data(e));
-  self->playback_.prev();
+  self->playback_.prev(millis());
   self->render();
 }
 
 void ScreenManager::onPlayPauseClicked(lv_event_t *e) {
   auto *self = static_cast<ScreenManager *>(lv_event_get_user_data(e));
-  self->playback_.togglePlayPause();
+  self->playback_.togglePlayPause(millis());
   self->render();
 }
 
 void ScreenManager::onNextClicked(lv_event_t *e) {
   auto *self = static_cast<ScreenManager *>(lv_event_get_user_data(e));
-  self->playback_.next();
+  self->playback_.next(millis());
   self->render();
 }
 

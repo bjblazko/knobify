@@ -41,6 +41,17 @@ class FileOpener {
   virtual std::unique_ptr<RawFile> open(const std::string &path) = 0;
 };
 
+// Notified as LibraryScanner::scan() processes each file, so a caller
+// can show scan progress (there's no other feedback otherwise on a
+// device with no LEDs -- a slow or SD-error-prone scan can otherwise
+// look identical to a dead board). Purely an observation hook; default
+// no-op implementation costs scan callers nothing to ignore.
+class ScanProgressListener {
+ public:
+  virtual ~ScanProgressListener() = default;
+  virtual void onFileScanned(size_t filesScannedSoFar) = 0;
+};
+
 // Walks every file from a FileLister, tag-parses each one via TagReader,
 // and groups the results into an in-memory Artist/Album/Track index --
 // see docs/adr/0004-navigation-library-and-index-architecture.md.
@@ -49,7 +60,8 @@ class FileOpener {
 // join it.
 class LibraryScanner {
  public:
-  static LibraryIndex scan(FileLister &lister, FileOpener &opener);
+  static LibraryIndex scan(FileLister &lister, FileOpener &opener,
+                            ScanProgressListener *progress = nullptr);
 };
 
 }  // namespace knobify::library

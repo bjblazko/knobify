@@ -25,24 +25,30 @@ AlbumId findOrAddAlbum(LibraryIndex &index, ArtistId artistId,
 
 }  // namespace
 
-LibraryIndex LibraryScanner::scan(FileLister &lister, FileOpener &opener) {
+LibraryIndex LibraryScanner::scan(FileLister &lister, FileOpener &opener,
+                                   ScanProgressListener *progress) {
   LibraryIndex index;
 
   lister.reset();
   FileEntry entry;
+  size_t scanned = 0;
   while (lister.next(entry)) {
     auto file = opener.open(entry.path);
-    if (!file) {
-      continue;  // Unreadable file; skip rather than abort the scan.
+    if (file) {
+      TagResult tags = TagReader::read(*file, entry.path);
+
+      ArtistId artistId = findOrAddArtist(index, tags.artist);
+      AlbumId albumId = findOrAddAlbum(index, artistId, tags.album);
+
+      TrackId trackId = static_cast<TrackId>(index.tracks.size());
+      index.tracks.push_back(
+          Track{trackId, albumId, tags.title, tags.trackNumber, entry.path});
     }
-    TagResult tags = TagReader::read(*file, entry.path);
-
-    ArtistId artistId = findOrAddArtist(index, tags.artist);
-    AlbumId albumId = findOrAddAlbum(index, artistId, tags.album);
-
-    TrackId trackId = static_cast<TrackId>(index.tracks.size());
-    index.tracks.push_back(
-        Track{trackId, albumId, tags.title, tags.trackNumber, entry.path});
+    // Unreadable files are skipped rather than aborting the scan, but
+    // still count toward progress -- the caller is showing "how far
+    // through the file list are we", not "how many tracks found".
+    ++scanned;
+    if (progress) progress->onFileScanned(scanned);
   }
 
   return index;
