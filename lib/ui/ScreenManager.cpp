@@ -474,7 +474,9 @@ void ScreenManager::renderNowPlaying() {
   lv_obj_t *title = lv_label_create(screen_);
   lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
   lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_width(title, 240);
+  // Wide: without a cover this block sits near the vertical middle, where
+  // the round screen is ~330px across; with a cover (y~164) still ~320px.
+  lv_obj_set_width(title, 280);
   // Long titles: two lines when there's no cover to make room for, one
   // line otherwise -- with a cover the transport row leaves no space for
   // a second line. Either way the artist line follows the title's actual
@@ -495,7 +497,7 @@ void ScreenManager::renderNowPlaying() {
     lv_obj_set_style_text_font(metaLabel, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(metaLabel, theme::structure(), 0);
     lv_obj_set_style_text_align(metaLabel, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_width(metaLabel, 220);
+    lv_obj_set_width(metaLabel, 300);
     setClampedText(metaLabel, meta.c_str(), 1);
     lv_obj_align(metaLabel, LV_ALIGN_TOP_MID, 0, metaY);
   }

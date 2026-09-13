@@ -8,8 +8,12 @@ namespace knobify::ui::theme {
 // every color drawn on screen. Token names and roles are documented in
 // docs/design/ux-guidelines.md §3; UI code uses these, never a raw hex
 // value or an lv_palette_* color.
-inline lv_color_t surface() { return lv_color_hex(0xF4F4F0); }     // Snow White
-inline lv_color_t surfaceAlt() { return lv_color_hex(0xDCDDD8); }  // Light Grey
+// The panel is RGB565 (5/6/5 bits), which rounds subtle neutrals: the
+// original Snow White #F4F4F0 arrived as neutral #F6F6F6, losing its
+// warmth. Neutrals are therefore chosen as exact RGB565 values
+// (ux-guidelines §3 "RGB565").
+inline lv_color_t surface() { return lv_color_hex(0xEFEFE7); }     // Dimmed Snow White
+inline lv_color_t surfaceAlt() { return lv_color_hex(0xDEDED6); }  // Light Grey
 inline lv_color_t structure() { return lv_color_hex(0x4A4C4E); }   // Mid Anthracite
 inline lv_color_t ink() { return lv_color_hex(0x1E1F21); }         // Matte Black
 inline lv_color_t accent() { return lv_color_hex(0xE85D04); }      // Orange Signal
