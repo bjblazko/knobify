@@ -99,7 +99,7 @@ token, never a raw hex value or an LVGL palette color.
 |---|---|---|---|
 | `accent` | Orange Signal | `#E85D04` | The single primary action on a screen (Play/Pause, Unlock) |
 | `confirm` | Functional Green | `#2A8C4A` | Confirmation / active state — unlock progress, mini-bar playback glyph |
-| `confirmTint` | Pale Green | `#D3E4D7` | Background of "something is running" surfaces — the mini-bar pill |
+| `confirmTint` | Pale Green | `#D3E4D7` | Background of "something is running" surfaces — the mini-bar area |
 | `warning` | Accent Red | `#D62828` | Needs attention — low/empty battery |
 
 Braun Yellow (`#F5AA1C`) was part of the original palette and is
@@ -134,13 +134,16 @@ backlight. Every screen, the lock screen included, uses `surface`.
   16 body (mini-bar, hints) · 20 title (list rows, track title, "Locked") ·
   28 numeral & primary glyph (volume readout, Play/Pause icon).
 - **Selection and action never share a color.** The knob-selected list
-  row is `ink`; the always-present mini-bar is a pale `confirmTint` pill
-  with a `confirm` glyph (green = active/running) — an ink mini-bar read as
+  row is `ink`; the always-present mini-bar is a pale `confirmTint`
+  area with a `confirm` glyph (green = active/running) — an ink mini-bar read as
   a second selected row, and an accent one was too loud for something
   permanently on screen.
 - **Shapes.** Circles for the round, thumb-operated controls (transport,
   unlock) — echoing the device's own form. 12px radius for list rows;
-  fully rounded pills for the mini-bar and volume readout.
+  a fully rounded pill for the volume readout. The mini-bar is a
+  full-width bottom area that the round bezel cuts into a circle segment
+  — letting the bezel shape an element is fine when its *content* stays
+  inside the visible circle.
 - **Control hierarchy — two button roles, nothing else:**
   - *Primary*: a filled `accent` circle with a white glyph. Exactly one per
     screen — it is the answer to "what does this screen do?".

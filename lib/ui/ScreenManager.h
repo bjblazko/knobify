@@ -130,7 +130,7 @@ class ScreenManager : public input::ListMoveSink {
   static constexpr lv_coord_t kHeaderButtonH = 44;
   static constexpr lv_coord_t kCaptionY = kHeaderButtonY + kHeaderButtonH + 2;
   static constexpr lv_coord_t kListTopY = kCaptionY + 22;
-  static constexpr lv_coord_t kMiniBarZoneHeight = 68;
+  static constexpr lv_coord_t kMiniBarZoneHeight = 88;
   static constexpr lv_coord_t kCoverY = 56;
   static constexpr lv_coord_t kTransportCenterY = 246;
 

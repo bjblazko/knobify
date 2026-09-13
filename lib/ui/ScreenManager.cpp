@@ -183,14 +183,9 @@ void ScreenManager::renderList(
   // shows position for knob-driven scrolling, so the scrollbar itself
   // isn't needed.
   lv_obj_set_scrollbar_mode(list_, LV_SCROLLBAR_MODE_OFF);
-  // Asymmetric: text reads left-to-right from its start, so pushing the
-  // left edge in further than the right keeps the start of each row's
-  // text clear of the round bezel's curve without wasting space on the
-  // (less legibility-critical) trailing/ellipsis end. Rows carry their
-  // own inner padding, so the list's side padding is reduced by that.
-  // The selected row's filled background makes the trailing end
-  // visible too, so it needs the same inset as the leading edge: at the
-  // first row's height (y=74) the bezel only shows x~35..325.
+  // Symmetric insets: the selected row's filled background shows both
+  // ends, and at the first row's height (y=74) the bezel only shows
+  // x~35..325 (ux-guidelines §7).
   lv_obj_set_style_pad_left(list_, 36, 0);
   lv_obj_set_style_pad_right(list_, 36, 0);
   lv_obj_set_style_pad_top(list_, 0, 0);
@@ -249,39 +244,62 @@ void ScreenManager::renderList(
   }
 
   if (showMiniBar) {
-    // A pale green pill -- green meaning "active/running" (ux-guidelines
-    // §3). Not a bordered white box (read as a text input field), not ink
-    // (read as a second selected row), not accent or grey (too loud /
-    // too anonymous, per user feedback 2026-09-13). Narrower than full width and inset from the very
-    // bottom edge: flush-bottom, full-width was clipped by the round
-    // bezel down to a sliver (found on real hardware 2026-09-12).
+    // A pale green bottom area rather than a floating pill -- green
+    // meaning "active/running" (ux-guidelines §3). Full-width and flush
+    // with the bottom edge on purpose: the round bezel cuts it into a
+    // circle segment that echoes the device's shape. (Earlier attempts: a
+    // bordered white box read as a text input, an ink pill as a second
+    // selected row, accent/grey as too loud/too anonymous -- user
+    // feedback 2026-09-12/13.) Its content stays narrow and near the top
+    // of the area, where the segment is still wide.
     miniBar_ = lv_obj_create(screen_);
-    lv_obj_set_size(miniBar_, 240, 44);
-    lv_obj_align(miniBar_, LV_ALIGN_BOTTOM_MID, 0, -16);
-    lv_obj_set_style_radius(miniBar_, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_size(miniBar_, drivers::kLcdHorRes, kMiniBarZoneHeight);
+    lv_obj_align(miniBar_, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_radius(miniBar_, 0, 0);
     lv_obj_set_style_bg_color(miniBar_, theme::confirmTint(), 0);
     lv_obj_set_style_border_width(miniBar_, 0, 0);
     lv_obj_set_style_pad_all(miniBar_, 0, 0);
-    // A long title otherwise made the pill itself scrollable, showing a
+    // A long title otherwise made the bar itself scrollable, showing a
     // scrollbar inside it.
     lv_obj_clear_flag(miniBar_, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Playback *state*, not an action -- tapping the whole pill opens
+    // Glyph + title as one horizontally centered row, so a short title
+    // stays centered too. At the text's height (~y=294..314) the bezel
+    // still shows ~220px, so the row is capped below that.
+    lv_obj_t *row = lv_obj_create(miniBar_);
+    lv_obj_set_size(row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(row, 0, 0);
+    lv_obj_set_style_pad_all(row, 0, 0);
+    lv_obj_set_style_pad_column(row, 10, 0);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(row, LV_OBJ_FLAG_EVENT_BUBBLE);
+    lv_obj_align(row, LV_ALIGN_TOP_MID, 0, 22);
+
+    // Playback *state*, not an action -- tapping the whole area opens
     // Now Playing.
-    lv_obj_t *stateGlyph = lv_label_create(miniBar_);
+    lv_obj_t *stateGlyph = lv_label_create(row);
     lv_label_set_text(stateGlyph,
                       playback_.state() == playback::PlaybackState::Playing
                           ? LV_SYMBOL_PLAY
                           : LV_SYMBOL_PAUSE);
     lv_obj_set_style_text_color(stateGlyph, theme::confirm(), 0);
-    lv_obj_align(stateGlyph, LV_ALIGN_LEFT_MID, 20, 0);
 
-    lv_obj_t *label = lv_label_create(miniBar_);
+    constexpr lv_coord_t kMaxTitleWidth = 170;
+    const std::string title = trackInfoFor(playback_.currentPath()).title;
+    lv_obj_t *label = lv_label_create(row);
     lv_obj_set_style_text_font(label, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(label, theme::ink(), 0);
-    lv_obj_set_width(label, 170);
-    setClampedText(label, trackInfoFor(playback_.currentPath()).title.c_str(), 1);
-    lv_obj_align(label, LV_ALIGN_LEFT_MID, 48, 0);
+    lv_label_set_text(label, title.c_str());
+    lv_obj_update_layout(label);
+    if (lv_obj_get_width(label) > kMaxTitleWidth) {
+      lv_obj_set_width(label, kMaxTitleWidth);
+      setClampedText(label, title.c_str(), 1);
+    }
 
     lv_obj_add_flag(miniBar_, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(miniBar_, &ScreenManager::onMiniBarClicked,
