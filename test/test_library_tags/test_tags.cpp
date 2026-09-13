@@ -117,6 +117,118 @@ void test_id3v2_falls_back_to_v1_trailer() {
   TEST_ASSERT_EQUAL_STRING("V1 Album", result.album.c_str());
 }
 
+void test_id3v2_extracts_embedded_jpeg_picture() {
+  std::vector<uint8_t> apicData;
+  apicData.push_back(0);  // text encoding: Latin-1
+  const char *mime = "image/jpeg";
+  apicData.insert(apicData.end(), mime, mime + std::strlen(mime) + 1);
+  apicData.push_back(0x03);  // picture type: front cover
+  apicData.push_back(0);     // description: empty, null-terminated
+  const std::vector<uint8_t> jpegBytes = {0xFF, 0xD8, 0xFF, 0xAA, 0xBB, 0xCC};
+  apicData.insert(apicData.end(), jpegBytes.begin(), jpegBytes.end());
+
+  std::vector<uint8_t> frames;
+  frames.insert(frames.end(), {'A', 'P', 'I', 'C'});
+  appendU32BE(frames, static_cast<uint32_t>(apicData.size()));
+  frames.push_back(0);
+  frames.push_back(0);
+  frames.insert(frames.end(), apicData.begin(), apicData.end());
+
+  std::vector<uint8_t> file;
+  file.insert(file.end(), {'I', 'D', '3', 3, 0, 0});
+  appendSynchsafe(file, static_cast<uint32_t>(frames.size()));
+  file.insert(file.end(), frames.begin(), frames.end());
+  FakeRawFile raw(file);
+
+  TagResult result = Id3v2Parser::parse(raw);
+
+  TEST_ASSERT_TRUE(result.picture.present);
+  TEST_ASSERT_EQUAL_UINT32(jpegBytes.size(), result.picture.length);
+
+  std::vector<uint8_t> extracted(result.picture.length);
+  TEST_ASSERT_TRUE(raw.seek(result.picture.offset));
+  TEST_ASSERT_EQUAL_UINT32(extracted.size(),
+                            raw.read(extracted.data(), extracted.size()));
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(jpegBytes.data(), extracted.data(),
+                                 jpegBytes.size());
+}
+
+void test_id3v2_ignores_non_jpeg_picture() {
+  std::vector<uint8_t> apicData;
+  apicData.push_back(0);
+  const char *mime = "image/png";
+  apicData.insert(apicData.end(), mime, mime + std::strlen(mime) + 1);
+  apicData.push_back(0x03);
+  apicData.push_back(0);
+  const std::vector<uint8_t> pngBytes = {0x89, 'P', 'N', 'G'};
+  apicData.insert(apicData.end(), pngBytes.begin(), pngBytes.end());
+
+  std::vector<uint8_t> frames;
+  frames.insert(frames.end(), {'A', 'P', 'I', 'C'});
+  appendU32BE(frames, static_cast<uint32_t>(apicData.size()));
+  frames.push_back(0);
+  frames.push_back(0);
+  frames.insert(frames.end(), apicData.begin(), apicData.end());
+
+  std::vector<uint8_t> file;
+  file.insert(file.end(), {'I', 'D', '3', 3, 0, 0});
+  appendSynchsafe(file, static_cast<uint32_t>(frames.size()));
+  file.insert(file.end(), frames.begin(), frames.end());
+  FakeRawFile raw(file);
+
+  TagResult result = Id3v2Parser::parse(raw);
+
+  TEST_ASSERT_FALSE(result.picture.present);
+}
+
+void test_id3v2_apic_only_no_text_frames_still_found() {
+  std::vector<uint8_t> apicData;
+  apicData.push_back(0);
+  const char *mime = "image/jpeg";
+  apicData.insert(apicData.end(), mime, mime + std::strlen(mime) + 1);
+  apicData.push_back(0x03);
+  apicData.push_back(0);
+  const std::vector<uint8_t> jpegBytes = {0xFF, 0xD8, 0xFF};
+  apicData.insert(apicData.end(), jpegBytes.begin(), jpegBytes.end());
+
+  std::vector<uint8_t> frames;
+  frames.insert(frames.end(), {'A', 'P', 'I', 'C'});
+  appendU32BE(frames, static_cast<uint32_t>(apicData.size()));
+  frames.push_back(0);
+  frames.push_back(0);
+  frames.insert(frames.end(), apicData.begin(), apicData.end());
+
+  std::vector<uint8_t> file;
+  file.insert(file.end(), {'I', 'D', '3', 3, 0, 0});
+  appendSynchsafe(file, static_cast<uint32_t>(frames.size()));
+  file.insert(file.end(), frames.begin(), frames.end());
+  FakeRawFile raw(file);
+
+  TagResult result = Id3v2Parser::parse(raw);
+
+  TEST_ASSERT_TRUE(result.found);
+  TEST_ASSERT_TRUE(result.picture.present);
+}
+
+void test_id3v2_truncated_apic_frame_does_not_crash() {
+  std::vector<uint8_t> frames;
+  frames.insert(frames.end(), {'A', 'P', 'I', 'C'});
+  appendU32BE(frames, 100000);  // bogus, way past the tag
+  frames.push_back(0);
+  frames.push_back(0);
+  frames.push_back(0);  // encoding byte only, no real payload
+
+  std::vector<uint8_t> file;
+  file.insert(file.end(), {'I', 'D', '3', 3, 0, 0});
+  appendSynchsafe(file, static_cast<uint32_t>(frames.size()));
+  file.insert(file.end(), frames.begin(), frames.end());
+  FakeRawFile raw(file);
+
+  TagResult result = Id3v2Parser::parse(raw);
+
+  TEST_ASSERT_FALSE(result.picture.present);
+}
+
 void test_id3v2_truncated_frame_does_not_crash_and_yields_no_field() {
   // A frame header claiming a size far larger than the tag actually has.
   std::vector<uint8_t> frames;
@@ -297,6 +409,10 @@ int main(int argc, char **argv) {
   RUN_TEST(test_id3v2_missing_tag_returns_not_found);
   RUN_TEST(test_id3v2_falls_back_to_v1_trailer);
   RUN_TEST(test_id3v2_truncated_frame_does_not_crash_and_yields_no_field);
+  RUN_TEST(test_id3v2_extracts_embedded_jpeg_picture);
+  RUN_TEST(test_id3v2_ignores_non_jpeg_picture);
+  RUN_TEST(test_id3v2_apic_only_no_text_frames_still_found);
+  RUN_TEST(test_id3v2_truncated_apic_frame_does_not_crash);
   RUN_TEST(test_vorbis_comment_parses_fields);
   RUN_TEST(test_vorbis_comment_missing_magic_returns_not_found);
   RUN_TEST(test_vorbis_comment_empty_list_returns_not_found);

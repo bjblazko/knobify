@@ -75,7 +75,19 @@ while IFS= read -r -d '' src_file; do
   mkdir -p "$(dirname "$dest_file")"
 
   if is_in "$ext_lower" "${COPY_AS_IS_EXTS[@]}"; then
-    if cp "$src_file" "$dest_file"; then
+    # Not a plain file copy: remux through ffmpeg with the audio stream
+    # untouched (-codec:a copy is a bit-exact copy of the compressed
+    # frames -- only the regenerated Xing/LAME header shifts gapless
+    # padding by a few ms, not the audio itself) but the embedded cover
+    # picture forced to baseline JPEG (-codec:v mjpeg). Needed because
+    # most real-world embedded album art is Progressive JPEG, which
+    # knobify's on-device decoder (TJpg_Decoder) can't decode at all --
+    # see AGENTS.md. -map 0:v? makes the picture stream optional so
+    # files with no embedded art still convert instead of erroring.
+    if ffmpeg -nostdin -y -loglevel error -i "$src_file" \
+        -map 0:a:0 -map 0:v? -codec:a copy -codec:v mjpeg \
+        -id3v2_version 3 -write_id3v1 1 \
+        "$dest_file" </dev/null; then
       copied=$((copied + 1))
     else
       echo "FAILED (copy): $rel_path" >&2
@@ -85,9 +97,13 @@ while IFS= read -r -d '' src_file; do
   else
     # -map 0:v? copies embedded cover art (if present) as the MP3's ID3
     # APIC frame; the trailing "?" makes it optional so files without
-    # embedded art still convert instead of erroring.
+    # embedded art still convert instead of erroring. -codec:v mjpeg
+    # forces baseline JPEG re-encoding of that picture regardless of the
+    # source's own encoding -- see the copy-as-is branch's comment above
+    # for why (most real-world embedded art is Progressive JPEG, which
+    # this project's on-device decoder can't handle).
     if ffmpeg -nostdin -y -loglevel error -i "$src_file" \
-        -map 0:a:0 -map 0:v? -codec:a libmp3lame -q:a 0 -codec:v copy \
+        -map 0:a:0 -map 0:v? -codec:a libmp3lame -q:a 0 -codec:v mjpeg \
         -id3v2_version 3 -write_id3v1 1 \
         "$dest_file" </dev/null; then
       converted=$((converted + 1))

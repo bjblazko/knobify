@@ -80,6 +80,16 @@ class ScanProgressListener {
   // see AGENTS.md.
   virtual void onFileResult(const std::string & /*path*/, bool /*opened*/,
                              const TagResult & /*tags*/) {}
+
+  // Fired once per album, the first time a track belonging to it is
+  // scanned -- the natural hook for one-time, per-album work like
+  // extracting and caching cover art (see CoverArtCache), since it's
+  // never fired again for later tracks in the same album. `file` is
+  // still open and positioned arbitrarily (tag parsing already seeked
+  // around in it); callers needing specific bytes must seek first.
+  // Default no-op so existing listeners are unaffected.
+  virtual void onNewAlbum(const std::string & /*albumFolderPath*/,
+                           RawFile & /*file*/, const TagResult & /*tags*/) {}
 };
 
 // Walks every file from a FileLister, tag-parses each one via TagReader,

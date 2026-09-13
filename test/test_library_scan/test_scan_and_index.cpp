@@ -13,6 +13,7 @@ using knobify::library::IndexCache;
 using knobify::library::LibraryIndex;
 using knobify::library::LibraryScanner;
 using knobify::library::LibrarySignature;
+using knobify::library::TagResult;
 using knobify::library::Track;
 
 void setUp() {}
@@ -188,6 +189,49 @@ void test_tag_reader_falls_back_to_filename_track_and_folder_year() {
   TEST_ASSERT_EQUAL_UINT16(1998, index.albums[0].year);
 }
 
+namespace {
+
+class RecordingProgressListener : public knobify::library::ScanProgressListener {
+ public:
+  void onFileScanned(size_t) override {}
+  void onNewAlbum(const std::string &albumFolderPath, knobify::library::RawFile &,
+                   const TagResult &tags) override {
+    calls.push_back(albumFolderPath);
+    titlesOfFirstTrackPerCall.push_back(tags.title);
+  }
+
+  std::vector<std::string> calls;
+  std::vector<std::string> titlesOfFirstTrackPerCall;
+};
+
+}  // namespace
+
+void test_scanner_notifies_new_album_once_per_album_with_folder_path() {
+  FakeFileLister lister({
+      {"/Music/Artist One/Album One/a.mp3", 100, 1},
+      {"/Music/Artist One/Album One/b.mp3", 200, 2},
+      {"/Music/Artist Two/Album Two/c.mp3", 300, 3},
+  });
+  FakeFileOpener opener;
+  opener.put("/Music/Artist One/Album One/a.mp3",
+             buildTaggedMp3("Artist One", "Album One", "Track A"));
+  opener.put("/Music/Artist One/Album One/b.mp3",
+             buildTaggedMp3("Artist One", "Album One", "Track B"));
+  opener.put("/Music/Artist Two/Album Two/c.mp3",
+             buildTaggedMp3("Artist Two", "Album Two", "Track C"));
+
+  RecordingProgressListener listener;
+  LibraryScanner::scan(lister, opener, &listener);
+
+  TEST_ASSERT_EQUAL_UINT32(2, listener.calls.size());
+  TEST_ASSERT_EQUAL_STRING("/Music/Artist One/Album One",
+                            listener.calls[0].c_str());
+  TEST_ASSERT_EQUAL_STRING("Track A",
+                            listener.titlesOfFirstTrackPerCall[0].c_str());
+  TEST_ASSERT_EQUAL_STRING("/Music/Artist Two/Album Two",
+                            listener.calls[1].c_str());
+}
+
 void test_folder_browser_filters_and_sorts() {
   FakeDirectoryReader reader;
   reader.put("/Music",
@@ -279,6 +323,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_tracks_for_sorted_by_track_number);
   RUN_TEST(test_albums_for_sorted_by_year);
   RUN_TEST(test_tag_reader_falls_back_to_filename_track_and_folder_year);
+  RUN_TEST(test_scanner_notifies_new_album_once_per_album_with_folder_path);
   RUN_TEST(test_folder_browser_filters_and_sorts);
   RUN_TEST(test_signature_matches_for_identical_listing);
   RUN_TEST(test_signature_changes_when_a_file_changes);

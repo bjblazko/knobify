@@ -75,6 +75,52 @@ std::string decodeText(uint8_t encoding, const uint8_t *data, size_t len) {
   return trimTrailing(out);
 }
 
+// APIC frame payload: [encoding:1][MIME type, null-terminated]
+// [picture type:1][description, encoding-dependent null-terminated]
+// [image data: rest of frame]. Only the MIME type and the image data's
+// location are needed here -- the description is skipped over without
+// being decoded.
+bool findApicJpeg(const uint8_t *data, size_t len, size_t *imageOffset) {
+  if (len < 2) {
+    return false;
+  }
+  size_t pos = 1;  // skip encoding byte
+  size_t mimeStart = pos;
+  while (pos < len && data[pos] != 0) ++pos;
+  if (pos >= len) {
+    return false;  // MIME type not terminated
+  }
+  std::string mime(reinterpret_cast<const char *>(data + mimeStart),
+                    pos - mimeStart);
+  ++pos;  // skip MIME null terminator
+  if (pos >= len) {
+    return false;  // missing picture type
+  }
+  ++pos;  // skip picture type byte
+  if (pos >= len) {
+    return false;  // missing description
+  }
+  // Description encoding matches the leading encoding byte; ASCII/UTF-8
+  // (0, 3) use a single null terminator, UTF-16 variants (1, 2) use a
+  // double-byte one. Approximate: scan for the right terminator width.
+  uint8_t encoding = data[0];
+  if (encoding == 1 || encoding == 2) {
+    while (pos + 1 < len && !(data[pos] == 0 && data[pos + 1] == 0)) pos += 2;
+    pos += 2;
+  } else {
+    while (pos < len && data[pos] != 0) ++pos;
+    ++pos;
+  }
+  if (pos > len) {
+    return false;  // description ran past the frame
+  }
+  if (mime != "image/jpeg") {
+    return false;  // only JPEG is supported by the cover-art pipeline
+  }
+  *imageOffset = pos;
+  return true;
+}
+
 uint16_t parseLeadingNumber(const std::string &s) {
   uint16_t value = 0;
   for (char c : s) {
@@ -155,7 +201,26 @@ TagResult Id3v2Parser::parse(RawFile &file) {
       break;  // Malformed/truncated frame; stop rather than misread.
     }
 
-    if (frameId == "TIT2" || frameId == "TPE1" || frameId == "TALB" ||
+    if (frameId == "APIC" && !result.picture.present) {
+      // Only the MIME type + description precede the image bytes, and
+      // those are always short text -- read a bounded prefix rather than
+      // the whole (possibly large) frame, so scanning a track for tags
+      // doesn't pull its cover art into memory too.
+      size_t headerCap = frameSize < 512 ? frameSize : 512;
+      std::vector<uint8_t> header(headerCap);
+      if (!file.seek(dataStart) ||
+          file.read(header.data(), header.size()) != header.size()) {
+        break;
+      }
+      size_t imageOffset = 0;
+      if (findApicJpeg(header.data(), header.size(), &imageOffset) &&
+          imageOffset <= frameSize) {
+        any = true;
+        result.picture.present = true;
+        result.picture.offset = dataStart + imageOffset;
+        result.picture.length = frameSize - imageOffset;
+      }
+    } else if (frameId == "TIT2" || frameId == "TPE1" || frameId == "TALB" ||
         frameId == "TRCK" || frameId == "TYER" || frameId == "TDRC") {
       std::vector<uint8_t> data(frameSize);
       if (!file.seek(dataStart) ||

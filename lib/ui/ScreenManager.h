@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include "CoverArtCache.h"
 #include "EdgeArc.h"
 #include "FolderBrowser.h"
 #include "InputRouter.h"
@@ -36,13 +37,21 @@ class ScreenManager : public input::ListMoveSink {
                 library::DirectoryReader &directoryReader,
                 playback::PlaybackStateMachine &playback,
                 power::LockController &lockController,
-                library::LibraryRescanner &rescanner)
+                library::LibraryRescanner &rescanner,
+                library::CoverArtReader &coverReader,
+                library::FileOpener &fileOpener,
+                library::JpegDecoder &jpegDecoder,
+                library::CoverWriter &coverWriter)
       : tabs_(tabs),
         library_(library),
         directoryReader_(directoryReader),
         playback_(playback),
         lockController_(lockController),
-        rescanner_(rescanner) {}
+        rescanner_(rescanner),
+        coverReader_(coverReader),
+        fileOpener_(fileOpener),
+        jpegDecoder_(jpegDecoder),
+        coverWriter_(coverWriter) {}
 
   void begin();
 
@@ -96,6 +105,10 @@ class ScreenManager : public input::ListMoveSink {
   playback::PlaybackStateMachine &playback_;
   power::LockController &lockController_;
   library::LibraryRescanner &rescanner_;
+  library::CoverArtReader &coverReader_;
+  library::FileOpener &fileOpener_;
+  library::JpegDecoder &jpegDecoder_;
+  library::CoverWriter &coverWriter_;
 
   static constexpr uint32_t kVolumeHudTimeoutMs = 3000;
 
@@ -103,6 +116,12 @@ class ScreenManager : public input::ListMoveSink {
   lv_obj_t *list_ = nullptr;
   lv_obj_t *miniBar_ = nullptr;
   lv_obj_t *elapsedLabel_ = nullptr;
+  lv_obj_t *coverImg_ = nullptr;
+  // Own the decoded pixel buffer/descriptor as members (not locals in
+  // renderNowPlaying()) since the lv_img object references them for as
+  // long as it's on screen, well past that function returning.
+  lv_img_dsc_t coverImgDsc_{};
+  std::vector<uint16_t> coverPixels_;
   lv_obj_t *volumeArcHost_ = nullptr;
   lv_obj_t *volumeHudLabel_ = nullptr;
   ui_widgets::EdgeArc volumeArc_;

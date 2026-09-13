@@ -235,6 +235,65 @@ duplicating it.
   function's own comment). See
   `lib/ui/ScreenManager.cpp`'s `ScanProgressLabelListener` and
   `onScanClicked()`.
+- **A full recursive SD directory walk (`computeSignature()` /
+  `SdFileLister::reset()`), immediately followed by a batch of
+  individual file opens in the same call, reliably drives the SD_MMC
+  peripheral into `sdmmc_read_blocks failed (257)` for every single one
+  of those opens** -- found 2026-09-13 while adding album-cover
+  generation that ran right after this walk. Confusingly, this is NOT a
+  generic "SD card is flaky" issue: an isolated single file open done
+  elsewhere (e.g. starting playback) succeeds reliably even immediately
+  afterward, and a genuine full library rescan (which does the exact
+  same "walk then open every file" pattern) has worked before. It also
+  survives a full chip reset (even `esp_deep_sleep_start()`, which
+  resets far more hardware state than a normal reboot) with 100%
+  reproducibility, which points at the SD *card's own* internal
+  controller being left in a bad state (not an ESP32-side register) --
+  and if a battery is connected (PH1.25 connector), unplugging USB does
+  **not** actually power-cycle the board, so the usual "real power
+  cycle" fix for a stuck peripheral may not even be exercisable. Found
+  this leaves `SdFileLister::reset()`'s own top-level directory handle
+  unclosed too (only `walk()`'s child entries were being closed) --
+  fixed, but closing that leak alone did NOT fix the read failures, so
+  don't assume it's the whole story if this resurfaces. Workaround
+  adopted: don't batch-generate covers right after a walk at all --
+  `ScreenManager::renderNowPlaying()` instead generates a missing cover
+  lazily, from the one isolated file open playback already needs, the
+  first time an album is actually played. If a future feature needs to
+  do many individual file opens right after a directory walk again,
+  expect this same failure and budget time to design around it (e.g.
+  interleave the opens into the walk itself) rather than pacing/delays,
+  which did not help in testing.
+- **Most real-world embedded ID3 cover art (APIC frames) is Progressive
+  JPEG, which `TJpg_Decoder` (this project's on-device JPEG library,
+  `lib/drivers-jpeg/TJpgDecoderAdapter.h`) cannot decode at all** --
+  `TJpgDec.getJpgSize()` simply fails. Found 2026-09-13: sampling this
+  library's covers showed ~90% (194/216) were progressive. Baseline
+  JPEGs decode and render correctly (verified end-to-end on real
+  hardware). Fix is upstream of the device: `scripts/convert-music-library.sh`
+  now forces embedded art to baseline JPEG via ffmpeg's `mjpeg` encoder
+  (`-codec:v mjpeg` instead of `copy`) for both the mp3-passthrough and
+  transcode paths, while leaving the audio itself untouched
+  (`-codec:a copy`/unchanged bitrate settings) -- re-run that script
+  (into a fresh or emptied destination; it skips files that already
+  exist) to pick up correctly-decodable covers. `JPEGDEC`
+  (bitbank2/JPEGDEC) was considered as an alternative that natively
+  supports progressive JPEG, but it only does "thumbnail (DC-only)"
+  decoding of progressive images, not a full decode -- fixing the
+  source data was judged better than accepting that quality/complexity
+  trade-off.
+- **This board's native USB-CDC serial silently drops bytes under
+  sustained load with no error and no flow control** -- found
+  2026-09-13 sending a JPEG file to the device over a throwaway
+  diagnostic serial command: a single `Serial.write()` of a few hundred
+  bytes from the host reliably arrived truncated (the device-side loop
+  just stops receiving further bytes, forever, with no crash or
+  timeout). Sending in small chunks (~32-512 bytes) with a short
+  `time.sleep()` and explicit `flush()` between chunks made small
+  payloads (a few hundred bytes) reliable, but a real ~80KB file still
+  stalled partway even chunked -- plain serial is not viable for
+  bulk/file-sized transfers on this board at all; use WiFi (or physical
+  SD card access) instead for anything larger than a few hundred bytes.
 
 ## Where things are documented (so you add to the right place)
 

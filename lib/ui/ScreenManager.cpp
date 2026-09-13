@@ -268,6 +268,54 @@ void ScreenManager::renderNowPlaying() {
   lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
   lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
 
+  // Album cover, centered between the song name and the transport
+  // buttons -- the only round-safe gap left on this screen (see the
+  // volume HUD/button comments below for the round-display placement
+  // rules this file keeps re-deriving). Created before the volume HUD
+  // widgets so LVGL's creation-order z-stacking lets the transient HUD
+  // draw over the cover rather than under it. No cover cached for this
+  // album -> no widget at all, matching this screen's existing
+  // minimalism rather than showing a placeholder.
+  uint16_t coverSize = 0;
+  std::string albumFolderPath =
+      library::CoverArtCache::albumFolderPathFor(playback_.currentPath());
+  if (!coverReader_.loadCover(albumFolderPath, &coverSize, &coverPixels_)) {
+    // Not cached yet -- generate it now, lazily, from this one already-
+    // isolated file open (not preceded by any SD directory walk). Found
+    // on real hardware 2026-09-13: generating covers in a tight batch
+    // right after a full-library directory walk reliably wedges the
+    // SD_MMC controller (every subsequent open fails) even though a
+    // single isolated open like this one -- the same one playback
+    // itself just did -- works reliably. See AGENTS.md.
+    auto file = fileOpener_.open(playback_.currentPath());
+    if (file) {
+      auto tags = library::TagReader::read(*file, playback_.currentPath());
+      library::CoverArtCache::ensureCoverCached(albumFolderPath, *file, tags,
+                                                  directoryReader_, fileOpener_,
+                                                  jpegDecoder_, coverWriter_);
+      coverReader_.loadCover(albumFolderPath, &coverSize, &coverPixels_);
+    }
+  }
+  if (coverSize != 0) {
+    coverImgDsc_.header.cf = LV_IMG_CF_TRUE_COLOR;
+    coverImgDsc_.header.always_zero = 0;
+    coverImgDsc_.header.w = coverSize;
+    coverImgDsc_.header.h = coverSize;
+    coverImgDsc_.data_size =
+        static_cast<uint32_t>(coverPixels_.size() * sizeof(uint16_t));
+    coverImgDsc_.data = reinterpret_cast<const uint8_t *>(coverPixels_.data());
+
+    coverImg_ = lv_img_create(screen_);
+    lv_img_set_src(coverImg_, &coverImgDsc_);
+    // Vertical offset placeholder -- like every other offset on this
+    // screen, needs on-device tuning within the round-safe gap between
+    // the song label and the transport buttons (see ADR 0004).
+    lv_obj_align(coverImg_, LV_ALIGN_CENTER, 0, -25);
+  } else {
+    coverImg_ = nullptr;
+    coverPixels_.clear();
+  }
+
   // Round-edge volume HUD: a ring flush against the physical bezel
   // (host sized to the full framebuffer, not inset -- the round bezel
   // itself clips the outer edge, which is what makes it read as flush

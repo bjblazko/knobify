@@ -39,6 +39,14 @@ class SdFileLister : public library::FileLister {
                     root_.c_str());
     } else {
       walk(dir);
+      // Found on real hardware 2026-09-13: unlike every child entry
+      // (closed in walk()), this top-level handle was never closed --
+      // each reset() call (i.e. every tap of the rescan button) leaked
+      // one of SD_MMC's small fixed pool of open-file slots. After
+      // enough taps in a session, the pool is exhausted and every
+      // subsequent SD_MMC.open() anywhere in the app fails outright
+      // (`sdmmc_read_blocks failed`), not just here -- see AGENTS.md.
+      dir.close();
     }
     Serial.printf(
         "SdFileLister: root='%s' dirsVisited=%u filesVisited=%u "

@@ -14,13 +14,27 @@ ArtistId findOrAddArtist(LibraryIndex &index, const std::string &name) {
 }
 
 AlbumId findOrAddAlbum(LibraryIndex &index, ArtistId artistId,
-                       const std::string &title, uint16_t year) {
+                       const std::string &title, uint16_t year,
+                       bool *isNew) {
   for (const auto &album : index.albums) {
-    if (album.artistId == artistId && album.title == title) return album.id;
+    if (album.artistId == artistId && album.title == title) {
+      *isNew = false;
+      return album.id;
+    }
   }
   AlbumId id = static_cast<AlbumId>(index.albums.size());
   index.albums.push_back(Album{id, artistId, title, year});
+  *isNew = true;
   return id;
+}
+
+// Directory directly containing `path`, keeping the full path (unlike
+// TagReader's parentFolderName(), which only wants the bare name) --
+// this is the album folder cover art gets cached against.
+std::string parentDirectoryPath(const std::string &path) {
+  auto lastSlash = path.find_last_of('/');
+  if (lastSlash == std::string::npos) return "";
+  return path.substr(0, lastSlash);
 }
 
 }  // namespace
@@ -45,11 +59,17 @@ LibraryIndex LibraryScanner::scan(FileLister &lister, FileOpener &opener,
       tags = TagReader::read(*file, entry.path);
 
       ArtistId artistId = findOrAddArtist(index, tags.artist);
-      AlbumId albumId = findOrAddAlbum(index, artistId, tags.album, tags.year);
+      bool isNewAlbum = false;
+      AlbumId albumId =
+          findOrAddAlbum(index, artistId, tags.album, tags.year, &isNewAlbum);
 
       TrackId trackId = static_cast<TrackId>(index.tracks.size());
       index.tracks.push_back(
           Track{trackId, albumId, tags.title, tags.trackNumber, entry.path});
+
+      if (isNewAlbum && progress) {
+        progress->onNewAlbum(parentDirectoryPath(entry.path), *file, tags);
+      }
     }
     // Unreadable files are skipped rather than aborting the scan, but
     // still count toward progress -- the caller is showing "how far

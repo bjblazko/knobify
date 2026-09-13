@@ -8,6 +8,7 @@
 #include "BatteryAdcDriver.h"
 #include "BatteryIndicator.h"
 #include "BatteryMonitor.h"
+#include "CoverArtCache.h"
 #include "Cst816Driver.h"
 #include "EncoderPins.h"
 #include "Esp32AudioI2SDriver.h"
@@ -24,12 +25,15 @@
 #include "NvsKeyValueStore.h"
 #include "PlaybackStateMachine.h"
 #include "ScreenManager.h"
+#include "SdCoverReader.h"
+#include "SdCoverWriter.h"
 #include "SdDirectoryReader.h"
 #include "SdFileLister.h"
 #include "SdFileOpener.h"
 #include "SdInit.h"
 #include "St77916Driver.h"
 #include "TabController.h"
+#include "TJpgDecoderAdapter.h"
 #include "Version.h"
 #include "VolumePersistence.h"
 
@@ -69,8 +73,58 @@ void writeIndexCacheFile(const std::vector<uint8_t> &bytes) {
   file.close();
 }
 
+// Forwards the usual scan-progress notifications to whatever listener the
+// UI supplied, and additionally caches cover art the first time each
+// album is scanned -- see LibraryScanner.h's onNewAlbum() and
+// lib/library/CoverArtCache.h. Kept as a wrapper (rather than having
+// ScreenManager's own listener do this) so cover-art caching stays a
+// scan-level concern independent of whatever's showing progress on
+// screen.
+class CoverArtScanListener : public knobify::library::ScanProgressListener {
+ public:
+  CoverArtScanListener(knobify::library::ScanProgressListener *inner,
+                        knobify::library::DirectoryReader &dirReader,
+                        knobify::library::FileOpener &opener,
+                        knobify::library::JpegDecoder &decoder,
+                        knobify::library::CoverWriter &writer)
+      : inner_(inner),
+        dirReader_(dirReader),
+        opener_(opener),
+        decoder_(decoder),
+        writer_(writer) {}
+
+  void onFileScanned(size_t filesScannedSoFar) override {
+    if (inner_) inner_->onFileScanned(filesScannedSoFar);
+  }
+
+  void onFileResult(const std::string &path, bool opened,
+                     const knobify::library::TagResult &tags) override {
+    if (inner_) inner_->onFileResult(path, opened, tags);
+  }
+
+  void onNewAlbum(const std::string &albumFolderPath,
+                   knobify::library::RawFile &file,
+                   const knobify::library::TagResult &tags) override {
+    Serial.printf("[cover] onNewAlbum folder=%s picture.present=%d\n",
+                  albumFolderPath.c_str(), tags.picture.present);
+    knobify::library::CoverArtCache::ensureCoverCached(
+        albumFolderPath, file, tags, dirReader_, opener_, decoder_, writer_);
+    if (inner_) inner_->onNewAlbum(albumFolderPath, file, tags);
+  }
+
+ private:
+  knobify::library::ScanProgressListener *inner_;
+  knobify::library::DirectoryReader &dirReader_;
+  knobify::library::FileOpener &opener_;
+  knobify::library::JpegDecoder &decoder_;
+  knobify::library::CoverWriter &writer_;
+};
+
 knobify::library::LibraryIndex loadOrBuildLibraryIndex(
     knobify::drivers::SdFileLister &lister, knobify::library::FileOpener &opener,
+    knobify::library::DirectoryReader &coverDirReader,
+    knobify::library::JpegDecoder &coverDecoder,
+    knobify::library::CoverWriter &coverWriter,
     knobify::library::ScanProgressListener *progress) {
   using knobify::library::IndexCache;
   using knobify::library::LibraryIndex;
@@ -95,7 +149,9 @@ knobify::library::LibraryIndex loadOrBuildLibraryIndex(
   // (not reset!) to replay those same entries instead of paying for a
   // second full SD directory walk.
   lister.rewind();
-  LibraryIndex freshIndex = LibraryScanner::scan(lister, opener, progress);
+  CoverArtScanListener coverListener(progress, coverDirReader, opener,
+                                      coverDecoder, coverWriter);
+  LibraryIndex freshIndex = LibraryScanner::scan(lister, opener, &coverListener);
   writeIndexCacheFile(IndexCache::encode(freshIndex, currentSignature));
   return freshIndex;
 }
@@ -115,6 +171,9 @@ knobify::drivers::SdFileLister g_fileLister(kMusicRoot);
 knobify::drivers::SdFileOpener g_fileOpener;
 SdLibraryRescanner g_libraryRescanner;
 knobify::drivers::SdDirectoryReader g_directoryReader;
+knobify::drivers::SdCoverWriter g_coverWriter;
+knobify::drivers::SdCoverReader g_coverReader;
+knobify::drivers::TJpgDecoderAdapter g_jpegDecoder;
 knobify::drivers::GpioEncoderDriver g_encoder(knobify::drivers::kEncoderPinA,
                                                knobify::drivers::kEncoderPinB);
 knobify::drivers::NvsKeyValueStore g_nvsStore;
@@ -129,10 +188,10 @@ knobify::ui::LvglGlue g_lvglGlue;
 knobify::library::LibraryIndex g_libraryIndex;
 knobify::power::IdleTimer g_idleTimer;
 knobify::power::LockController g_lockController;
-knobify::ui::ScreenManager g_screenManager(g_tabs, g_libraryIndex,
-                                            g_directoryReader, g_playback,
-                                            g_lockController,
-                                            g_libraryRescanner);
+knobify::ui::ScreenManager g_screenManager(
+    g_tabs, g_libraryIndex, g_directoryReader, g_playback, g_lockController,
+    g_libraryRescanner, g_coverReader, g_fileOpener, g_jpegDecoder,
+    g_coverWriter);
 knobify::ui::LockOverlay g_lockOverlay(g_lockController);
 knobify::drivers::BatteryAdcDriver g_batteryAdc;
 knobify::power::BatteryMonitor g_batteryMonitor;
@@ -150,7 +209,9 @@ uint32_t g_lastBatteryUpdateMs = 0;
 constexpr uint32_t kBatteryUpdateIntervalMs = 5000;
 
 void SdLibraryRescanner::rescan(knobify::library::ScanProgressListener *progress) {
-  g_libraryIndex = loadOrBuildLibraryIndex(g_fileLister, g_fileOpener, progress);
+  g_libraryIndex = loadOrBuildLibraryIndex(g_fileLister, g_fileOpener,
+                                            g_directoryReader, g_jpegDecoder,
+                                            g_coverWriter, progress);
 }
 
 }  // namespace
