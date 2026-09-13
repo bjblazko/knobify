@@ -240,6 +240,11 @@ void pollSerialCommands() {
 }
 
 void loop() {
+  // Esp32AudioI2SDriver::loop() is a no-op: audio now services itself
+  // continuously on its own FreeRTOS task (started in begin()),
+  // decoupled from this loop's LVGL/input timing -- see that class's
+  // comment for why. Still called through the interface for consistency
+  // with PlaybackDriver's contract.
   g_audioDriver.loop();
   g_lvglGlue.pump();
   pollSerialCommands();

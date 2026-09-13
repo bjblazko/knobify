@@ -14,3 +14,4 @@ supersedes the old one (and the old one is marked "Superseded by NNNN").
 | [0003](0003-testing-strategy.md) | Testing strategy | Accepted |
 | [0004](0004-navigation-library-and-index-architecture.md) | Navigation, library indexing, and index cache architecture | Accepted |
 | [0005](0005-power-lock-and-round-edge-indicators.md) | Device lock, display power, and round-edge UI widgets | Accepted |
+| [0006](0006-audio-task-concurrency.md) | Dedicated FreeRTOS task for audio decode | Accepted |

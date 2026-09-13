@@ -158,6 +158,19 @@ duplicating it.
   `LV_OBJ_FLAG_SCROLLABLE` in `ScreenManager::render()` — this app has
   its own swipe-gesture handling (`GestureRecognizer`) and never wants
   built-in scroll behavior anyway.
+- **`ESP32-audioI2S` playback audibly stutters whenever `src/main.cpp`'s
+  `loop()` is busy for stretches of time** — its `Audio::loop()` is a
+  cooperative decoder that needs calling very frequently, and shared a
+  single thread with LVGL's *synchronous, blocking* display flush
+  (`LvglGlue::flushCb`). Any burst of frequent redraws (an animation,
+  fast list scrolling) starves `loop()` of CPU time between calls and
+  the I2S buffer underruns. Turning the encoder alone doesn't trigger
+  this (no extra redraws), which is a useful way to tell this apart from
+  other audio issues. Fixed in [ADR 0006](docs/adr/0006-audio-task-concurrency.md)
+  by running `Audio::loop()` on its own FreeRTOS task pinned to core 0
+  (idle otherwise — no WiFi/BT), mutex-guarded against the main thread's
+  play/pause/volume calls. If audio stutter reappears, check what's
+  producing heavy LVGL redraw activity, not the audio code itself first.
 - **This specific board unit repeatedly goes into a state where it
   "runs" but a peripheral is silently dead, and only a real power cycle
   (unplug USB, wait, replug) fixes it -- a soft/RTS reset is not

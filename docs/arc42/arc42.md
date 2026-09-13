@@ -275,6 +275,12 @@ per project goals.
   hold-button-while-turning-encoder unlock gesture, independent states
   driven by `lib/power`. See
   [ADR 0005](../adr/0005-power-lock-and-round-edge-indicators.md)
+- **Concurrency** — `src/main.cpp`'s `loop()` (LVGL, input, navigation)
+  runs single-threaded on Arduino's default core (1); audio decode
+  (`Esp32AudioI2SDriver`) runs on its own FreeRTOS task on the otherwise-
+  idle core 0, mutex-guarded, so display/UI work never starves the
+  audio codec's need to be serviced continuously. See
+  [ADR 0006](../adr/0006-audio-task-concurrency.md)
   for the full rationale.
 
 ## 9. Architecture Decisions
