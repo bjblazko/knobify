@@ -547,10 +547,15 @@ void ScreenManager::renderNowPlaying() {
 
   // Numeric readout in an ink pill over the cover's center -- readable on
   // top of any cover image, and created after the cover so LVGL's
-  // creation-order z-stacking draws it on top.
+  // creation-order z-stacking draws it on top. Without a cover the title
+  // moves up into that spot, so the pill goes into the free gap between
+  // the back button and the title instead (it covered the title there,
+  // found on real hardware 2026-09-13).
   volumeHudPill_ = lv_obj_create(screen_);
   lv_obj_set_size(volumeHudPill_, 72, 44);
-  lv_obj_align(volumeHudPill_, LV_ALIGN_TOP_MID, 0, kCoverY + 48 - 22);
+  lv_coord_t pillY = coverSize != 0 ? kCoverY + coverSize / 2 - 22
+                                    : kHeaderButtonY + kHeaderButtonH + 8;
+  lv_obj_align(volumeHudPill_, LV_ALIGN_TOP_MID, 0, pillY);
   lv_obj_set_style_radius(volumeHudPill_, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_bg_color(volumeHudPill_, theme::ink(), 0);
   lv_obj_set_style_border_width(volumeHudPill_, 0, 0);
