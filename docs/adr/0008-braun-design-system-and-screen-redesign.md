@@ -79,8 +79,10 @@ and overlapped the line below it.
   tokens are chosen as exact RGB565 values.
 - **The panel shifts toward green.** `#EFEFE7`, `#E6E3D6` looked cold,
   `#DEDBC6` (red ≈ green) and `#DED7C6` looked green-yellowish grey.
-  The accepted `#E6D3BD` / `#D6C3AD` look like a warm off-white on the
-  device but distinctly peach on a monitor. Judge neutrals on the device.
+  `#E6D3BD` / `#D6C3AD` compensated in the other direction but still read
+  as wrongly tinted on the device, so the neutrals went back to the
+  original Snow White `#F4F4F0` / Light Grey `#DCDDD8` (2026-09-13).
+  Judge neutrals on the device.
 - **Built-in Montserrat is ASCII-only** (0x20–0x7F plus `LV_SYMBOL_*`):
   a U+00B7 middle dot rendered as a missing-glyph box, so the Now
   Playing separator is " - ". Umlauts/accents have the same problem —

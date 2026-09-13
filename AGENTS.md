@@ -303,8 +303,10 @@ duplicating it.
 - **UI colors must be judged on the device, not a monitor or a
   screenshot's hex values.** The panel is RGB565 (subtle neutrals get
   rounded — `#F4F4F0` arrived as neutral `#F6F6F6`) and visibly shifts
-  toward green (a surface that looks warm off-white on the device is
-  peach on a monitor). Use `lib/ui/Theme.h` tokens only. See ADR 0008.
+  toward green. Attempts to "warm" the surface to compensate all looked
+  off on the device, so it's the original Snow White `#F4F4F0` — don't
+  re-tint it without checking on hardware. Use `lib/ui/Theme.h` tokens
+  only. See ADR 0008.
 - **`LV_LABEL_LONG_DOT` does nothing on a content-height label** — it
   just wraps. Use `setClampedText()` in `ScreenManager.cpp` (explicit
   line budget). LVGL's built-in Montserrat fonts are also ASCII-only:

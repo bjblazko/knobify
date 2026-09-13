@@ -8,17 +8,13 @@ namespace knobify::ui::theme {
 // every color drawn on screen. Token names and roles are documented in
 // docs/design/ux-guidelines.md §3; UI code uses these, never a raw hex
 // value or an lv_palette_* color.
-// The panel is RGB565 (5/6/5 bits), which rounds subtle neutrals: the
-// original Snow White #F4F4F0 arrived as neutral #F6F6F6, losing its
-// warmth. Neutrals are therefore chosen as exact RGB565 values
-// (ux-guidelines §3 "RGB565").
-// #EFEFE7 and #E6E3D6 looked too cold and bright on the real panel;
-// #DEDBC6 (red ~= green) looked green-tinted, #DED7C6 still cold
-// green-yellowish grey. The panel itself shifts toward green, so the
-// values that read as warm on it look clearly peach on a monitor (user
-// feedback 2026-09-13).
-inline lv_color_t surface() { return lv_color_hex(0xE6D3BD); }     // Warm Snow White
-inline lv_color_t surfaceAlt() { return lv_color_hex(0xD6C3AD); }  // Warm Light Grey
+// The panel is RGB565 (5/6/5 bits) and shifts toward green. A series of
+// "warmed" surfaces (#EFEFE7 .. #E6D3BD) meant to compensate all still
+// read as wrongly tinted on the device (green-grey or peach), so the
+// neutrals are back to the original Snow White / Light Grey (user
+// decision 2026-09-13; ux-guidelines §3 "RGB565").
+inline lv_color_t surface() { return lv_color_hex(0xF4F4F0); }     // Snow White
+inline lv_color_t surfaceAlt() { return lv_color_hex(0xDCDDD8); }  // Light Grey
 inline lv_color_t structure() { return lv_color_hex(0x4A4C4E); }   // Mid Anthracite
 inline lv_color_t ink() { return lv_color_hex(0x1E1F21); }         // Matte Black
 inline lv_color_t accent() { return lv_color_hex(0xE85D04); }      // Orange Signal
