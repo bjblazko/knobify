@@ -131,7 +131,7 @@ backlight. Every screen, the lock screen included, uses `surface`.
 - **One typeface, four sizes** (Montserrat, LVGL built-in):
   14 caption/secondary (artist line, time, list caption, battery) ·
   16 body (mini-bar, hints) · 20 title (list rows, track title, "Locked") ·
-  28 numeral (volume readout only).
+  28 numeral & primary glyph (volume readout, Play/Pause icon).
 - **Shapes.** Circles for the round, thumb-operated controls (transport,
   unlock) — echoing the device's own form. 12px radius for list rows;
   fully rounded pills for the mini-bar and volume readout.
