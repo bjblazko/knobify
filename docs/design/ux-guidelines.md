@@ -88,8 +88,8 @@ token, never a raw hex value or an LVGL palette color.
 
 | Token | Name | Hex | Use |
 |---|---|---|---|
-| `surface` | Warm Snow White | `#DED7C6` | Screen background everywhere, including the lock screen; text on dark elements |
-| `surfaceAlt` | Warm Light Grey | `#CEC3B5` | Unfilled ring tracks, secondary buttons, pressed state of quiet controls, mini-bar area |
+| `surface` | Warm Snow White | `#E6D3BD` | Screen background everywhere, including the lock screen; text on dark elements |
+| `surfaceAlt` | Warm Light Grey | `#D6C3AD` | Unfilled ring tracks, secondary buttons, pressed state of quiet controls, mini-bar area |
 | `structure` | Mid Anthracite | `#4A4C4E` | Secondary text (captions, time), quiet icons, battery |
 | `ink` | Matte Black | `#1E1F21` | Primary text, selected list row, volume readout pill |
 
@@ -121,7 +121,8 @@ serial screenshot), and the surface is dimmed and warmed well beyond the
 nominal Snow White — `#EFEFE7` and then `#E6E3D6` still looked cold and
 bright on the real panel, and `#DEDBC6` (red and green nearly equal)
 looked green-tinted — a warm neutral needs green clearly *between* red
-and blue. The darker, warmer value also reduces glare on the reflective panel
+and blue. The panel itself shifts toward green, so values that read as a
+warm off-white on the device look distinctly peach on a monitor. The darker, warmer value also reduces glare on the reflective panel
 and is closer to a matte Braun housing. Judge neutrals on the device, not
 on a monitor.
 
