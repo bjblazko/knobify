@@ -14,6 +14,10 @@ inline lv_color_t structure() { return lv_color_hex(0x4A4C4E); }   // Mid Anthra
 inline lv_color_t ink() { return lv_color_hex(0x1E1F21); }         // Matte Black
 inline lv_color_t accent() { return lv_color_hex(0xE85D04); }      // Orange Signal
 inline lv_color_t confirm() { return lv_color_hex(0x2A8C4A); }     // Functional Green
+// Time passing -- the song-progress ring only, after the yellow second
+// hand of Braun's clocks. Next to the dark housing at the bezel edge it
+// reads clearly, where anthracite blended into the case.
+inline lv_color_t time() { return lv_color_hex(0xF5AA1C); }        // Braun Yellow
 inline lv_color_t warning() { return lv_color_hex(0xD62828); }     // Accent Red
 
 // Radius for list rows (ux-guidelines §3a); pills and round controls use

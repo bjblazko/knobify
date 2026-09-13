@@ -64,7 +64,7 @@ class LockOverlay {
     arcConfig.endAngle = 45;
     arcConfig.widthPx = 12;
     // Confirmation green, deliberately distinct from the Now Playing
-    // volume (ink) and song-progress (anthracite) rings -- similar-looking
+    // volume (orange) and song-progress (yellow) rings -- similar-looking
     // indicators carry their meaning in their color (ux-guidelines §3).
     arcConfig.color = theme::confirm();
     arcConfig.hasBackgroundColor = true;

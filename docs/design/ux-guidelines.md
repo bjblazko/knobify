@@ -77,7 +77,7 @@ were removed; color then adds meaning on top, sparingly.
 
 - **90% neutral base** (off-white / light grey)
 - **9% structure & contrast** (anthracite / matte black)
-- **1% signal / accent** (orange, green, red)
+- **1% signal / accent** (orange, yellow, green, red)
 
 ### Palette
 
@@ -90,32 +90,38 @@ token, never a raw hex value or an LVGL palette color.
 |---|---|---|---|
 | `surface` | Snow White | `#F4F4F0` | Screen background everywhere, including the lock screen; text on dark elements |
 | `surfaceAlt` | Light Grey | `#DCDDD8` | Unfilled ring tracks, pressed state of quiet controls, mini-bar area |
-| `structure` | Mid Anthracite | `#4A4C4E` | Secondary text (captions, time), quiet icons, song-progress ring, battery |
-| `ink` | Matte Black | `#1E1F21` | Primary text, selected list row, volume ring |
+| `structure` | Mid Anthracite | `#4A4C4E` | Secondary text (captions, time), quiet icons, battery |
+| `ink` | Matte Black | `#1E1F21` | Primary text, selected list row, volume readout pill |
 
 **Signal colors** (functional elements only):
 
 | Token | Name | Hex | Meaning |
 |---|---|---|---|
-| `accent` | Orange Signal | `#E85D04` | The single primary action on a screen (Play/Pause, Unlock) |
+| `accent` | Orange Signal | `#E85D04` | The single primary action on a screen (Play/Pause, Unlock); the volume ring while it is being set |
 | `confirm` | Functional Green | `#2A8C4A` | Confirmation / active state — unlock progress, mini-bar playback glyph |
+| `time` | Braun Yellow | `#F5AA1C` | Time passing — the song-progress ring only (after the yellow second hand of Braun clocks) |
 | `warning` | Accent Red | `#D62828` | Needs attention — low/empty battery |
 
-Braun Yellow (`#F5AA1C`) was part of the original palette and is
-deliberately retired: two "primary" signal colors (yellow and orange)
-competed for the same meaning, and yellow shapes read weakly against an
-off-white surface on this reflective display.
+Braun Yellow (`#F5AA1C`) is *not* a second call-to-action color: two
+"primary" colors (yellow and orange) would compete for the same meaning,
+and yellow controls read weakly against the off-white surface. It is
+kept for exactly one meaning — time passing, like the yellow second hand
+of Braun's clocks — on the song-progress ring, where it sits at the bezel
+next to the dark housing and reads clearly (an anthracite ring blended
+into the case).
 
 ### Application rules
 
-1. **Restraint** — at most one accent (orange) element per screen. Green
-   and red only ever appear as state signals, never as decoration.
+1. **Restraint** — at most one permanently visible accent (orange)
+   element per screen; the transient volume ring is the one exception,
+   since it only exists while the user is acting. Yellow, green and red
+   only ever appear as signals, never as decoration.
 2. **Functional separation** — color signals clickability or state, never
    just decoration. If a color doesn't mean something, don't add it.
 3. **Similar-looking indicators get distinct colors by meaning.** The
    three edge rings look alike, so each carries its meaning in its color:
-   song progress `structure` (passive information), volume `ink` (a scale
-   you are actively setting), unlock progress `confirm`. This — not
+   song progress `time` (time passing), volume `accent` (a value you are
+   actively setting), unlock progress `confirm`. This — not
    restraint — is why they differ (§6).
 4. **No noise** — neutrals stay matte/desaturated; no shadows or
    gradients.
@@ -235,8 +241,12 @@ Full architecture: [ADR 0005](../adr/0005-power-lock-and-round-edge-indicators.m
   pauses while actually holding (real progress becomes the feedback
   instead), keeping the invitation-to-interact and the in-progress
   feedback visually distinct.
+- **Edge rings use signal colors, not neutrals.** The rings sit right at
+  the bezel, next to the dark housing — anthracite and black rings
+  blended into the case.
 - **Edge rings carry meaning in their color** (§3 rule 3): song progress
-  `structure`, volume `ink`, unlock progress `confirm` — each on a visible
+  `time` yellow, volume `accent` orange, unlock progress `confirm` green —
+  each on a visible
   `surfaceAlt` track.
 - **One edge ring visible at a time.** On Now Playing the thin song-
   progress ring is the resting state; while volume is being adjusted the

@@ -501,14 +501,16 @@ void ScreenManager::renderNowPlaying() {
   }
 
   // Song-progress ring -- the resting-state edge ring on this screen.
-  // Thin and anthracite: passive information, visually quieter than the
-  // volume ring that temporarily replaces it (ux-guidelines §6). Hidden
+  // Braun Yellow, like the second hand of a Braun clock: time passing.
+  // Anthracite (tried first) blended into the dark housing right next to
+  // the bezel (user feedback 2026-09-13), and orange stays reserved for
+  // the Play/Pause action (ux-guidelines §3). Hidden
   // until updateElapsedTimeDisplay() knows the track's duration.
   ui_widgets::EdgeArcConfig progressArcConfig;
   progressArcConfig.startAngle = 135;
   progressArcConfig.endAngle = 45;
   progressArcConfig.widthPx = 9;
-  progressArcConfig.color = theme::structure();
+  progressArcConfig.color = theme::time();
   progressArcConfig.hasBackgroundColor = true;
   progressArcConfig.backgroundColor = theme::surfaceAlt();
   progressArcHost_ = makeEdgeArcHost(screen_);
@@ -522,13 +524,16 @@ void ScreenManager::renderNowPlaying() {
   // kVolumeHudTimeoutMs, like a phone's volume overlay -- replaces the
   // always-on linear bar (removed per user feedback 2026-09-13: it never
   // updated live, and permanently occupied center screen for a value
-  // that's rarely being actively watched). Ink, not accent: a scale being
-  // set is structure, and the screen's one accent is Play/Pause.
+  // that's rarely being actively watched). Accent orange: actively being
+  // set, and bright against the dark housing (ink, tried first, blended
+  // into it). Deliberately not the progress ring's yellow -- the two
+  // replace each other in the same place, and one color would make a
+  // volume change look like the song position jumped.
   ui_widgets::EdgeArcConfig volumeArcConfig;
   volumeArcConfig.startAngle = 135;
   volumeArcConfig.endAngle = 45;
   volumeArcConfig.widthPx = 12;
-  volumeArcConfig.color = theme::ink();
+  volumeArcConfig.color = theme::accent();
   volumeArcConfig.hasBackgroundColor = true;
   volumeArcConfig.backgroundColor = theme::surfaceAlt();
   volumeArcHost_ = makeEdgeArcHost(screen_);
