@@ -12,8 +12,10 @@ namespace knobify::ui::theme {
 // original Snow White #F4F4F0 arrived as neutral #F6F6F6, losing its
 // warmth. Neutrals are therefore chosen as exact RGB565 values
 // (ux-guidelines §3 "RGB565").
-inline lv_color_t surface() { return lv_color_hex(0xEFEFE7); }     // Dimmed Snow White
-inline lv_color_t surfaceAlt() { return lv_color_hex(0xDEDED6); }  // Light Grey
+// A first dimmed #EFEFE7 still looked too cold and bright on the real
+// panel (user feedback 2026-09-13), hence this warmer, darker pair.
+inline lv_color_t surface() { return lv_color_hex(0xE6E3D6); }     // Warm Snow White
+inline lv_color_t surfaceAlt() { return lv_color_hex(0xD6D2C5); }  // Warm Light Grey
 inline lv_color_t structure() { return lv_color_hex(0x4A4C4E); }   // Mid Anthracite
 inline lv_color_t ink() { return lv_color_hex(0x1E1F21); }         // Matte Black
 inline lv_color_t accent() { return lv_color_hex(0xE85D04); }      // Orange Signal

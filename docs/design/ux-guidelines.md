@@ -88,8 +88,8 @@ token, never a raw hex value or an LVGL palette color.
 
 | Token | Name | Hex | Use |
 |---|---|---|---|
-| `surface` | Dimmed Snow White | `#EFEFE7` | Screen background everywhere, including the lock screen; text on dark elements |
-| `surfaceAlt` | Light Grey | `#DEDED6` | Unfilled ring tracks, secondary buttons, pressed state of quiet controls, mini-bar area |
+| `surface` | Warm Snow White | `#E6E3D6` | Screen background everywhere, including the lock screen; text on dark elements |
+| `surfaceAlt` | Warm Light Grey | `#D6D2C5` | Unfilled ring tracks, secondary buttons, pressed state of quiet controls, mini-bar area |
 | `structure` | Mid Anthracite | `#4A4C4E` | Secondary text (captions, time), quiet icons, battery |
 | `ink` | Matte Black | `#1E1F21` | Primary text, selected list row, volume readout pill |
 
@@ -117,8 +117,11 @@ The display is 16-bit RGB565, which rounds every color to 32 red/blue and
 neutrals don't — the original Snow White `#F4F4F0` arrived on the panel as
 neutral `#F6F6F6`, losing exactly the warmth that made it Snow White.
 Neutral tokens are therefore exact RGB565 values (verified by sampling a
-serial screenshot), and the surface is slightly dimmed, which also reduces
-glare on the reflective panel and is closer to a matte Braun housing.
+serial screenshot), and the surface is dimmed and warmed well beyond the
+nominal Snow White — `#EFEFE7` still looked cold and bright on the real
+panel. The darker, warmer value also reduces glare on the reflective panel
+and is closer to a matte Braun housing. Judge neutrals on the device, not
+on a monitor.
 
 ### Application rules
 
