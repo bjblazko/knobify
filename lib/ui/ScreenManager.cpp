@@ -717,6 +717,13 @@ void ScreenManager::onListMove(int16_t delta) {
   highlightedIndex_ =
       std::clamp(highlightedIndex_ + static_cast<int>(delta), 0, count - 1);
   applyHighlight();
+  // Keep the knob-selected row on screen -- without this the highlight
+  // moved past the list's visible area and vanished, since only touch
+  // scrolling moved the view (found on real hardware 2026-09-13). Scrolls
+  // just enough to reveal the row, so a selection already in view (e.g.
+  // after touch-scrolling there) doesn't jump.
+  lv_obj_t *selected = lv_obj_get_child(list_, highlightedIndex_);
+  if (selected) lv_obj_scroll_to_view(selected, LV_ANIM_ON);
 }
 
 void ScreenManager::goToNowPlaying() {
