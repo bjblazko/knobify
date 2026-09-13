@@ -49,12 +49,19 @@ class ScreenManager : public input::ListMoveSink {
 
   void onListMove(int16_t delta) override;
 
-  // Cheap live update of just the volume readout on the Now Playing
-  // screen (if that's what's currently shown) -- call after any encoder
-  // tick that adjusted volume. Deliberately not a full render(): that
-  // would delete/recreate every widget on screen for what's often a
-  // rapid sequence of small ticks.
-  void updateVolumeDisplay();
+  // Cheap live update of the volume HUD (ring + number) on the Now
+  // Playing screen (if that's what's currently shown) -- call after any
+  // encoder tick that adjusted volume. Deliberately not a full render():
+  // that would delete/recreate every widget on screen for what's often a
+  // rapid sequence of small ticks. Shows the HUD and (re)starts its
+  // auto-hide timer; call tickVolumeHud() every loop() to actually hide
+  // it once the timeout elapses.
+  void updateVolumeDisplay(uint32_t nowMs);
+
+  // Hides the volume HUD once kVolumeHudTimeoutMs has passed since the
+  // last updateVolumeDisplay() call. A no-op if the HUD isn't currently
+  // showing. Call every loop() iteration, like updateElapsedTimeDisplay().
+  void tickVolumeHud(uint32_t nowMs);
 
   // Cheap live update of the elapsed-time readout on the Now Playing
   // screen -- call every loop() iteration. A no-op if that screen isn't
@@ -84,13 +91,17 @@ class ScreenManager : public input::ListMoveSink {
   playback::PlaybackStateMachine &playback_;
   power::LockController &lockController_;
 
+  static constexpr uint32_t kVolumeHudTimeoutMs = 3000;
+
   lv_obj_t *screen_ = nullptr;
   lv_obj_t *list_ = nullptr;
   lv_obj_t *miniBar_ = nullptr;
-  lv_obj_t *volumeBar_ = nullptr;
-  lv_obj_t *volumeLabel_ = nullptr;
   lv_obj_t *elapsedLabel_ = nullptr;
+  lv_obj_t *volumeArcHost_ = nullptr;
+  lv_obj_t *volumeHudLabel_ = nullptr;
   ui_widgets::EdgeArc volumeArc_;
+  bool volumeHudVisible_ = false;
+  uint32_t volumeHudHideAtMs_ = 0;
   int highlightedIndex_ = 0;
 
   // Kind IDs stashed on each clickable object via lv_obj_set_user_data so

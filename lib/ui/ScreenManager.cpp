@@ -33,15 +33,23 @@ void ScreenManager::render() {
   // address in the new screen.
   lv_obj_t *oldScreen = screen_;
   screen_ = lv_obj_create(nullptr);
+  // This app has its own swipe-gesture handling (GestureRecognizer) and
+  // never wants a screen to scroll as a whole; a default-scrollable
+  // screen only became visible as a bug once the Now Playing volume
+  // ring's host was intentionally sized larger than the screen (see
+  // renderNowPlaying()) -- LVGL then drew thin scrollbar lines along the
+  // screen's right/bottom edges. Found on real hardware 2026-09-13.
+  lv_obj_clear_flag(screen_, LV_OBJ_FLAG_SCROLLABLE);
   lv_scr_load(screen_);
   if (oldScreen) {
     lv_obj_del_async(oldScreen);
   }
   list_ = nullptr;
   miniBar_ = nullptr;
-  volumeBar_ = nullptr;
-  volumeLabel_ = nullptr;
   elapsedLabel_ = nullptr;
+  volumeArcHost_ = nullptr;
+  volumeHudLabel_ = nullptr;
+  volumeHudVisible_ = false;
 
   Screen current = tabs_.activeStack().current();
 
@@ -210,54 +218,55 @@ void ScreenManager::renderNowPlaying() {
   lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
   lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
 
-  // Knob turns adjust volume on this screen (decision 3, ADR 0004) --
-  // this makes that change visible instead of silent (found on real
-  // hardware 2026-09-12: "when I turn the knob, nothing happens
-  // visually"). updateVolumeDisplay() keeps these two in sync afterward
-  // without a full re-render.
-  volumeBar_ = lv_bar_create(screen_);
-  lv_obj_set_size(volumeBar_, 180, 14);
-  lv_obj_align(volumeBar_, LV_ALIGN_CENTER, 0, -34);
-  lv_bar_set_range(volumeBar_, playback::PlaybackStateMachine::kMinVolume,
-                    playback::PlaybackStateMachine::kMaxVolume);
-  lv_bar_set_value(volumeBar_, playback_.volume(), LV_ANIM_OFF);
-
-  volumeLabel_ = lv_label_create(screen_);
-  lv_obj_align_to(volumeLabel_, volumeBar_, LV_ALIGN_OUT_TOP_MID, 0, -6);
-  char volText[16];
-  snprintf(volText, sizeof(volText), "Volume %d/%d", playback_.volume(),
-           playback::PlaybackStateMachine::kMaxVolume);
-  lv_label_set_text(volumeLabel_, volText);
-
-  // Round-edge ring, additive alongside the linear bar above -- see ADR
-  // 0005. Not yet validated on real hardware (does it read well next to
-  // the bar/buttons at this size); the bar stays as the primary readout
-  // until that's confirmed, per this screen's history of round-display
-  // surprises (ADR 0004).
+  // Round-edge volume HUD: a ring flush against the physical bezel
+  // (host sized to the full framebuffer, not inset -- the round bezel
+  // itself clips the outer edge, which is what makes it read as flush
+  // rather than leaving a visible gap, see ADR 0004's corner-clipping
+  // notes) plus a numeric readout. Hidden until the first adjustment;
+  // updateVolumeDisplay()/tickVolumeHud() show it and auto-hide it after
+  // kVolumeHudTimeoutMs, like a phone's volume overlay -- replaces the
+  // always-on linear bar (removed per user feedback 2026-09-13: it never
+  // updated live, and permanently occupied center screen for a value
+  // that's rarely being actively watched).
   ui_widgets::EdgeArcConfig volumeArcConfig;
   volumeArcConfig.startAngle = 135;
   volumeArcConfig.endAngle = 45;
-  volumeArcConfig.widthPx = 8;
-  // Indigo, matching the theme's primary color already used for the bar
-  // above -- deliberately a different color from LockOverlay's unlock
-  // ring (green) so the two aren't visually confusable as the same
-  // indicator (found on real hardware 2026-09-13: both rendered
-  // identically blue and were mistaken for each other).
+  volumeArcConfig.widthPx = 12;
+  // Indigo accent for the current level, grey for the unfilled track --
+  // deliberately a different accent color from LockOverlay's unlock ring
+  // (green) so the two aren't visually confusable as the same indicator
+  // (found on real hardware 2026-09-13: both rendered identically blue
+  // and were mistaken for each other).
   volumeArcConfig.color = lv_palette_main(LV_PALETTE_INDIGO);
   volumeArcConfig.hasBackgroundColor = true;
   volumeArcConfig.backgroundColor = lv_palette_lighten(LV_PALETTE_GREY, 2);
-  lv_obj_t *volumeArcHost = lv_obj_create(screen_);
-  lv_obj_set_size(volumeArcHost, drivers::kLcdHorRes - 16,
-                   drivers::kLcdVerRes - 16);
-  lv_obj_center(volumeArcHost);
-  lv_obj_set_style_bg_opa(volumeArcHost, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(volumeArcHost, 0, 0);
-  lv_obj_clear_flag(volumeArcHost, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_clear_flag(volumeArcHost, LV_OBJ_FLAG_CLICKABLE);
-  volumeArc_.create(volumeArcHost, volumeArcConfig,
+  // Oversized beyond the screen's own bounds and let the screen object's
+  // default clipping (plus the physical round bezel) eat the excess --
+  // even with EdgeArc's knob-padding fix, sizing the host to exactly
+  // kLcdHorRes/VerRes still left a visible gap from the true edge on
+  // real hardware (some further LVGL-internal margin), and overshooting
+  // is harmless here since nothing else occupies that space.
+  volumeArcHost_ = lv_obj_create(screen_);
+  lv_obj_set_size(volumeArcHost_, drivers::kLcdHorRes + 40,
+                   drivers::kLcdVerRes + 40);
+  lv_obj_center(volumeArcHost_);
+  lv_obj_set_style_bg_opa(volumeArcHost_, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(volumeArcHost_, 0, 0);
+  lv_obj_clear_flag(volumeArcHost_, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(volumeArcHost_, LV_OBJ_FLAG_CLICKABLE);
+  volumeArc_.create(volumeArcHost_, volumeArcConfig,
                      playback::PlaybackStateMachine::kMinVolume,
                      playback::PlaybackStateMachine::kMaxVolume);
   volumeArc_.setValue(static_cast<int32_t>(playback_.volume()));
+  lv_obj_add_flag(volumeArcHost_, LV_OBJ_FLAG_HIDDEN);
+
+  volumeHudLabel_ = lv_label_create(screen_);
+  lv_obj_set_style_text_font(volumeHudLabel_, &lv_font_montserrat_20, 0);
+  lv_obj_align(volumeHudLabel_, LV_ALIGN_CENTER, 0, -34);
+  char volText[8];
+  snprintf(volText, sizeof(volText), "%d", playback_.volume());
+  lv_label_set_text(volumeHudLabel_, volText);
+  lv_obj_add_flag(volumeHudLabel_, LV_OBJ_FLAG_HIDDEN);
 
   // Buttons sit inset from the edges, safely within the round display's
   // visible area rather than at the literal corners -- see decision 6,
@@ -310,13 +319,26 @@ void ScreenManager::applyHighlight() {
   }
 }
 
-void ScreenManager::updateVolumeDisplay() {
-  if (!volumeBar_ || !volumeLabel_) return;
-  lv_bar_set_value(volumeBar_, playback_.volume(), LV_ANIM_OFF);
-  char volText[16];
-  snprintf(volText, sizeof(volText), "Volume %d/%d", playback_.volume(),
-            playback::PlaybackStateMachine::kMaxVolume);
-  lv_label_set_text(volumeLabel_, volText);
+void ScreenManager::updateVolumeDisplay(uint32_t nowMs) {
+  if (!volumeArcHost_ || !volumeHudLabel_) return;
+  volumeArc_.setValue(static_cast<int32_t>(playback_.volume()));
+  char volText[8];
+  snprintf(volText, sizeof(volText), "%d", playback_.volume());
+  lv_label_set_text(volumeHudLabel_, volText);
+  if (!volumeHudVisible_) {
+    volumeHudVisible_ = true;
+    lv_obj_clear_flag(volumeArcHost_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(volumeHudLabel_, LV_OBJ_FLAG_HIDDEN);
+  }
+  volumeHudHideAtMs_ = nowMs + kVolumeHudTimeoutMs;
+}
+
+void ScreenManager::tickVolumeHud(uint32_t nowMs) {
+  if (!volumeHudVisible_) return;
+  if (nowMs < volumeHudHideAtMs_) return;
+  volumeHudVisible_ = false;
+  lv_obj_add_flag(volumeArcHost_, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_add_flag(volumeHudLabel_, LV_OBJ_FLAG_HIDDEN);
 }
 
 void ScreenManager::updateElapsedTimeDisplay() {

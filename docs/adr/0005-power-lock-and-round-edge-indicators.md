@@ -174,15 +174,39 @@ photos:
   as ADR 0004's dark-on-dark list rows; fixed by setting the label's text
   color explicitly rather than inheriting the theme default.
 
+**Volume display redesigned after first hands-on use (2026-09-13)**: the
+originally additive linear bar (kept alongside the ring "until the ring
+proved legible on hardware") is now removed entirely, and the ring
+itself changed from always-visible to a temporary HUD:
+
+- The linear bar/label are gone. `updateVolumeDisplay()` previously only
+  updated the bar, never the ring — the ring looked present but did
+  nothing when turning the knob, which is what surfaced this whole
+  redesign rather than a smaller fix.
+- The ring (+ a numeric label) now shows only while volume is actively
+  being adjusted, auto-hiding `kVolumeHudTimeoutMs` (3000ms) after the
+  last change (`ScreenManager::tickVolumeHud()`, called every `loop()`),
+  the same interaction shape as a phone's volume overlay — matching user
+  feedback that a permanently-occupied center-screen readout for a value
+  "rarely being actively watched" wasn't worth the space.
+- The ring's host is intentionally oversized beyond the screen
+  (`kLcdHorRes/VerRes + 40`) and screens now clear
+  `LV_OBJ_FLAG_SCROLLABLE` (see the two new AGENTS.md gotchas this
+  produced: `lv_arc`'s knob-padding reservation, and LVGL's default
+  screen scrollbar becoming visible with an oversized child) so the ring
+  reaches the true round bezel edge rather than stopping short of it —
+  a screenshot showed a persistent gap between the ring and the physical
+  edge even once sized to exactly match the framebuffer.
+
 **Still not verified on real hardware**: whether holding the unlock
 button while turning the encoder is physically comfortable, whether 10
-detents is the right threshold, round-bezel legibility/placement of both
-rings and the lock button now that they render correctly (this screen's
-exact button layout — see `ScreenManager::renderNowPlaying()` — is
-flagged as preliminary, matching this project's established pattern of
-iterating this specific screen after seeing it on the device), actual
-backlight on/off timing, and whether the pocket-brushing-fabric
-assumption underlying the hold+turn gesture actually holds up.
+detents is the right threshold, the lock button's placement now that it
+renders correctly (this screen's exact button layout — see
+`ScreenManager::renderNowPlaying()` — is flagged as preliminary, matching
+this project's established pattern of iterating this specific screen
+after seeing it on the device), actual backlight on/off timing, and
+whether the pocket-brushing-fabric assumption underlying the hold+turn
+gesture actually holds up.
 
 ## Consequences
 

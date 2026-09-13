@@ -140,6 +140,24 @@ duplicating it.
   on real hardware — much faster and more precise than asking for a photo
   or a description. Requires pyserial; the `.sh` wrapper falls back to
   PlatformIO's bundled Python if the system one lacks it.
+- **An LVGL `lv_arc` reserves padding on `LV_PART_MAIN` sized for its
+  (draggable) knob, even after the knob's own style is removed** — a
+  ring meant to hug an edge renders visibly smaller than its host object
+  unless you also `lv_obj_set_style_pad_all(arc, 0, LV_PART_MAIN)`. Found
+  building the round-edge volume/unlock rings (ADR 0005,
+  `lib/ui-widgets/EdgeArc.h`) via a real-hardware screenshot: the ring
+  didn't reach the display's edge despite its host already being sized
+  to the full framebuffer.
+- **An LVGL screen (`lv_obj_create(nullptr)`) is scrollable by default,
+  and a child sized larger than the screen makes that visible** as thin
+  grey scrollbar lines along the screen's right/bottom edges — easy to
+  mistake for a rendering artifact in the content itself. This app
+  deliberately oversizes some widgets beyond the screen and lets the
+  round bezel clip the excess (see `ScreenManager::renderNowPlaying()`'s
+  volume ring host), so every screen now clears
+  `LV_OBJ_FLAG_SCROLLABLE` in `ScreenManager::render()` — this app has
+  its own swipe-gesture handling (`GestureRecognizer`) and never wants
+  built-in scroll behavior anyway.
 - **This specific board unit repeatedly goes into a state where it
   "runs" but a peripheral is silently dead, and only a real power cycle
   (unplug USB, wait, replug) fixes it -- a soft/RTS reset is not

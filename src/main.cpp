@@ -303,9 +303,10 @@ void loop() {
       // Cheap (no full re-render) so it can run on every tick -- see
       // ScreenManager::updateVolumeDisplay(). A no-op on any screen
       // other than Now Playing.
-      g_screenManager.updateVolumeDisplay();
+      g_screenManager.updateVolumeDisplay(now);
     }
   }
+  g_screenManager.tickVolumeHud(now);
 
   g_lockOverlay.tick();
 

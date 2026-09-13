@@ -50,6 +50,12 @@ class EdgeArc {
     // indicator.
     lv_obj_remove_style(arc_, nullptr, LV_PART_KNOB);
     lv_obj_clear_flag(arc_, LV_OBJ_FLAG_CLICKABLE);
+    // The default theme reserves padding on LV_PART_MAIN sized for the
+    // (now-removed) knob, which otherwise shrinks the visible ring well
+    // inside the host's bounds instead of reaching its edge -- found on
+    // real hardware 2026-09-13 (ring didn't reach the round bezel despite
+    // the host already being sized to the full display).
+    lv_obj_set_style_pad_all(arc_, 0, LV_PART_MAIN);
     lv_obj_set_style_arc_width(arc_, config.widthPx, LV_PART_INDICATOR);
     lv_obj_set_style_arc_width(arc_, config.widthPx, LV_PART_MAIN);
     lv_obj_set_style_arc_color(arc_, config.color, LV_PART_INDICATOR);
