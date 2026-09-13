@@ -13,6 +13,10 @@ Offline music player built on a Waveshare ESP32-S3-Knob-Touch-LCD-1.8 — see [`
 
 - Bluetooth headphone output
 - Wi-Fi-based features (time/date sync, weather, podcasts, internet radio)
+- USB mass-storage ("drive") mode for copying music without swapping the
+  SD card — the ESP32-S3's native USB-OTG could expose the SD card as a
+  USB drive via TinyUSB's MSC class while plugged in, so the card
+  wouldn't need to be physically removed and read on another computer
 
 These are acknowledged future ideas, not requirements yet — don't design around them prematurely.
 
