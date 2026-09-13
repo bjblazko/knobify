@@ -218,9 +218,34 @@ void ScreenManager::renderList(
     lv_obj_t *label = lv_obj_get_child(btn, 0);
     if (label) {
       lv_obj_set_style_text_font(label, &lv_font_montserrat_20, 0);
-      lv_obj_set_width(label, LV_PCT(100));
-      setClampedText(label, items[i].first.c_str(), 1);
     }
+
+    // Album rows end in the release year -- albums are sorted by it
+    // (LibraryIndex::albumsFor()), so this makes the order legible. Plain
+    // text, no pill/badge (ux-guidelines §7), and nothing at all when the
+    // year is unknown. No explicit color: it inherits the row's text color
+    // at reduced opacity, so it stays readable on the ink selected row too.
+    if (current.kind == ScreenKind::Albums) {
+      for (const auto &album : library_.albums) {
+        if (album.id != static_cast<library::AlbumId>(items[i].second) ||
+            album.year == 0) {
+          continue;
+        }
+        char yearText[8];
+        snprintf(yearText, sizeof(yearText), "%u",
+                 static_cast<unsigned>(album.year));
+        lv_obj_t *yearLabel = lv_label_create(btn);
+        lv_obj_set_style_text_font(yearLabel, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_opa(yearLabel, LV_OPA_60, 0);
+        lv_label_set_text(yearLabel, yearText);
+        lv_obj_set_style_pad_column(btn, 10, 0);
+        break;
+      }
+    }
+
+    // After the year label exists: the title label flex-grows into
+    // whatever width the year leaves, and truncates within that.
+    if (label) setClampedText(label, items[i].first.c_str(), 1);
 
     auto ctx = std::make_unique<ItemContext>();
     ctx->self = this;

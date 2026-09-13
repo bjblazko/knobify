@@ -316,6 +316,13 @@ Full architecture: [ADR 0005](../adr/0005-power-lock-and-round-edge-indicators.m
 - **List screens say where you are.** A small caption under the top
   control names the current context (artist, album, folder), since the
   top of a round screen is too narrow to be useful for rows anyway.
+- **Secondary facts are plain text, never badges.** Album rows end in the
+  release year (14px, the row's text color at reduced opacity) — it
+  explains the chronological sort. No pills or overlays: they cost width
+  on a narrow round screen and compete with the selected row. Nothing is
+  shown when the year is unknown, and no release type (album/EP/single)
+  is shown at all, since no reliable tag exists and guessing from track
+  count would be dishonest.
 - **Show tag data, not filenames.** Track titles, artists and albums come
   from the library's tags; the filename (without extension) is only the
   fallback when no tag exists (e.g. untagged files in the Files tab).
