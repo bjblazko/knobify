@@ -86,7 +86,7 @@ successful flash before trusting blindly.
 | I2S audio DAC (PCM5100A) | BCLK | 39 |
 | | WS/LRCK | 40 |
 | | DOUT | 41 |
-| Other | Battery ADC | 1 |
+| Other | Battery ADC | 1 (confirmed via live serial probe 2026-09-13 — plausible, stable ~2400mV reading with battery attached; see [ADR 0007](docs/adr/0007-battery-indicator.md)) |
 | | Mic (PDM) | CLK 45, DATA 46 |
 | | Inter-MCU UART (out of v1 scope) | TX 43, RX 44 |
 

@@ -16,6 +16,10 @@ Offline music player built on a Waveshare ESP32-S3-Knob-Touch-LCD-1.8 — see [`
   encoder — see [ADR 0005](docs/adr/0005-power-lock-and-round-edge-indicators.md)).
   Volume and unlock progress are shown as rings hugging the round
   display's edge, via a small reusable widget.
+- Battery level shown as a color-coded icon (green/yellow/red), visible
+  on every screen — see [ADR 0007](docs/adr/0007-battery-indicator.md).
+  No charging indicator: the board exposes no charge-status signal (no
+  dedicated pin, no voltage change on plug/unplug, no status LED).
 
 ## Explicitly out of scope for now
 
@@ -43,8 +47,8 @@ Offline music player built on a Waveshare ESP32-S3-Knob-Touch-LCD-1.8 — see [`
   hang it off, per decision 8 in ADR 0004)
 - General UX polish pass once the above land and real usage patterns are
   clearer
-- Battery level indicator (the board exposes a Battery ADC pin per
-  device.md)
+- Charging state indicator (no signal available to detect it — see
+  [ADR 0007](docs/adr/0007-battery-indicator.md))
 - Shuffle and repeat modes (per-album/all-library shuffle, repeat
   single/all) — decision 5's "no auto-repeat in v1" was a deliberate v1
   simplification, not a permanent rule

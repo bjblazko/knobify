@@ -5,6 +5,9 @@
 
 #include <cstring>
 
+#include "BatteryAdcDriver.h"
+#include "BatteryIndicator.h"
+#include "BatteryMonitor.h"
 #include "Cst816Driver.h"
 #include "EncoderPins.h"
 #include "Esp32AudioI2SDriver.h"
@@ -131,6 +134,9 @@ knobify::ui::ScreenManager g_screenManager(g_tabs, g_libraryIndex,
                                             g_lockController,
                                             g_libraryRescanner);
 knobify::ui::LockOverlay g_lockOverlay(g_lockController);
+knobify::drivers::BatteryAdcDriver g_batteryAdc;
+knobify::power::BatteryMonitor g_batteryMonitor;
+knobify::ui::BatteryIndicator g_batteryIndicator(g_batteryMonitor);
 knobify::input::InputRouter g_inputRouter(g_tabs, g_playback, g_screenManager);
 knobify::input::GestureRecognizer g_gestureRecognizer;
 
@@ -138,6 +144,10 @@ bool g_wasPlaying = false;
 bool g_backlightOn = true;
 bool g_touchPressedPrev = false;
 bool g_swallowingWakeTouch = false;
+uint32_t g_lastBatteryUpdateMs = 0;
+// Battery voltage moves slowly -- no need to re-read/re-render every
+// loop() iteration like touch/encoder input does.
+constexpr uint32_t kBatteryUpdateIntervalMs = 5000;
 
 void SdLibraryRescanner::rescan(knobify::library::ScanProgressListener *progress) {
   g_libraryIndex = loadOrBuildLibraryIndex(g_fileLister, g_fileOpener, progress);
@@ -150,6 +160,7 @@ void setup() {
   Serial.printf("knobify %s starting\n", knobify::kVersion);
 
   g_encoder.begin();
+  g_batteryAdc.begin();
   g_audioDriver.begin();
   // Must run after g_audioDriver.begin() (needs a real driver to push the
   // loaded volume into) -- see PlaybackStateMachine's constructor comment
@@ -218,6 +229,11 @@ void setup() {
     // Created after the first screen so it's above it on LVGL's top
     // layer from the start -- see LockOverlay.h.
     g_lockOverlay.begin();
+    // Created after LockOverlay so it z-orders on top of it too --
+    // battery status stays visible even while locked. See
+    // BatteryIndicator.h.
+    g_batteryIndicator.begin();
+    g_batteryIndicator.update(g_batteryAdc.readMilliVolts());
     if (bootScreen) lv_obj_del(bootScreen);
   }
 }
@@ -320,6 +336,11 @@ void loop() {
   g_screenManager.tickVolumeHud(now);
 
   g_lockOverlay.tick();
+
+  if (now - g_lastBatteryUpdateMs >= kBatteryUpdateIntervalMs) {
+    g_lastBatteryUpdateMs = now;
+    g_batteryIndicator.update(g_batteryAdc.readMilliVolts());
+  }
 
   g_playback.tick(now);
   // Cheap (no full re-render), a no-op on any screen other than Now
