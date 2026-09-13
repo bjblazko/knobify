@@ -52,6 +52,25 @@ class ScanProgressLabelListener : public knobify::library::ScanProgressListener 
   lv_obj_t *label_;
 };
 
+// Sets a label's text, wrapping to at most `maxLines` lines and ending
+// in an ellipsis beyond that. LV_LABEL_LONG_DOT alone only truncates a
+// label whose height is fixed -- with the default content height a long
+// title just kept wrapping and overlapped whatever sat below it (found
+// on real hardware 2026-09-13 with "70 Cities as Love Brings the Fall").
+// The label's font and width must already be set.
+void setClampedText(lv_obj_t *label, const char *text, int maxLines) {
+  lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
+  lv_label_set_text(label, text);
+  lv_obj_update_layout(label);
+  const lv_font_t *font = lv_obj_get_style_text_font(label, LV_PART_MAIN);
+  lv_coord_t lineSpace = lv_obj_get_style_text_line_space(label, LV_PART_MAIN);
+  lv_coord_t maxHeight = maxLines * lv_font_get_line_height(font) +
+                         (maxLines - 1) * lineSpace;
+  if (lv_obj_get_height(label) > maxHeight) {
+    lv_obj_set_height(label, maxHeight);
+  }
+}
+
 }  // namespace
 
 void ScreenManager::begin() { render(); }
@@ -204,7 +223,8 @@ void ScreenManager::renderList(
     lv_obj_t *label = lv_obj_get_child(btn, 0);
     if (label) {
       lv_obj_set_style_text_font(label, &lv_font_montserrat_20, 0);
-      lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
+      lv_obj_set_width(label, LV_PCT(100));
+      setClampedText(label, items[i].first.c_str(), 1);
     }
 
     auto ctx = std::make_unique<ItemContext>();
@@ -229,16 +249,17 @@ void ScreenManager::renderList(
   }
 
   if (showMiniBar) {
-    // An accent pill, not a bordered white box (read as a text input
-    // field) and not ink (read as a second selected row) -- it is the
-    // list screen's one primary action: back to what's playing. Narrower than full width and inset from the very
+    // A pale green pill -- green meaning "active/running" (ux-guidelines
+    // §3). Not a bordered white box (read as a text input field), not ink
+    // (read as a second selected row), not accent or grey (too loud /
+    // too anonymous, per user feedback 2026-09-13). Narrower than full width and inset from the very
     // bottom edge: flush-bottom, full-width was clipped by the round
     // bezel down to a sliver (found on real hardware 2026-09-12).
     miniBar_ = lv_obj_create(screen_);
     lv_obj_set_size(miniBar_, 240, 44);
     lv_obj_align(miniBar_, LV_ALIGN_BOTTOM_MID, 0, -16);
     lv_obj_set_style_radius(miniBar_, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(miniBar_, theme::accent(), 0);
+    lv_obj_set_style_bg_color(miniBar_, theme::confirmTint(), 0);
     lv_obj_set_style_border_width(miniBar_, 0, 0);
     lv_obj_set_style_pad_all(miniBar_, 0, 0);
     // A long title otherwise made the pill itself scrollable, showing a
@@ -252,15 +273,14 @@ void ScreenManager::renderList(
                       playback_.state() == playback::PlaybackState::Playing
                           ? LV_SYMBOL_PLAY
                           : LV_SYMBOL_PAUSE);
-    lv_obj_set_style_text_color(stateGlyph, theme::surface(), 0);
+    lv_obj_set_style_text_color(stateGlyph, theme::confirm(), 0);
     lv_obj_align(stateGlyph, LV_ALIGN_LEFT_MID, 20, 0);
 
     lv_obj_t *label = lv_label_create(miniBar_);
     lv_obj_set_style_text_font(label, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(label, theme::surface(), 0);
-    lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_text_color(label, theme::ink(), 0);
     lv_obj_set_width(label, 170);
-    lv_label_set_text(label, trackInfoFor(playback_.currentPath()).title.c_str());
+    setClampedText(label, trackInfoFor(playback_.currentPath()).title.c_str(), 1);
     lv_obj_align(label, LV_ALIGN_LEFT_MID, 48, 0);
 
     lv_obj_add_flag(miniBar_, LV_OBJ_FLAG_CLICKABLE);
@@ -306,9 +326,8 @@ void ScreenManager::renderContextCaption() {
   lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
   lv_obj_set_style_text_color(label, theme::structure(), 0);
   lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
-  lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
   lv_obj_set_width(label, 200);
-  lv_label_set_text(label, caption.c_str());
+  setClampedText(label, caption.c_str(), 1);
   lv_obj_align(label, LV_ALIGN_TOP_MID, 0, kCaptionY);
 }
 
@@ -435,10 +454,14 @@ void ScreenManager::renderNowPlaying() {
   lv_obj_t *title = lv_label_create(screen_);
   lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
   lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
-  lv_label_set_long_mode(title, LV_LABEL_LONG_DOT);
   lv_obj_set_width(title, 240);
-  lv_label_set_text(title, info.title.c_str());
+  // Long titles: two lines when there's no cover to make room for, one
+  // line otherwise -- with a cover the transport row leaves no space for
+  // a second line. Either way the artist line follows the title's actual
+  // height rather than a fixed offset.
+  setClampedText(title, info.title.c_str(), coverSize != 0 ? 1 : 2);
   lv_obj_align(title, LV_ALIGN_TOP_MID, 0, titleY);
+  lv_coord_t metaY = titleY + lv_obj_get_height(title) + 4;
 
   std::string meta = info.artist;
   if (!info.album.empty()) {
@@ -452,10 +475,9 @@ void ScreenManager::renderNowPlaying() {
     lv_obj_set_style_text_font(metaLabel, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(metaLabel, theme::structure(), 0);
     lv_obj_set_style_text_align(metaLabel, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_long_mode(metaLabel, LV_LABEL_LONG_DOT);
     lv_obj_set_width(metaLabel, 220);
-    lv_label_set_text(metaLabel, meta.c_str());
-    lv_obj_align(metaLabel, LV_ALIGN_TOP_MID, 0, titleY + 28);
+    setClampedText(metaLabel, meta.c_str(), 1);
+    lv_obj_align(metaLabel, LV_ALIGN_TOP_MID, 0, metaY);
   }
 
   // Song-progress ring -- the resting-state edge ring on this screen.

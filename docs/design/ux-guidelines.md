@@ -97,8 +97,9 @@ token, never a raw hex value or an LVGL palette color.
 
 | Token | Name | Hex | Meaning |
 |---|---|---|---|
-| `accent` | Orange Signal | `#E85D04` | The single primary action on a screen (Play/Pause, Unlock; on list screens the mini-bar pill back to Now Playing) |
-| `confirm` | Functional Green | `#2A8C4A` | Confirmation in progress — unlock progress |
+| `accent` | Orange Signal | `#E85D04` | The single primary action on a screen (Play/Pause, Unlock) |
+| `confirm` | Functional Green | `#2A8C4A` | Confirmation / active state — unlock progress, mini-bar playback glyph |
+| `confirmTint` | Pale Green | `#D3E4D7` | Background of "something is running" surfaces — the mini-bar pill |
 | `warning` | Accent Red | `#D62828` | Needs attention — low/empty battery |
 
 Braun Yellow (`#F5AA1C`) was part of the original palette and is
@@ -133,8 +134,10 @@ backlight. Every screen, the lock screen included, uses `surface`.
   16 body (mini-bar, hints) · 20 title (list rows, track title, "Locked") ·
   28 numeral & primary glyph (volume readout, Play/Pause icon).
 - **Selection and action never share a color.** The knob-selected list
-  row is `ink`; the mini-bar is an `accent` pill — an ink mini-bar read as
-  a second selected row.
+  row is `ink`; the always-present mini-bar is a pale `confirmTint` pill
+  with a `confirm` glyph (green = active/running) — an ink mini-bar read as
+  a second selected row, and an accent one was too loud for something
+  permanently on screen.
 - **Shapes.** Circles for the round, thumb-operated controls (transport,
   unlock) — echoing the device's own form. 12px radius for list rows;
   fully rounded pills for the mini-bar and volume readout.
@@ -286,7 +289,11 @@ Full architecture: [ADR 0005](../adr/0005-power-lock-and-round-edge-indicators.m
   edge.
 - **Prefer static truncation over marquee scrolling.** A bigger font with
   a clean ellipsis reads better on a small round display than several
-  long names scrolling mid-marquee at once.
+  long names scrolling mid-marquee at once. Every text has an explicit
+  line budget: list rows, captions, mini-bar and the artist line get one
+  line; the Now Playing title gets two when no cover is shown, one
+  otherwise. Whatever follows a variable-height text is positioned from
+  its actual height, never a fixed offset.
 - **Minimalism in widgets.** Build a widget for its current, real use
   case (e.g. `EdgeArc` as a thin config+create/setValue wrapper); extend
   it only once a genuine further use case needs more, rather than
