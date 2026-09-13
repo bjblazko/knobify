@@ -14,11 +14,15 @@ already answer "does knobify already have a stance on this?" It exists so
 that design intent isn't only discoverable by reading ADR prose written
 for a specific decision, or by tracing rationale through source comments.
 
+This document must itself follow principle 6 (honest): anything
+described here is either implemented, or explicitly marked *decided, not
+yet implemented*.
+
 ## 2. Design Philosophy — Dieter Rams' Ten Principles
 
 knobify's UI decisions are read through Dieter Rams' ten principles of
-good design. Each is listed with a short note on how it already shows up
-in the product today.
+good design. Each is listed with a short note on how it shows up in the
+product.
 
 1. **Good design is innovative.** Solutions should fit *this* device —
    e.g. the hold-button-while-turning-encoder unlock gesture exists
@@ -28,34 +32,39 @@ in the product today.
    from the two real usage contexts knobify is actually used in: on a
    table, and in a pocket while playing (§6).
 3. **Good design is aesthetic.** Visual quality is not an afterthought —
-   see the Color System (§3) as the intended long-term visual language.
+   one palette (§3) and one typographic scale, shape vocabulary and
+   control hierarchy (§3a) apply to every screen.
 4. **Good design makes a product understandable.** The UI's structure
    should be self-explanatory: context-sensitive controls (§5) instead of
-   modes that must be remembered, and gestures taught once via a brief
-   animated hint rather than a manual (§5).
+   modes that must be remembered, a caption telling you *where* you are
+   in a list (§7), and exactly one visually dominant control per screen
+   telling you *what* the main action is (§3a).
 5. **Good design is unobtrusive.** Widgets serve the content, not the
-   other way round — e.g. the Now Playing screen shows no album-art
-   placeholder when no cover is cached, matching the screen's existing
-   minimalism rather than filling the gap with decoration.
+   other way round — e.g. no album-art placeholder when no cover is
+   cached, secondary controls drawn as quiet unfilled icons, and the
+   battery indicator staying neutral until it actually needs attention.
 6. **Good design is honest.** Indicators show only what's actually known
-   — e.g. the battery indicator shows charge level but never fakes a
-   charging state, since no real signal exists for it.
-7. **Good design is long-lasting.** Widgets are built for their current,
-   real use case and extended later only when a genuine second need
-   appears (e.g. `EdgeArc`), rather than speculatively generalized up
-   front.
+   — the battery indicator never fakes a charging state, the progress
+   ring is hidden when a track's duration is unknown, and titles come
+   from tags rather than dressed-up filenames whenever tags exist.
+7. **Good design is long-lasting.** No fashionable effects (gradients,
+   glows, shadows, glassmorphism). The form vocabulary is deliberately
+   timeless: a neutral surface, one typeface, the circle (echoing the
+   round device itself) and the rounded rectangle.
 8. **Good design is thorough down to the last detail.** The round bezel's
    corner-clipping and edge behavior has been re-learned and fixed
    repeatedly across nearly every screen (§4, §7) — sweating exactly
    these details is treated as core to the job, not polish to defer.
-9. **Good design is environmentally friendly.** Not yet a live driver of
-   any decision in this project; kept in the list because it's part of
-   the source philosophy this document follows.
+9. **Good design is environmentally friendly.** On a battery device this
+   means energy and longevity: the display powers off when idle (§6), no
+   animation runs perpetually (the lock ring's pulse only runs while the
+   lock screen is actually shown), and the device needs no cloud or
+   account — music lives on a user-replaceable SD card.
 10. **Good design is as little design as possible.** Prefer one reusable
-    mechanism over several one-off effects — e.g. screen-transition slide
-    animation is the one animation investment scoped for v1, reused for
-    every push/pop/tab-switch rather than building a different effect per
-    screen (§5).
+    mechanism over several one-off effects — e.g. one `EdgeArc` widget
+    serves the volume, unlock-progress and song-progress rings, and one
+    button helper with two roles (§3a) draws every button on every
+    screen.
 
 ## 3. Color System — Braun-Inspired Palette
 
@@ -66,50 +75,73 @@ function, signaling, and operability, in the tradition of Dieter Rams'
 work for Braun. A UI should read correctly even if every accent color
 were removed; color then adds meaning on top, sparingly.
 
-- **90% neutral base** (white / light grey)
-- **9% structure & contrast** (dark grey / black)
-- **1% signal / accent** (yellow, orange, green, red)
+- **90% neutral base** (off-white / light grey)
+- **9% structure & contrast** (anthracite / matte black)
+- **1% signal / accent** (orange, green, red)
 
 ### Palette
 
-**Neutral base** (housing & surfaces):
+Every color maps 1:1 to a token in `lib/ui/Theme.h` — UI code uses the
+token, never a raw hex value or an LVGL palette color.
 
-| Name | Hex | Use |
-|---|---|---|
-| Snow White | `#F4F4F0` | Primary surface color — a warm off-white, not stark white |
-| Light Grey | `#DCDDD8` | Secondary surfaces, panels, backgrounds |
-| Mid Anthracite | `#4A4C4E` | Dark structural elements, scales, dividers, contrast text |
-| Matte Black | `#1E1F21` | High-contrast panels, control surfaces |
+**Neutral base & structure:**
 
-**Signal & accent colors** (functional elements only):
+| Token | Name | Hex | Use |
+|---|---|---|---|
+| `surface` | Snow White | `#F4F4F0` | Screen background everywhere, including the lock screen; text on dark elements |
+| `surfaceAlt` | Light Grey | `#DCDDD8` | Unfilled ring tracks, pressed state of quiet controls |
+| `structure` | Mid Anthracite | `#4A4C4E` | Secondary text (captions, time), quiet icons, song-progress ring, battery |
+| `ink` | Matte Black | `#1E1F21` | Primary text, selected list row, mini-bar pill, volume ring |
 
-| Name | Hex | Use |
-|---|---|---|
-| Braun Yellow | `#F5AA1C` | Primary call-to-action — power/activate, the single most important interactive point on a screen |
-| Orange Signal | `#E85D04` | Main switches, key interaction points |
-| Functional Green | `#2A8C4A` | Confirmation, active/operating state, volume/level feedback |
-| Accent Red | `#D62828` | Record/stop, warnings |
+**Signal colors** (functional elements only):
+
+| Token | Name | Hex | Meaning |
+|---|---|---|---|
+| `accent` | Orange Signal | `#E85D04` | The single primary action on a screen (Play/Pause, Unlock; on list screens the mini-bar's playback-state glyph) |
+| `confirm` | Functional Green | `#2A8C4A` | Confirmation in progress — unlock progress |
+| `warning` | Accent Red | `#D62828` | Needs attention — low/empty battery |
+
+Braun Yellow (`#F5AA1C`) was part of the original palette and is
+deliberately retired: two "primary" signal colors (yellow and orange)
+competed for the same meaning, and yellow shapes read weakly against an
+off-white surface on this reflective display.
 
 ### Application rules
 
-1. **Restraint** — at most one accent color per UI context/screen. Two
-   competing accents read as noise, not signal (this is also why the
-   volume ring and the unlock-progress ring were deliberately given
-   different accent colors rather than sharing one — see §6).
+1. **Restraint** — at most one accent (orange) element per screen. Green
+   and red only ever appear as state signals, never as decoration.
 2. **Functional separation** — color signals clickability or state, never
    just decoration. If a color doesn't mean something, don't add it.
-3. **No noise** — neutrals stay matte/desaturated. Avoid bright or
-   saturated tones outside the four signal colors above.
+3. **Similar-looking indicators get distinct colors by meaning.** The
+   three edge rings look alike, so each carries its meaning in its color:
+   song progress `structure` (passive information), volume `ink` (a scale
+   you are actively setting), unlock progress `confirm`. This — not
+   restraint — is why they differ (§6).
+4. **No noise** — neutrals stay matte/desaturated; no shadows or
+   gradients.
 
-### Status: adopted, not yet applied on-device
+### Why a light theme
 
-This palette is the design language knobify is adopting going forward.
-The current on-device theme (a light LVGL theme with an indigo accent,
-chosen 2026-09-12 — see `lib/ui/LvglGlue.cpp` — because this display is a
-reflective IPS LCD that didn't render an earlier dark theme well) predates
-this palette and has not yet been reconciled against it. Bringing the
-running UI in line with this palette is a separate future implementation
-task, not covered by this document's consolidation.
+This display is a reflective IPS LCD, not an OLED — a dark theme (tried
+first) rendered poorly, and black pixels save no power on an LCD
+backlight. Every screen, the lock screen included, uses `surface`.
+
+## 3a. Typography, Shape & Control Hierarchy
+
+- **One typeface, four sizes** (Montserrat, LVGL built-in):
+  14 caption/secondary (artist line, time, list caption, battery) ·
+  16 body (mini-bar, hints) · 20 title (list rows, track title, "Locked") ·
+  28 numeral (volume readout only).
+- **Shapes.** Circles for the round, thumb-operated controls (transport,
+  unlock) — echoing the device's own form. 12px radius for list rows;
+  fully rounded pills for the mini-bar and volume readout.
+- **Control hierarchy — two button roles, nothing else:**
+  - *Primary*: a filled `accent` circle with a white glyph. Exactly one per
+    screen — it is the answer to "what does this screen do?".
+  - *Quiet*: no fill, `structure` glyph, `surfaceAlt` background only while
+    pressed. Back, lock, scan, previous, next.
+- **Touch targets** are at least 44px in their smaller dimension, even when
+  the visible glyph is smaller.
 
 ## 4. Hardware Constraints That Drive Every Screen
 
@@ -152,19 +184,20 @@ Full architecture: [ADR 0004](../adr/0004-navigation-library-and-index-architect
   it explicitly.
 - **Always-visible back button, in addition to swipe.** Swipe-to-back
   alone wasn't discoverable in real usage (a user reaching Now Playing had
-  no visible way back at all) — a supplementary, always-visible back
-  affordance was added, positioned top-center rather than a corner (§4,
-  §7).
+  no visible way back at all) — a supplementary, always-visible quiet
+  back affordance sits top-center rather than in a corner (§4, §7).
 - **Gesture discoverability via a one-time nudge, not a persistent icon.**
-  Each gesture (swipe-to-back, swipe-to-switch-tab) is taught by briefly
-  animating the screen content in that direction, shown once *ever* per
-  gesture type (tracked via a persisted flag), not on every screen visit
-  or every boot.
-- **Animation is scoped to screen transitions only, for v1.** Push/pop/
-  tab-switch transitions slide in the gesture's direction, reusing one
-  mechanism everywhere rather than building several one-off effects — the
-  one animation investment made for v1 (further ideas, e.g. Now Playing
-  flourishes, are deliberately deferred).
+  *Decided, not yet implemented.* Each gesture (swipe-to-back,
+  swipe-to-switch-tab) is to be taught by briefly animating the screen
+  content in that direction, shown once *ever* per gesture type (tracked
+  via a persisted flag), not on every screen visit or every boot.
+- **Animation is scoped to screen transitions only, for v1.** *Decided,
+  not yet implemented* — screens currently switch instantly. Push/pop/
+  tab-switch transitions are to slide in the gesture's direction, reusing
+  one mechanism everywhere rather than building several one-off effects.
+  The lock ring's pulse (§6) is the one existing non-transition
+  animation, justified because it carries meaning (an invitation to
+  interact), not decoration.
 
 ## 6. Power, Lock & Status Flows
 
@@ -192,22 +225,28 @@ Full architecture: [ADR 0005](../adr/0005-power-lock-and-round-edge-indicators.m
   pauses while actually holding (real progress becomes the feedback
   instead), keeping the invitation-to-interact and the in-progress
   feedback visually distinct.
-- **Distinct accent colors prevent two rings being confused.** The Now
-  Playing volume ring and the lock screen's unlock-progress ring look
-  superficially similar (both are edge-hugging arcs), so they're given
-  different accent colors (indigo for volume, green for unlock progress)
-  plus a visible background track at both, matching the "one accent
-  reads clearly" rule in §3.
+- **Edge rings carry meaning in their color** (§3 rule 3): song progress
+  `structure`, volume `ink`, unlock progress `confirm` — each on a visible
+  `surfaceAlt` track.
+- **One edge ring visible at a time.** On Now Playing the thin song-
+  progress ring is the resting state; while volume is being adjusted the
+  volume ring temporarily replaces it, then hands back. Two concentric
+  rings at once would be noise.
+- **Song progress is shown only when known.** The progress ring is hidden
+  if the decoder reports no duration — no fabricated progress.
 - **Volume feedback follows a phone's volume-HUD shape.** Volume shows as
   a ring + numeric readout only while actively being adjusted, auto-
   hiding shortly after the last change — a permanently-occupied
   center-screen readout for a value that's rarely being actively watched
   wasn't worth the space.
 - **Status indicators live above every screen, not per-screen.** Battery
-  level (color-coded, no charging state — no real signal exists to detect
-  it, and a fabricated one would be actively misleading) is rendered once
-  on LVGL's top layer so it's visible everywhere, including the lock
-  overlay, rather than being added to every individual screen.
+  level (no charging state — no real signal exists to detect it, and a
+  fabricated one would be actively misleading) is rendered once on LVGL's
+  top layer so it's visible everywhere, including the lock overlay.
+- **Status indicators stay quiet until they matter.** The battery icon is
+  `structure` grey at normal charge and turns `warning` red only when low
+  or empty — a permanently green icon would spend the screen's color
+  budget on "nothing to report".
 - **Status indicators are corner-safe by placement, not by luck.** The
   battery icon sits on the same row as the back/scan button (top-center),
   not a screen corner — an initial corner placement looked correct in a
@@ -222,6 +261,16 @@ Full architecture: [ADR 0005](../adr/0005-power-lock-and-round-edge-indicators.m
   placed near an edge must be confirmed on the physical board — a
   serial-dumped screenshot captures the raw square framebuffer, not what
   the round bezel actually shows.
+- **Content never scrolls underneath fixed controls.** A list starts
+  below the header zone (back/scan button + caption) and ends above the
+  mini-bar, instead of spanning the full screen with padding — rows
+  sliding under the back button collided with it visually.
+- **List screens say where you are.** A small caption under the top
+  control names the current context (artist, album, folder), since the
+  top of a round screen is too narrow to be useful for rows anyway.
+- **Show tag data, not filenames.** Track titles, artists and albums come
+  from the library's tags; the filename (without extension) is only the
+  fallback when no tag exists (e.g. untagged files in the Files tab).
 - **Asymmetric insets for left-to-right text.** Padding the leading edge
   more than the trailing edge keeps the start of each row's text clear of
   the round bezel's curve, without wasting space on the (less
@@ -236,12 +285,11 @@ Full architecture: [ADR 0005](../adr/0005-power-lock-and-round-edge-indicators.m
   long names scrolling mid-marquee at once.
 - **Minimalism in widgets.** Build a widget for its current, real use
   case (e.g. `EdgeArc` as a thin config+create/setValue wrapper); extend
-  it only once a genuine second use case needs more, rather than
+  it only once a genuine further use case needs more, rather than
   generalizing speculatively.
 - **No placeholder for absent data.** When information isn't available
   (e.g. no cached album art), show nothing rather than a placeholder —
-  matching a screen's existing minimalism rather than adding decoration
-  to fill a gap.
+  the remaining content moves up to fill the space instead.
 
 ## 8. Scope Boundaries
 
@@ -260,8 +308,12 @@ listed here for visibility):
 - Whether holding the unlock button while turning the encoder is
   physically comfortable in practice.
 - Whether 10 detents is the right unlock threshold.
-- The lock button's final placement on the Now Playing screen (currently
-  flagged as preliminary; this screen's layout has needed repeated
-  hardware-driven adjustment).
 - Whether the pocket-brushing-fabric assumption underlying the hold+turn
   gesture actually holds up in real pocket use.
+
+Raised by the 2026-09-13 redesign (need confirmation on the physical
+bezel, not a screenshot):
+
+- Whether the thin song-progress ring stays visible at the round edge.
+- Final vertical offsets on Now Playing (cover, title block, transport
+  row, quiet lock button at bottom-center).

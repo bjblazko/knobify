@@ -33,13 +33,9 @@ screens described below.
   SD card — the ESP32-S3's native USB-OTG could expose the SD card as a
   USB drive via TinyUSB's MSC class while plugged in, so the card
   wouldn't need to be physically removed and read on another computer
-- Album art display (cover images on the Now Playing screen)
 - Jog/shuttle-style scrubbing through a track's playback position
-- A circular progress ring for playback position (the volume and
-  unlock-progress rings are in scope, see Goal above; a position ring
-  around the edge is not)
 - Theming (selectable color schemes / customizable look)
-- General visual polish and animation ("eye candy") beyond the current
+- General visual polish and animation ("eye candy") beyond the planned
   one-time gesture-hint nudge and screen-transition slide
 - Voice memo / dictation recording via the onboard PDM microphone
 - Audio visualizations (spectrum analyzer, VU meter, etc.)

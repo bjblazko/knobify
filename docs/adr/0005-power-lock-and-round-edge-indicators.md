@@ -171,7 +171,9 @@ photos:
   was the (intentionally always-visible-on-Now-Playing) volume ring.
   Fixed by giving them distinct colors (indigo for volume, green for
   unlock progress) plus a light grey background arc on both so the ring's
-  full extent is visible at low values.
+  full extent is visible at low values. *(Colors superseded 2026-09-13
+  by the Braun palette — volume `ink`, unlock `confirm`, song progress
+  `structure`; see [UX guidelines §3](../design/ux-guidelines.md).)*
 - **`LockOverlay`'s "Locked" label was invisible** — the app's light
   theme's default label text color is dark, meant for a light
   background, and the overlay's background is black. Same class of bug
