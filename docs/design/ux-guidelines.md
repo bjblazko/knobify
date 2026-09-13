@@ -41,7 +41,7 @@ product.
    telling you *what* the main action is (§3a).
 5. **Good design is unobtrusive.** Widgets serve the content, not the
    other way round — e.g. no album-art placeholder when no cover is
-   cached, secondary controls drawn as quiet unfilled icons, and the
+   cached, navigation and utility controls drawn as quiet unfilled icons, and the
    battery indicator staying neutral until it actually needs attention.
 6. **Good design is honest.** Indicators show only what's actually known
    — the battery indicator never fakes a charging state, the progress
@@ -63,7 +63,7 @@ product.
 10. **Good design is as little design as possible.** Prefer one reusable
     mechanism over several one-off effects — e.g. one `EdgeArc` widget
     serves the volume, unlock-progress and song-progress rings, and one
-    button helper with two roles (§3a) draws every button on every
+    button helper with three roles (§3a) draws every button on every
     screen.
 
 ## 3. Color System — Braun-Inspired Palette
@@ -89,7 +89,7 @@ token, never a raw hex value or an LVGL palette color.
 | Token | Name | Hex | Use |
 |---|---|---|---|
 | `surface` | Snow White | `#F4F4F0` | Screen background everywhere, including the lock screen; text on dark elements |
-| `surfaceAlt` | Light Grey | `#DCDDD8` | Unfilled ring tracks, pressed state of quiet controls, mini-bar area |
+| `surfaceAlt` | Light Grey | `#DCDDD8` | Unfilled ring tracks, secondary buttons, pressed state of quiet controls, mini-bar area |
 | `structure` | Mid Anthracite | `#4A4C4E` | Secondary text (captions, time), quiet icons, battery |
 | `ink` | Matte Black | `#1E1F21` | Primary text, selected list row, volume readout pill |
 
@@ -151,11 +151,14 @@ backlight. Every screen, the lock screen included, uses `surface`.
   full-width bottom area that the round bezel cuts into a circle segment
   — letting the bezel shape an element is fine when its *content* stays
   inside the visible circle.
-- **Control hierarchy — two button roles, nothing else:**
+- **Control hierarchy — three button roles, nothing else:**
   - *Primary*: a filled `accent` circle with a white glyph. Exactly one per
     screen — it is the answer to "what does this screen do?".
+  - *Secondary*: a filled `surfaceAlt` circle with an `ink` glyph.
+    Companions of the primary control — previous/next beside Play/Pause,
+    like the grey keys beside the one colored key on a Braun tape deck.
   - *Quiet*: no fill, `structure` glyph, `surfaceAlt` background only while
-    pressed. Back, lock, scan, previous, next.
+    pressed. Navigation and utility — back, lock, scan.
 - **Touch targets** are at least 44px in their smaller dimension, even when
   the visible glyph is smaller.
 

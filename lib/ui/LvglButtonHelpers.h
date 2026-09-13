@@ -6,11 +6,12 @@
 
 namespace knobify::ui {
 
-// The two button roles from docs/design/ux-guidelines.md §3a -- every
+// The three button roles from docs/design/ux-guidelines.md §3a -- every
 // button in the app is exactly one of these.
 enum class ButtonRole {
-  Primary,  // Filled accent circle. Exactly one per screen.
-  Quiet,    // Unfilled anthracite glyph. Everything else.
+  Primary,    // Filled accent circle. Exactly one per screen.
+  Secondary,  // Filled light-grey circle. Companions of the primary.
+  Quiet,      // Unfilled anthracite glyph. Navigation and utility.
 };
 
 namespace detail {
@@ -21,10 +22,16 @@ inline lv_obj_t *makeButton(lv_obj_t *parent, const char *symbolOrGlyph,
   lv_obj_t *btn = lv_btn_create(parent);
   lv_obj_set_size(btn, width, height);
   lv_obj_align(btn, align, xOfs, yOfs);
-  if (role == ButtonRole::Primary) {
-    theme::stylePrimaryButton(btn);
-  } else {
-    theme::styleQuietButton(btn);
+  switch (role) {
+    case ButtonRole::Primary:
+      theme::stylePrimaryButton(btn);
+      break;
+    case ButtonRole::Secondary:
+      theme::styleSecondaryButton(btn);
+      break;
+    case ButtonRole::Quiet:
+      theme::styleQuietButton(btn);
+      break;
   }
   lv_obj_t *label = lv_label_create(btn);
   if (font) lv_obj_set_style_text_font(label, font, 0);

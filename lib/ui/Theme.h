@@ -31,7 +31,7 @@ constexpr lv_coord_t kRowRadius = 12;
 // display is registered.
 void apply(lv_disp_t *disp);
 
-// The two -- and only two -- button roles (ux-guidelines §3a). Applied as
+// The three button roles (ux-guidelines §3a). Applied as
 // local styles, so they win over whatever the theme gave the button.
 //
 // Primary: filled accent circle, white glyph. Exactly one per screen.
@@ -43,8 +43,20 @@ inline void stylePrimaryButton(lv_obj_t *btn) {
   lv_obj_set_style_shadow_width(btn, 0, 0);
 }
 
+// Secondary: filled light-grey circle, ink glyph, darker grey while
+// pressed. Controls that belong to the primary one (previous/next next to
+// Play/Pause) -- like the grey keys beside the one colored key on a Braun
+// tape deck.
+inline void styleSecondaryButton(lv_obj_t *btn) {
+  lv_obj_set_style_radius(btn, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_color(btn, surfaceAlt(), 0);
+  lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+  lv_obj_set_style_text_color(btn, ink(), 0);
+  lv_obj_set_style_shadow_width(btn, 0, 0);
+}
+
 // Quiet: no fill, anthracite glyph, light-grey background only while
-// pressed. Back, lock, scan, previous, next.
+// pressed. Navigation and utility: back, lock, scan.
 inline void styleQuietButton(lv_obj_t *btn) {
   lv_obj_set_style_radius(btn, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_bg_opa(btn, LV_OPA_TRANSP, 0);

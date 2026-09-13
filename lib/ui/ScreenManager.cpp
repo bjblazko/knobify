@@ -564,12 +564,12 @@ void ScreenManager::renderNowPlaying() {
   lv_obj_center(volumeHudLabel_);
   lv_obj_add_flag(volumeHudPill_, LV_OBJ_FLAG_HIDDEN);
 
-  // Transport row: quiet prev/next either side of the one primary
-  // control. Inset well within the round display's visible area at this
+  // Transport row: secondary (grey) prev/next either side of the one
+  // primary control. Inset well within the round display's visible area at this
   // height -- see decision 6, ADR 0004.
   makeIconButton(screen_, LV_SYMBOL_PREV, 56, 56, LV_ALIGN_TOP_MID, -84,
                  kTransportCenterY - 28, &ScreenManager::onPrevClicked, this,
-                 ButtonRole::Quiet, &lv_font_montserrat_20);
+                 ButtonRole::Secondary, &lv_font_montserrat_20);
 
   makeIconButton(screen_,
                  playback_.state() == playback::PlaybackState::Playing
@@ -581,7 +581,7 @@ void ScreenManager::renderNowPlaying() {
 
   makeIconButton(screen_, LV_SYMBOL_NEXT, 56, 56, LV_ALIGN_TOP_MID, 84,
                  kTransportCenterY - 28, &ScreenManager::onNextClicked, this,
-                 ButtonRole::Quiet, &lv_font_montserrat_20);
+                 ButtonRole::Secondary, &lv_font_montserrat_20);
 
   // Elapsed (and, once known, total) play time -- requested after real
   // hardware testing made it clear there was no way to tell whether
