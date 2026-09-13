@@ -270,6 +270,9 @@ per project goals.
   back/tab-switch navigation, one-time gesture-hint animation, and
   screen-transition animation. See
   [ADR 0004](../adr/0004-navigation-library-and-index-architecture.md)
+  for the architecture and
+  [`docs/design/ux-guidelines.md`](../design/ux-guidelines.md) for the
+  design philosophy and visual language behind it.
 - **Display power and device lock** — idle-timeout display off/wake
   (with first-touch-after-wake swallowed), and a manual lock using a
   hold-button-while-turning-encoder unlock gesture, independent states

@@ -19,6 +19,10 @@ neither is documented anywhere for this board:
   square framebuffer — the corners are clipped by the bezel, which rules
   out corner-anchored UI affordances like a fixed back button.
 
+See [`docs/design/ux-guidelines.md`](../design/ux-guidelines.md) for the
+full design-philosophy treatment of these constraints and the interaction
+principles they drive.
+
 The user also wants the ability to browse the SD card as a raw folder
 tree (not just by tag-derived Artist/Album), gestures to be discoverable
 without a persistent UI element or a separate tutorial screen, and a
@@ -37,23 +41,23 @@ today's root is `Screen{Artists}`; inserting a future `Home` screen above
 it is a one-line change at the call site, not a rework of the stack.
 
 Two peer browsing modes exist as of v1: **Library** (tag-based Artist →
-Album → Track) and **Files** (raw folder browse, arbitrary depth). Rather
-than a picker screen, they're modeled as two swipeable top-level tabs. A
+Album → Track) and **Files** (raw folder browse, arbitrary depth), modeled
+as two swipeable top-level tabs rather than a picker screen. A
 `TabController` owns one `NavigationStack` per tab (roots: `Screen{Artists}`
 and `Screen{Folder, path="/"}`) and the currently active tab. A left-right
 swipe pops the active stack if `canGoBack()` is true; otherwise (nothing
-to go back to — you're at a tab root) the same gesture switches tabs. This
-reuses one gesture for two purposes based on context, matching the same
-context-sensitivity principle applied to the encoder below, and needs no
-extra screen or picker UI.
+to go back to — you're at a tab root) the same gesture switches tabs. See
+[`ux-guidelines.md` §5](../design/ux-guidelines.md#5-navigation-model--gesture-flows)
+for the rationale behind reusing one gesture this way.
 
 ### Encoder: context-sensitive by current screen
 
 On browse screens (Artists/Albums/Tracks/Folder), rotating the encoder
 moves the highlighted/scrolled list item. On the Now Playing screen,
 rotating adjusts volume. `InputRouter` reads the active screen's kind
-from `TabController`/`NavigationStack` to decide which it means — no mode
-button exists, so the mapping must be unambiguous per screen.
+from `TabController`/`NavigationStack` to decide which it means. See
+[`ux-guidelines.md` §5](../design/ux-guidelines.md#5-navigation-model--gesture-flows)
+for why this mapping has to be context-sensitive rather than mode-based.
 
 ### Library indexing: tags are the source of truth, folders are a separate live view
 
@@ -95,17 +99,16 @@ Each gesture (swipe-to-back, swipe-to-switch-tab) is taught by briefly
 animating the screen content in the gesture's direction and settling back,
 shown once **ever** per gesture type — tracked via a persisted flag in
 NVS, not per-boot — the first time a screen where that gesture applies is
-shown. This teaches discoverability without adding a permanent UI element
-or a separate onboarding flow, and doesn't repeat on every power cycle.
+shown. See
+[`ux-guidelines.md` §5](../design/ux-guidelines.md#5-navigation-model--gesture-flows)
+for the discoverability rationale.
 
 ### Animation: screen transitions only, for v1
 
 Screen push/pop/tab-switch transitions slide via LVGL's built-in
-`lv_scr_load_anim`, matching the gesture's direction. This is the one
-animation investment scoped for v1: it reuses a single mechanism (the
-navigation stack transition) to make the whole app feel polished, rather
-than building several one-off effects. Further animation ideas (e.g. Now
-Playing flourishes) are deferred.
+`lv_scr_load_anim`, matching the gesture's direction. See
+[`ux-guidelines.md` §5](../design/ux-guidelines.md#5-navigation-model--gesture-flows)
+for why animation is scoped this narrowly for v1.
 
 ## Implementation status
 

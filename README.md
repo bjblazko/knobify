@@ -4,6 +4,10 @@ Offline music player built on a Waveshare ESP32-S3-Knob-Touch-LCD-1.8 — see [`
 
 ## Goal
 
+See [`docs/design/ux-guidelines.md`](docs/design/ux-guidelines.md) for the
+UX/UI design philosophy, color system, and interaction flows behind the
+screens described below.
+
 - Play music stored on an SD card, in well-known formats.
 - Audio output via the onboard 3.5mm jack (PCM5100A DAC).
 - Control via the board's rotary encoder(s) + touch display.

@@ -64,18 +64,14 @@ z-order above earlier ones.
 
 ### Placement: matched to the back/scan button's row, not a corner
 
-First attempt placed the icon at `LV_ALIGN_TOP_RIGHT` (a screen corner).
-It looked correct in a serial-dumped screenshot (which captures the raw
-square framebuffer) but was invisible on the real device — clipped by
-the round bezel, the same class of bug `ScreenManager.cpp` already
-documents repeatedly (scrollbar, first list row, mini-bar, back button
-itself all had to move off literal edges/corners; see
-[ADR 0004](0004-navigation-library-and-index-architecture.md)).
-Corrected to sit on the same row as the back/scan button
-(`LV_ALIGN_TOP_MID`, vertically centered on that button's midline,
-offset sideways to avoid overlapping it) — confirmed visible on the
-physical device afterward. A screenshot alone is not sufficient
-evidence for anything placed near an edge on this display.
+First attempt placed the icon at `LV_ALIGN_TOP_RIGHT` (a screen corner);
+it looked correct in a serial-dumped screenshot but was invisible on the
+real device, clipped by the round bezel. Corrected to sit on the same row
+as the back/scan button (`LV_ALIGN_TOP_MID`, vertically centered on that
+button's midline, offset sideways to avoid overlapping it) — confirmed
+visible on the physical device afterward. See
+[`ux-guidelines.md` §7](../design/ux-guidelines.md#7-layout--widget-principles)
+for the general corner-avoidance rule this follows.
 
 ## Consequences
 

@@ -13,7 +13,9 @@ input against fabric is a real problem). This extends
 [ADR 0004](0004-navigation-library-and-index-architecture.md)'s
 input/navigation model with device lock and display power, and brings
 round-edge progress indicators into scope for volume and unlock feedback
-— all three were previously listed as out of scope in the README.
+— all three were previously listed as out of scope in the README. See
+[`ux-guidelines.md` §6](../design/ux-guidelines.md#6-power-lock--status-flows)
+for the full design rationale behind these two usage contexts.
 
 The same hardware facts from ADR 0004 still constrain the design: the
 primary MCU's rotary encoder is rotation-only, and (confirmed via
@@ -29,9 +31,11 @@ gesture available at all.
 Display on/off is automatic and idle-timeout-driven (60s of no touch/
 encoder activity), regardless of lock state. Lock/unlock is manual only,
 triggered by a dedicated lock icon on the Now Playing screen. This
-matches the two use cases directly: on a table, the device is never
-locked, it just dims; in a pocket, the user locks it deliberately and it
-stays locked until manually unlocked (no auto-re-lock timer).
+matches the two use cases directly (see
+[`ux-guidelines.md` §6](../design/ux-guidelines.md#6-power-lock--status-flows)):
+on a table, the device is never locked, it just dims; in a pocket, the
+user locks it deliberately and it stays locked until manually unlocked
+(no auto-re-lock timer).
 
 The very first touch after the display was off is **swallowed entirely**
 — not fed to LVGL, the gesture recognizer, or the lock's hold-to-unlock
@@ -45,12 +49,12 @@ With no button anywhere to click or long-press, unlocking uses a
 two-factor gesture instead: hold an on-screen "unlock" button while
 simultaneously rotating the encoder past a detent threshold
 (`LockController::kUnlockDetentThreshold`, starting at 10, tunable on
-hardware). This is deliberately effortful — releasing the button before
-the threshold resets progress to zero immediately, with no lingering
-partial credit — specifically because it needs to be very unlikely to
-happen from a device brushing against pocket fabric. While locked, the
+hardware). Releasing the button before the threshold resets progress to
+zero immediately, with no lingering partial credit. While locked, the
 encoder does nothing else (no volume or list passthrough); only the
-held-button-plus-rotation combination has any effect.
+held-button-plus-rotation combination has any effect. See
+[`ux-guidelines.md` §6](../design/ux-guidelines.md#6-power-lock--status-flows)
+for why this gesture is deliberately effortful.
 
 This is a new input primitive alongside ADR 0004's tap/swipe vocabulary,
 but it is **not** added to `GestureRecognizer` — that class classifies
