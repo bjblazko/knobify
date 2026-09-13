@@ -37,6 +37,27 @@ Offline music player built on a Waveshare ESP32-S3-Knob-Touch-LCD-1.8 — see [`
   hang it off, per decision 8 in ADR 0004)
 - General UX polish pass once the above land and real usage patterns are
   clearer
+- Battery level indicator (the board exposes a Battery ADC pin per
+  device.md)
+- Shuffle and repeat modes (per-album/all-library shuffle, repeat
+  single/all) — decision 5's "no auto-repeat in v1" was a deliberate v1
+  simplification, not a permanent rule
+- A sleep timer (auto-stop playback after a set time)
+- Volume normalization / ReplayGain-style loudness matching across
+  tracks
+- EQ presets (bass/treble/flat, etc.) built on the library's existing
+  `setTone()` — see AGENTS.md's note on the volume-boost attempts before
+  reusing it
+- Favorites/playlists (marking tracks or albums for quick access)
+- A "recently played" / "recently added" quick-access list
+- Resuming playback position after a restart or power loss, not just
+  the persisted volume
+- M3U playlist file import
+- Gapless playback (for live albums, concept albums, etc.)
+- On-device firmware updates from a file on the SD card (no Wi-Fi
+  needed, fits the offline-first goal)
+- Jump-by-letter navigation for long lists (e.g. holding the encoder's
+  equivalent gesture while turning jumps through initial letters)
 
 These are acknowledged future ideas, not requirements yet — don't design around them prematurely.
 
