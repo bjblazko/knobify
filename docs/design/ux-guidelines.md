@@ -44,7 +44,7 @@ product.
    cached, navigation and utility controls drawn as quiet unfilled icons, and the
    battery indicator staying neutral until it actually needs attention.
 6. **Good design is honest.** Indicators show only what's actually known
-   — the battery indicator never fakes a charging state, the progress
+   — the battery indicator shows "Charging" only when the rail voltage proves USB power, the progress
    ring is hidden when a track's duration is unknown, and titles come
    from tags rather than dressed-up filenames whenever tags exist.
 7. **Good design is long-lasting.** No fashionable effects (gradients,

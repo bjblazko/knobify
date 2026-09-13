@@ -159,6 +159,23 @@ void test_battery_monitor_level_buckets_follow_percent_thresholds() {
   TEST_ASSERT_TRUE(battery.level() == BatteryMonitor::Level::kFull);
 }
 
+void test_battery_monitor_full_cell_voltage_reads_100_percent() {
+  BatteryMonitor battery;
+  battery.update(4100);
+  TEST_ASSERT_EQUAL_INT(100, battery.percent());
+  TEST_ASSERT_FALSE(battery.isCharging());
+}
+
+void test_battery_monitor_above_4500mv_is_charging() {
+  BatteryMonitor battery;
+  battery.update(4500);
+  TEST_ASSERT_FALSE(battery.isCharging());
+  battery.update(4501);
+  TEST_ASSERT_TRUE(battery.isCharging());
+  battery.update(3900);
+  TEST_ASSERT_FALSE(battery.isCharging());
+}
+
 int main(int argc, char **argv) {
   UNITY_BEGIN();
   RUN_TEST(test_idle_timer_starts_with_display_on);
@@ -178,5 +195,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_battery_monitor_at_or_above_full_reads_100_percent);
   RUN_TEST(test_battery_monitor_midpoint_is_about_half);
   RUN_TEST(test_battery_monitor_level_buckets_follow_percent_thresholds);
+  RUN_TEST(test_battery_monitor_full_cell_voltage_reads_100_percent);
+  RUN_TEST(test_battery_monitor_above_4500mv_is_charging);
   return UNITY_END();
 }

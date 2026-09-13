@@ -4,7 +4,8 @@
 
 Accepted — 2026-09-13. Placement and coloring superseded by
 [ADR 0008](0008-braun-design-system-and-screen-redesign.md) (hidden in
-normal use, red at ≤20%, always shown on the lock screen).
+normal use, red at ≤20%, always shown on the lock screen). Calibration
+and "no charging detection" amended 2026-09-13 — see *Amendment* below.
 
 ## Context
 
@@ -88,3 +89,15 @@ for the general corner-avoidance rule this follows.
   LVGL-only, like the other driver/UI-layer classes) — only
   `BatteryMonitor`'s percent/level logic has unit test coverage
   (`test/test_power/test_power.cpp`).
+
+## Amendment (2026-09-13): calibration and charging state
+
+GPIO1 sits behind a 2:1 divider. `BatteryAdcDriver` now returns the
+undivided rail voltage (the scale the factory firmware logs as
+`Battery : %u mv`). From user-provided real-device readings, a full
+cell is 4100mV (`kFullMilliVolts`) and anything above 4500mV means the
+board is on USB and charging — confirmed live at ~4740mV on USB. The
+original probe's "no jump on unplug" did not hold up. The lock screen
+shows "Charging" instead of a percentage in that state, since the
+reading then reflects the charger rail rather than the cell.
+`kEmptyMilliVolts` (3400) is still an estimate.

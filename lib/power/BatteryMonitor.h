@@ -12,28 +12,29 @@ namespace knobify::power {
 // calling update() periodically (battery voltage doesn't need polling
 // faster than every few seconds).
 //
-// No charging detection: a 2026-09-13 hardware probe (see the
-// battery-indicator plan doc) found no dedicated charge-status pin, no
-// voltage jump on USB plug/unplug, and no status LED on the board --
-// GPIO1 only ever reflects battery voltage, not charge state. Left out
-// of this class entirely rather than faked with an unreliable
-// heuristic.
-//
-// Calibration caveat: kEmptyMilliVolts/kFullMilliVolts below are
-// placeholders based on a single observed reading (~2400mV, battery
-// attached and charging) -- the true battery-voltage-to-ADC-mV
-// relationship (divider ratio, if any) hasn't been cross-checked
-// against a multimeter yet. Recalibrate these once that's done.
+// Takes the battery-rail voltage (drivers::BatteryAdcDriver already
+// undoes the 2:1 divider). Calibration from real-device readings
+// (2026-09-13): a full cell settles around 4100mV; on USB the rail is
+// lifted above 4500mV, which is the only charging signal this board
+// has (no charge-status pin). While charging, the reading reflects the
+// charger rather than the cell, so percent() is not meaningful then.
 class BatteryMonitor {
  public:
-  static constexpr uint32_t kEmptyMilliVolts = 1800;
-  static constexpr uint32_t kFullMilliVolts = 2450;
+  static constexpr uint32_t kEmptyMilliVolts = 3400;
+  static constexpr uint32_t kFullMilliVolts = 4100;
+  // Above this the board is on USB power and charging.
+  static constexpr uint32_t kChargingAboveMilliVolts = 4500;
 
   enum class Level { kEmpty, kLow, kMedium, kHigh, kFull };
 
-  void update(uint32_t milliVolts) { percent_ = toPercent(milliVolts); }
+  void update(uint32_t milliVolts) {
+    percent_ = toPercent(milliVolts);
+    charging_ = milliVolts > kChargingAboveMilliVolts;
+  }
 
   int percent() const { return percent_; }
+
+  bool isCharging() const { return charging_; }
 
   Level level() const {
     if (percent_ < kLowThreshold) return Level::kEmpty;
@@ -57,6 +58,7 @@ class BatteryMonitor {
   }
 
   int percent_ = 0;
+  bool charging_ = false;
 };
 
 }  // namespace knobify::power

@@ -11,7 +11,8 @@ namespace knobify::ui {
 
 // Battery status, shown only when it matters (docs/design/ux-guidelines.md
 // §6): hidden during normal use, a red icon + percentage when the charge
-// is low, and always shown (neutral) on the lock screen -- the natural
+// is low, and always shown (neutral) on the lock screen -- as "Charging"
+// instead of a percentage while on USB -- the natural
 // moment to glance at status, one tap away via the lock button. An
 // always-on icon offset beside the back/scan button (the earlier design)
 // was the only off-axis element on screen and read like a tappable
@@ -88,6 +89,19 @@ class BatteryIndicator {
       default:
         symbol = LV_SYMBOL_BATTERY_FULL;
         break;
+    }
+    // On USB the reading is the charger's rail, not the cell -- show the
+    // charging state instead of a meaningless percentage, and never warn.
+    if (monitor_.isCharging()) {
+      if (!locked_) {
+        lv_obj_add_flag(label_, LV_OBJ_FLAG_HIDDEN);
+        return;
+      }
+      lv_label_set_text(label_, LV_SYMBOL_CHARGE "  Charging");
+      lv_obj_set_style_text_color(label_, theme::structure(), 0);
+      lv_obj_align(label_, LV_ALIGN_TOP_MID, 0, kLockedY);
+      lv_obj_clear_flag(label_, LV_OBJ_FLAG_HIDDEN);
+      return;
     }
     int percent = monitor_.percent();
     bool low = percent <= kShowAtOrBelowPercent;

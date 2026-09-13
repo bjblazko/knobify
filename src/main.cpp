@@ -451,7 +451,9 @@ void loop() {
 
   if (now - g_lastBatteryUpdateMs >= kBatteryUpdateIntervalMs) {
     g_lastBatteryUpdateMs = now;
-    g_batteryIndicator.update(g_batteryAdc.readMilliVolts());
+    uint32_t batteryMilliVolts = g_batteryAdc.readMilliVolts();
+    Serial.printf("[battery] %u mV\n", batteryMilliVolts);
+    g_batteryIndicator.update(batteryMilliVolts);
   }
 
   g_playback.tick(now);
