@@ -44,18 +44,11 @@ constexpr uint8_t kAudioDoutPin = 41;
 // calls for the mutex.
 class Esp32AudioI2SDriver : public playback::PlaybackDriver {
  public:
-  void begin() {
-    audio_.setPinout(kAudioBclkPin, kAudioLrcPin, kAudioDoutPin);
-    mutex_ = xSemaphoreCreateMutex();
-    // Priority 3 (above Arduino's default loopTask priority of 1) since
-    // audio decoding is latency-sensitive; pinned to core 0, which
-    // nothing else in this project uses (no WiFi/BT), so it never
-    // contends with the main loop's LVGL/input/navigation work on core 1
-    // for CPU time at all, only briefly for the mutex.
-    xTaskCreatePinnedToCore(&Esp32AudioI2SDriver::audioTaskTrampoline, "audio",
-                             8192, this, /*priority=*/3, &taskHandle_,
-                             /*core=*/0);
-  }
+  // Defined in Esp32AudioI2SDriver.cpp, not inline, on purpose: that file
+  // also defines the library's weak audio_process_i2s hook. Weak references never pull an object out of a
+  // static library archive, so without this strong reference from
+  // main.cpp the linker silently dropped those hooks entirely.
+  void begin();
 
   bool playFile(const std::string &path) override {
     MutexGuard guard(mutex_);
@@ -63,9 +56,6 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
     bool ok = audio_.connecttoFS(SD_MMC, path.c_str());
     // TEMPORARY DIAGNOSTIC (2026-09-12): investigating "play does
     // nothing, no sound" reports on real hardware -- see AGENTS.md.
-    // audio_info() (defined in Esp32AudioI2SDriver.cpp) additionally
-    // surfaces the library's own internal status/error messages, which
-    // are otherwise silently discarded.
     Serial.printf("Esp32AudioI2SDriver::playFile('%s') -> connecttoFS=%s\n",
                   path.c_str(), ok ? "OK" : "FAILED");
     return ok;
