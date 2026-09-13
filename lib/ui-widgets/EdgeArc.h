@@ -68,6 +68,13 @@ class EdgeArc {
     if (arc_) lv_arc_set_value(arc_, value);
   }
 
+  // For a pulsing "try me" hint on the unfilled track (LockOverlay) --
+  // independent of the indicator's own opacity, since LV_PART_MAIN
+  // (background) and LV_PART_INDICATOR are styled separately.
+  void setBackgroundOpacity(lv_opa_t opa) {
+    if (arc_) lv_obj_set_style_opa(arc_, opa, LV_PART_MAIN);
+  }
+
   void setValue(float fraction01) {
     if (!arc_) return;
     int32_t min = lv_arc_get_min_value(arc_);

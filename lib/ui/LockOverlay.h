@@ -6,6 +6,7 @@
 #include "IconFont.h"
 #include "LockController.h"
 #include "LvglButtonHelpers.h"
+#include "St77916Driver.h"
 
 namespace knobify::ui {
 
@@ -64,8 +65,14 @@ class LockOverlay {
     arcConfig.color = lv_palette_main(LV_PALETTE_GREEN);
     arcConfig.hasBackgroundColor = true;
     arcConfig.backgroundColor = lv_palette_lighten(LV_PALETTE_GREY, 1);
+    // Oversized beyond the display's own bounds, same fix as the Now
+    // Playing volume ring (ScreenManager::renderNowPlaying()) -- an
+    // lv_arc's default radius stops short of its host's edge (knob
+    // padding, see EdgeArc::create()), and even a host sized to exactly
+    // match the framebuffer still left a gap from the true round bezel.
     lv_obj_t *arcHost = lv_obj_create(root_);
-    lv_obj_set_size(arcHost, 260, 260);
+    lv_obj_set_size(arcHost, drivers::kLcdHorRes + 40,
+                     drivers::kLcdVerRes + 40);
     lv_obj_align(arcHost, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_bg_opa(arcHost, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(arcHost, 0, 0);
@@ -80,6 +87,15 @@ class LockOverlay {
                        &LockOverlay::onUnlockReleased, this,
                        &knobify_icon_font_28);
 
+    // Wordless hint (the pulsing ring, started/stopped below) plus a
+    // plain-text one -- neither the button nor the ring alone made the
+    // hold-AND-turn gesture guessable (user feedback 2026-09-13: "ist mir
+    // nicht ganz klar").
+    hintLabel_ = lv_label_create(root_);
+    lv_label_set_text(hintLabel_, "Hold & turn to unlock");
+    lv_obj_set_style_text_color(hintLabel_, lv_color_white(), 0);
+    lv_obj_align(hintLabel_, LV_ALIGN_CENTER, 0, 100);
+
     lv_obj_add_flag(root_, LV_OBJ_FLAG_HIDDEN);
   }
 
@@ -91,8 +107,10 @@ class LockOverlay {
       visible_ = locked;
       if (visible_) {
         lv_obj_clear_flag(root_, LV_OBJ_FLAG_HIDDEN);
+        startPulse();
       } else {
         lv_obj_add_flag(root_, LV_OBJ_FLAG_HIDDEN);
+        stopPulse();
       }
     }
     if (visible_) {
@@ -103,20 +121,57 @@ class LockOverlay {
   bool isVisible() const { return visible_; }
 
  private:
+  // Gently breathes the ring's unfilled (grey) track's opacity, inviting
+  // interaction wordlessly -- paused while the user is actually holding
+  // the button (real green progress is the feedback then instead) and
+  // resumed if they let go before unlocking.
+  void startPulse() {
+    if (pulsing_) return;
+    pulsing_ = true;
+    lv_anim_init(&pulseAnim_);
+    lv_anim_set_var(&pulseAnim_, this);
+    lv_anim_set_exec_cb(&pulseAnim_, &LockOverlay::pulseAnimCb);
+    lv_anim_set_values(&pulseAnim_, 90, 255);
+    lv_anim_set_time(&pulseAnim_, 900);
+    lv_anim_set_playback_time(&pulseAnim_, 900);
+    lv_anim_set_repeat_count(&pulseAnim_, LV_ANIM_REPEAT_INFINITE);
+    lv_anim_start(&pulseAnim_);
+  }
+
+  void stopPulse() {
+    if (!pulsing_) return;
+    pulsing_ = false;
+    lv_anim_del(this, &LockOverlay::pulseAnimCb);
+    progressArc_.setBackgroundOpacity(LV_OPA_COVER);
+  }
+
+  static void pulseAnimCb(void *var, int32_t value) {
+    static_cast<LockOverlay *>(var)->progressArc_.setBackgroundOpacity(
+        static_cast<lv_opa_t>(value));
+  }
+
   static void onUnlockPressed(lv_event_t *e) {
     auto *self = static_cast<LockOverlay *>(lv_event_get_user_data(e));
+    self->stopPulse();
     self->lockController_.onHoldStart(lv_tick_get());
   }
 
   static void onUnlockReleased(lv_event_t *e) {
     auto *self = static_cast<LockOverlay *>(lv_event_get_user_data(e));
     self->lockController_.onHoldEnd();
+    // Still locked (didn't reach the threshold) -- resume inviting
+    // another try. If it just unlocked, tick() will hide the overlay
+    // (and stop the pulse) on its next call instead.
+    if (self->lockController_.isLocked()) self->startPulse();
   }
 
   power::LockController &lockController_;
   lv_obj_t *root_ = nullptr;
   lv_obj_t *unlockButton_ = nullptr;
+  lv_obj_t *hintLabel_ = nullptr;
   ui_widgets::EdgeArc progressArc_;
+  lv_anim_t pulseAnim_{};
+  bool pulsing_ = false;
   bool visible_ = false;
 };
 
