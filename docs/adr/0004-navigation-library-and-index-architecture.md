@@ -251,6 +251,42 @@ each one only visible by actually tapping through the UI on hardware:
   doesn't behave as expected, capture the actual raw hardware signal
   before writing another decoder attempt against an assumed model.
 
+- **"Only ~2 songs found, no audio, counter frozen" traced to SD card
+  formatting, not code (2026-09-12/13).** Real hardware showed the
+  library scan finding only a handful of tracks across three different
+  SanDisk cards. First fix: `isAppleDoubleSidecar()` in
+  `SdFileLister.h` compared macOS's `._name` sidecar-file prefix against
+  the start of `entry.name()`'s return value, but this project's
+  SD_MMC/File stack returns the *full path* from `.name()` (not just the
+  filename) -- so the check never matched, and `._`-prefixed sidecar
+  files (which pass the audio-extension filter) kept being scanned as
+  broken tracks. Fixed by checking the substring after the last `/`; the
+  identical bug was proactively also fixed in `SdDirectoryReader.h`
+  (Files-mode browsing), which had the same full-path-vs-basename
+  problem for a different reason (storing the raw name into
+  `FolderEntry`). But after that fix, diagnostic logging added to
+  `LibraryScanner`/`main.cpp` (a `ScanProgressListener::onFileResult`
+  override logging every file's open/tag-parse outcome) showed the
+  *real*, dominant cause: the overwhelming majority of genuine,
+  non-sidecar audio files were also failing to open, with
+  `E (...) diskio_sdmmc: sdmmc_read_blocks failed (257)` --
+  a block-level timeout from the SDMMC host controller itself, below
+  any filesystem/code logic. This reproduced identically across three
+  different high-quality SanDisk cards and every SDMMC bus
+  configuration tried (40MHz/20MHz, 4-bit/1-bit width, with/without
+  explicit internal pull-ups on CMD/D0-D3) -- ruling out card quality,
+  bus speed, and missing pull-ups. The board's stock factory firmware
+  read its own bundled SD card on the same physical slot with zero
+  errors, ruling out a wiring/soldering defect. The actual cause: the
+  affected card had been formatted by macOS Disk Utility (32KB
+  clusters, 4MB partition offset) rather than to the SD Association's
+  own FAT32 layout spec; reformatting with `newfs_msdos -F 32 -c 8`
+  (or the official SD Memory Card Formatter tool) made
+  `sdmmc_read_blocks failed` errors disappear entirely and the full
+  library scan succeed. See the hardware-gotchas index in `AGENTS.md`
+  for the short version -- read that first the next time "most files
+  fail to open" shows up, before re-suspecting code, cards, or wiring.
+
 ## Consequences
 
 - The navigation/tab/gesture logic (`NavigationStack`, `TabController`,

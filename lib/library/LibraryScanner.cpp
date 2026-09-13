@@ -14,12 +14,12 @@ ArtistId findOrAddArtist(LibraryIndex &index, const std::string &name) {
 }
 
 AlbumId findOrAddAlbum(LibraryIndex &index, ArtistId artistId,
-                       const std::string &title) {
+                       const std::string &title, uint16_t year) {
   for (const auto &album : index.albums) {
     if (album.artistId == artistId && album.title == title) return album.id;
   }
   AlbumId id = static_cast<AlbumId>(index.albums.size());
-  index.albums.push_back(Album{id, artistId, title});
+  index.albums.push_back(Album{id, artistId, title, year});
   return id;
 }
 
@@ -34,11 +34,13 @@ LibraryIndex LibraryScanner::scan(FileLister &lister, FileOpener &opener,
   size_t scanned = 0;
   while (lister.next(entry)) {
     auto file = opener.open(entry.path);
-    if (file) {
-      TagResult tags = TagReader::read(*file, entry.path);
+    bool opened = static_cast<bool>(file);
+    TagResult tags;  // Left default (found=false) if the file didn't open.
+    if (opened) {
+      tags = TagReader::read(*file, entry.path);
 
       ArtistId artistId = findOrAddArtist(index, tags.artist);
-      AlbumId albumId = findOrAddAlbum(index, artistId, tags.album);
+      AlbumId albumId = findOrAddAlbum(index, artistId, tags.album, tags.year);
 
       TrackId trackId = static_cast<TrackId>(index.tracks.size());
       index.tracks.push_back(
@@ -48,7 +50,10 @@ LibraryIndex LibraryScanner::scan(FileLister &lister, FileOpener &opener,
     // still count toward progress -- the caller is showing "how far
     // through the file list are we", not "how many tracks found".
     ++scanned;
-    if (progress) progress->onFileScanned(scanned);
+    if (progress) {
+      progress->onFileScanned(scanned);
+      progress->onFileResult(entry.path, opened, tags);
+    }
   }
 
   return index;

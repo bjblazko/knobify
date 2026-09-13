@@ -23,11 +23,25 @@ class SdDirectoryReader : public library::DirectoryReader {
     }
     for (fs::File entry = dir.openNextFile(); entry;
          entry = dir.openNextFile()) {
+      // This project's SD_MMC/FS stack returns the full path from
+      // entry.name() (not just the filename, despite the usual Arduino
+      // File API convention) -- found alongside the same issue in
+      // SdFileLister's AppleDouble-sidecar check, real hardware
+      // 2026-09-12. Without stripping it here, FolderEntry.name would
+      // hold a full path, breaking both display and the child-path
+      // building in ScreenManager.
       result.push_back(
-          library::FolderEntry{entry.name(), entry.isDirectory()});
+          library::FolderEntry{basename(entry.name()), entry.isDirectory()});
       entry.close();
     }
     return result;
+  }
+
+ private:
+  static std::string basename(const std::string &nameOrPath) {
+    auto slash = nameOrPath.find_last_of('/');
+    return slash == std::string::npos ? nameOrPath
+                                       : nameOrPath.substr(slash + 1);
   }
 };
 

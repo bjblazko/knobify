@@ -78,6 +78,27 @@ TagResult RiffInfoParser::parse(RawFile &file) {
             } else if (subId == "IPRD") {
               result.album = value;
               any = true;
+            } else if (subId == "ICRD") {
+              // Typically "YYYY" or "YYYY-MM-DD"; take the leading digits.
+              uint16_t year = 0;
+              for (char c : value) {
+                if (!std::isdigit(static_cast<unsigned char>(c))) break;
+                year = static_cast<uint16_t>(year * 10 + (c - '0'));
+              }
+              if (year != 0) {
+                result.year = year;
+                any = true;
+              }
+            } else if (subId == "ITRK") {
+              uint16_t track = 0;
+              for (char c : value) {
+                if (!std::isdigit(static_cast<unsigned char>(c))) break;
+                track = static_cast<uint16_t>(track * 10 + (c - '0'));
+              }
+              if (track != 0) {
+                result.trackNumber = track;
+                any = true;
+              }
             }
           }
           // Sub-chunks are word-aligned (padded to even size).

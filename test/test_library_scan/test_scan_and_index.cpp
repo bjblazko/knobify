@@ -61,6 +61,24 @@ std::vector<uint8_t> buildTaggedMp3(const std::string &artist,
   return file;
 }
 
+std::vector<uint8_t> buildTaggedMp3WithTrackAndYear(
+    const std::string &artist, const std::string &album,
+    const std::string &title, const std::string &track,
+    const std::string &year) {
+  std::vector<uint8_t> frames;
+  appendFrame(frames, "TIT2", title);
+  appendFrame(frames, "TPE1", artist);
+  appendFrame(frames, "TALB", album);
+  appendFrame(frames, "TRCK", track);
+  appendFrame(frames, "TYER", year);
+
+  std::vector<uint8_t> file;
+  file.insert(file.end(), {'I', 'D', '3', 3, 0, 0});
+  appendSynchsafe(file, static_cast<uint32_t>(frames.size()));
+  file.insert(file.end(), frames.begin(), frames.end());
+  return file;
+}
+
 }  // namespace
 
 void test_scanner_groups_tagged_files_by_artist_and_album() {
@@ -106,6 +124,68 @@ void test_scanner_skips_unopenable_files() {
   LibraryIndex index = LibraryScanner::scan(lister, opener);
 
   TEST_ASSERT_EQUAL_UINT32(0, index.tracks.size());
+}
+
+void test_tracks_for_sorted_by_track_number() {
+  FakeFileLister lister({
+      {"/a.mp3", 100, 1},
+      {"/b.mp3", 200, 2},
+      {"/c.mp3", 300, 3},
+  });
+  FakeFileOpener opener;
+  // Listed out of order (3, 1, 2) -- tracksFor() must still return them
+  // sorted by tag-provided track number, not scan/listing order.
+  opener.put("/a.mp3", buildTaggedMp3WithTrackAndYear(
+                            "Artist", "Album", "Third", "3", "2000"));
+  opener.put("/b.mp3", buildTaggedMp3WithTrackAndYear(
+                            "Artist", "Album", "First", "1", "2000"));
+  opener.put("/c.mp3", buildTaggedMp3WithTrackAndYear(
+                            "Artist", "Album", "Second", "2", "2000"));
+
+  LibraryIndex index = LibraryScanner::scan(lister, opener);
+  auto trackIds = index.tracksFor(0);
+
+  TEST_ASSERT_EQUAL_UINT32(3, trackIds.size());
+  TEST_ASSERT_EQUAL_STRING("First", index.tracks[trackIds[0]].title.c_str());
+  TEST_ASSERT_EQUAL_STRING("Second", index.tracks[trackIds[1]].title.c_str());
+  TEST_ASSERT_EQUAL_STRING("Third", index.tracks[trackIds[2]].title.c_str());
+}
+
+void test_albums_for_sorted_by_year() {
+  FakeFileLister lister({{"/a.mp3", 100, 1}, {"/b.mp3", 200, 2}});
+  FakeFileOpener opener;
+  // Listed with the later album first -- albumsFor() must still return
+  // them chronologically.
+  opener.put("/a.mp3", buildTaggedMp3WithTrackAndYear(
+                            "Artist", "Newer Album", "Song", "1", "2010"));
+  opener.put("/b.mp3", buildTaggedMp3WithTrackAndYear(
+                            "Artist", "Older Album", "Song", "1", "1995"));
+
+  LibraryIndex index = LibraryScanner::scan(lister, opener);
+  auto albumIds = index.albumsFor(0);
+
+  TEST_ASSERT_EQUAL_UINT32(2, albumIds.size());
+  TEST_ASSERT_EQUAL_STRING("Older Album",
+                            index.albums[albumIds[0]].title.c_str());
+  TEST_ASSERT_EQUAL_STRING("Newer Album",
+                            index.albums[albumIds[1]].title.c_str());
+}
+
+void test_tag_reader_falls_back_to_filename_track_and_folder_year() {
+  FakeFileLister lister(
+      {{"/Music/Artist/1998 The Album/07 A Song.mp3", 10, 1}});
+  FakeFileOpener opener;
+  // No ID3 tag at all -- track number and year must come from the
+  // filename ("07 ...") and the containing folder name ("1998 ...").
+  opener.put("/Music/Artist/1998 The Album/07 A Song.mp3",
+             std::vector<uint8_t>(16, 0x00));
+
+  LibraryIndex index = LibraryScanner::scan(lister, opener);
+
+  TEST_ASSERT_EQUAL_UINT32(1, index.tracks.size());
+  TEST_ASSERT_EQUAL_UINT16(7, index.tracks[0].trackNumber);
+  TEST_ASSERT_EQUAL_UINT32(1, index.albums.size());
+  TEST_ASSERT_EQUAL_UINT16(1998, index.albums[0].year);
 }
 
 void test_folder_browser_filters_and_sorts() {
@@ -196,6 +276,9 @@ int main(int argc, char **argv) {
   RUN_TEST(test_scanner_groups_tagged_files_by_artist_and_album);
   RUN_TEST(test_scanner_falls_back_to_unknown_for_untagged_files);
   RUN_TEST(test_scanner_skips_unopenable_files);
+  RUN_TEST(test_tracks_for_sorted_by_track_number);
+  RUN_TEST(test_albums_for_sorted_by_year);
+  RUN_TEST(test_tag_reader_falls_back_to_filename_track_and_folder_year);
   RUN_TEST(test_folder_browser_filters_and_sorts);
   RUN_TEST(test_signature_matches_for_identical_listing);
   RUN_TEST(test_signature_changes_when_a_file_changes);

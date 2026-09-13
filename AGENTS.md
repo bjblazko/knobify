@@ -59,6 +59,76 @@ duplicating it.
   blue appeared bright green) while raw `Arduino_GFX::fillScreen()`
   calls looked fine, because those bypass LVGL's color pipeline
   entirely. See `include/lv_conf.h`.
+- **An SD card formatted by macOS Disk Utility can mount but fail almost
+  every file read on this board's SDMMC bus** -- not a wiring, code, or
+  card-quality problem. Symptom: `SD_MMC.begin()` succeeds, directory
+  listing works (file/folder names all show up correctly), but opening
+  actual file contents fails for the overwhelming majority of files with
+  `E (...) diskio_sdmmc: sdmmc_read_blocks failed (257)`, consistently
+  and reproducibly (the same tiny handful of files succeed every boot).
+  Reproduced across three different SanDisk cards and multiple SDMMC
+  bus configs (40MHz/20MHz, 4-bit/1-bit, with/without explicit internal
+  pull-ups on CMD/D0-D3) -- none of that made any difference, ruling out
+  card quality, bus speed, and pull-ups as the cause. The board's stock
+  factory firmware read its own bundled SD card perfectly on the same
+  physical slot, ruling out a wiring/soldering defect. The fix: erase
+  and reformat the card as FAT32 with the SD Association's official
+  layout (the *SD Memory Card Formatter* app, or `newfs_msdos` with an
+  explicit, conservative cluster size like `-c 8`/4KB, not macOS
+  Disk Utility's defaults, which produced 32KB clusters and a 4MB
+  partition offset). After reformatting, `sdmmc_read_blocks failed`
+  errors dropped to zero and the full library scan succeeded. Root
+  cause of *why* the embedded FatFs stack chokes on Disk Utility's
+  layout specifically was not conclusively identified (plausibly BPB/
+  geometry fields that differ from SD-Association-compliant tools) --
+  but the fix reliably works, so: **whenever "many/most files fail to
+  open" shows up again, reformat the card properly before suspecting
+  anything else.**
+- **ESP32-audioI2S's own internal info/error logging (routed through the
+  `audio_info()` weak-symbol override in `Esp32AudioI2SDriver.cpp`) is
+  silent by default** even when a file plays or fails to play -- add
+  `-DAUDIO_LOG -DCORE_DEBUG_LEVEL=3` to `[env:esp32-s3]`'s `build_flags`
+  temporarily to get real diagnostic output (decode/stream state,
+  `processLocalFile()` progress, etc.) when audio playback needs
+  debugging, then remove it again once resolved -- it's not needed for
+  normal operation and adds console noise.
+- **ESP32-audioI2S's `setVolume()` caps at 21/21 = true unity gain
+  (0dB)** -- it never digitally amplifies above the source signal's own
+  level, by design (`volumetable[21]/64 == 1.0` in the library's
+  `Audio.cpp`). This board's stock factory firmware can go noticeably
+  louder at max volume, so 21/21 being quieter than the demo is expected
+  library behavior, not a bug in this app's volume code. **Tried and
+  reverted (2026-09-13): boosting past unity by intercepting decoded PCM
+  in the library's `audio_process_extern` weak-symbol hook** (multiply
+  samples, clamp, `*continueI2S = true`) -- on real hardware this made
+  every track appear to finish and auto-advance within seconds with no
+  audible sound at all, even though the hook's logic looks correct
+  against the library's own documented convention. Root cause not
+  isolated before reverting (suspect timing/reentrancy inside the
+  decode loop, not the gain math itself). If revisiting a volume boost,
+  don't reuse this hook without instrumenting the decode loop itself
+  first (`-DAUDIO_LOG` alone did not explain it). **Also tried and
+  reverted: the library's own supported 3-band EQ, `setTone(6, 6, 6)`
+  (its documented max, +6dB/band)** as a safer alternative -- on real
+  hardware this produced no noticeable loudness increase at all, and
+  introduced a new, unrelated regression (audible playback started
+  noticeably later than the elapsed-time counter, i.e. after
+  `PlaybackStateMachine` had already started timing the track). Neither
+  attempt is worth pursuing further without a much better understanding
+  of this library's gain/EQ/timing internals than a quick real-hardware
+  trial gives you -- 21/21 (true unity gain) is the accepted ceiling for
+  now.
+- **This specific board unit repeatedly goes into a state where it
+  "runs" but a peripheral is silently dead, and only a real power cycle
+  (unplug USB, wait, replug) fixes it -- a soft/RTS reset is not
+  enough.** Seen now for the display (stayed white after a soft reset),
+  the SD card (0x107 "card not responding" until reseated/repowered),
+  and audio (played per every log line -- `connecttoFS=OK`,
+  `processLocalFile()` with a correct `m_audioDataStart` matching the
+  file's real ID3-tag size, no errors at all -- yet the jack stayed
+  silent until a full power cycle). Before spending time debugging code
+  for "X looks like it should work but doesn't, no errors logged" on
+  this board, try a full power cycle first.
 
 ## Where things are documented (so you add to the right place)
 

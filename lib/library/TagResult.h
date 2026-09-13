@@ -15,6 +15,7 @@ struct TagResult {
   std::string album;
   std::string title;
   uint16_t trackNumber = 0;
+  uint16_t year = 0;
 };
 
 }  // namespace knobify::library

@@ -18,6 +18,7 @@ struct Album {
   AlbumId id;
   ArtistId artistId;
   std::string title;
+  uint16_t year;  // 0 if unknown.
 };
 
 struct Track {

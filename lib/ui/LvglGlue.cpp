@@ -38,15 +38,17 @@ bool LvglGlue::begin(drivers::St77916Driver &display) {
   indevDrv_.user_data = this;
   lv_indev_drv_register(&indevDrv_);
 
-  // A deliberate dark theme -- registering no theme explicitly still
-  // gets LVGL's own built-in default (a dated, unstyled teal-on-white
-  // look with poor contrast for our manual highlight overrides), which
-  // is what shipped in the first on-device look at this screen
-  // (2026-09-11) and read as "a 90s website". Blue accent, dark
-  // background, LVGL's default font.
+  // Light theme: this is a reflective IPS LCD, not an OLED/AMOLED --
+  // dark UIs (tried first) don't render as well on it. Indigo accent on
+  // a light background instead of the earlier dark/blue theme, per user
+  // request 2026-09-12. The theme's own light-mode contrast rules apply
+  // automatically to every widget already themed via LV_STATE_CHECKED
+  // etc. (see ScreenManager::applyHighlight()) -- no other UI code needs
+  // to change for this.
   lv_theme_t *theme = lv_theme_default_init(
-      disp, lv_palette_main(LV_PALETTE_BLUE), lv_palette_main(LV_PALETTE_GREY),
-      /*dark_mode=*/true, LV_FONT_DEFAULT);
+      disp, lv_palette_main(LV_PALETTE_INDIGO),
+      lv_palette_main(LV_PALETTE_GREY),
+      /*dark_mode=*/false, LV_FONT_DEFAULT);
   lv_disp_set_theme(disp, theme);
 
   return true;

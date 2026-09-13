@@ -97,6 +97,20 @@ class BootProgressListener : public knobify::library::ScanProgressListener {
     }
   }
 
+  // TEMPORARY DIAGNOSTIC (2026-09-12): investigating "only a handful of
+  // tracks found" reports on real hardware -- see AGENTS.md. Logs every
+  // file the scanner processed, whether it opened, and what tags (if
+  // any) came out, so a failure mode (can't open vs. opens but no tags
+  // vs. tags found but grouped oddly) can be told apart from the serial
+  // log alone. Remove once the SD reliability issue is resolved.
+  void onFileResult(const std::string &path, bool opened,
+                     const knobify::library::TagResult &tags) override {
+    Serial.printf(
+        "[scan] opened=%d artist=\"%s\" album=\"%s\" title=\"%s\" path=%s\n",
+        opened, tags.artist.c_str(), tags.album.c_str(), tags.title.c_str(),
+        path.c_str());
+  }
+
  private:
   lv_obj_t *label_;
 };

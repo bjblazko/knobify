@@ -99,6 +99,17 @@ TagResult VorbisCommentParser::parse(RawFile &file) {
       }
       result.trackNumber = track;
       any = true;
+    } else if (key == "DATE") {
+      // Value is typically "YYYY" or "YYYY-MM-DD"; take the leading digits.
+      uint16_t year = 0;
+      for (char c : value) {
+        if (!std::isdigit(static_cast<unsigned char>(c))) break;
+        year = static_cast<uint16_t>(year * 10 + (c - '0'));
+      }
+      if (year != 0) {
+        result.year = year;
+        any = true;
+      }
     }
   }
 

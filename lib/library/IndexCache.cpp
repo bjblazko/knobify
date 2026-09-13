@@ -7,7 +7,7 @@ namespace knobify::library {
 namespace {
 
 constexpr char kMagic[4] = {'K', 'L', 'I', 'B'};
-constexpr uint16_t kFormatVersion = 1;
+constexpr uint16_t kFormatVersion = 2;  // v2 adds Album.year.
 
 void appendU16(std::vector<uint8_t> &out, uint16_t v) {
   out.push_back(static_cast<uint8_t>(v & 0xFF));
@@ -114,6 +114,7 @@ std::vector<uint8_t> IndexCache::encode(const LibraryIndex &index,
     appendU32(out, album.id);
     appendU32(out, album.artistId);
     appendString(out, album.title);
+    appendU16(out, album.year);
   }
   for (const auto &track : index.tracks) {
     appendU32(out, track.id);
@@ -162,6 +163,7 @@ bool IndexCache::decode(const std::vector<uint8_t> &bytes, LibraryIndex &index,
     a.id = reader.readU32();
     a.artistId = reader.readU32();
     a.title = reader.readString();
+    a.year = reader.readU16();
     result.albums.push_back(a);
   }
   result.tracks.reserve(trackCount);

@@ -156,7 +156,7 @@ TagResult Id3v2Parser::parse(RawFile &file) {
     }
 
     if (frameId == "TIT2" || frameId == "TPE1" || frameId == "TALB" ||
-        frameId == "TRCK") {
+        frameId == "TRCK" || frameId == "TYER" || frameId == "TDRC") {
       std::vector<uint8_t> data(frameSize);
       if (!file.seek(dataStart) ||
           file.read(data.data(), data.size()) != data.size()) {
@@ -176,6 +176,15 @@ TagResult Id3v2Parser::parse(RawFile &file) {
             result.album = text;
           } else if (frameId == "TRCK") {
             result.trackNumber = parseLeadingNumber(text);
+          } else if (frameId == "TYER" || frameId == "TDRC") {
+            // TYER (v2.3) is just "YYYY"; TDRC (v2.4) is an ISO 8601
+            // timestamp ("YYYY" or "YYYY-MM-DD..."), so take the leading
+            // digits either way. Don't overwrite a TYER already read with
+            // a later, possibly-absent TDRC value in the same file.
+            uint16_t year = parseLeadingNumber(text);
+            if (year != 0) {
+              result.year = year;
+            }
           }
         }
       }

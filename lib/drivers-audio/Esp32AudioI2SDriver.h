@@ -24,7 +24,15 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
 
   bool playFile(const std::string &path) override {
     paused_ = false;
-    return audio_.connecttoFS(SD_MMC, path.c_str());
+    bool ok = audio_.connecttoFS(SD_MMC, path.c_str());
+    // TEMPORARY DIAGNOSTIC (2026-09-12): investigating "play does
+    // nothing, no sound" reports on real hardware -- see AGENTS.md.
+    // audio_info() (defined in Esp32AudioI2SDriver.cpp) additionally
+    // surfaces the library's own internal status/error messages, which
+    // are otherwise silently discarded.
+    Serial.printf("Esp32AudioI2SDriver::playFile('%s') -> connecttoFS=%s\n",
+                  path.c_str(), ok ? "OK" : "FAILED");
+    return ok;
   }
 
   void pause() override {
