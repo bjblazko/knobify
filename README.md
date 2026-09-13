@@ -17,6 +17,26 @@ Offline music player built on a Waveshare ESP32-S3-Knob-Touch-LCD-1.8 — see [`
   SD card — the ESP32-S3's native USB-OTG could expose the SD card as a
   USB drive via TinyUSB's MSC class while plugged in, so the card
   wouldn't need to be physically removed and read on another computer
+- Key/screen lock (avoid accidental input, e.g. in a pocket or bag)
+- Album art display (cover images on the Now Playing screen)
+- Jog/shuttle-style scrubbing through a track's playback position
+- Display sleep/off mode (screen off while still playing, wake on
+  touch/knob/gesture)
+- Circular progress indicators around the display's edge (a ring for
+  playback position, another for volume) instead of/alongside bars
+- Theming (selectable color schemes / customizable look)
+- General visual polish and animation ("eye candy") beyond the current
+  one-time gesture-hint nudge and screen-transition slide
+- Voice memo / dictation recording via the onboard PDM microphone
+- Audio visualizations (spectrum analyzer, VU meter, etc.)
+- A richer Now Playing screen (more detail/interactivity beyond the
+  current controls + elapsed time)
+- Using the rotary encoder as a jog dial for scrolling long lists/menus
+  faster (beyond the current one-item-per-detent behavior)
+- A dedicated settings screen (once a home/main-menu screen exists to
+  hang it off, per decision 8 in ADR 0004)
+- General UX polish pass once the above land and real usage patterns are
+  clearer
 
 These are acknowledged future ideas, not requirements yet — don't design around them prematurely.
 
