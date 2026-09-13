@@ -14,10 +14,6 @@ inline lv_color_t structure() { return lv_color_hex(0x4A4C4E); }   // Mid Anthra
 inline lv_color_t ink() { return lv_color_hex(0x1E1F21); }         // Matte Black
 inline lv_color_t accent() { return lv_color_hex(0xE85D04); }      // Orange Signal
 inline lv_color_t confirm() { return lv_color_hex(0x2A8C4A); }     // Functional Green
-// A pale, desaturated tint of confirm() -- the background for "something
-// is running" surfaces (the mini-bar), quiet enough to sit on screen
-// permanently.
-inline lv_color_t confirmTint() { return lv_color_hex(0xD3E4D7); }
 inline lv_color_t warning() { return lv_color_hex(0xD62828); }     // Accent Red
 
 // Radius for list rows (ux-guidelines §3a); pills and round controls use

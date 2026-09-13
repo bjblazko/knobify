@@ -244,8 +244,10 @@ void ScreenManager::renderList(
   }
 
   if (showMiniBar) {
-    // A pale green bottom area rather than a floating pill -- green
-    // meaning "active/running" (ux-guidelines §3). Full-width and flush
+    // A light-grey bottom area rather than a floating pill -- Braun
+    // keeps surfaces neutral and puts color only on small functional
+    // details, so only the playback glyph is green ("active/running",
+    // ux-guidelines §3). A pale green tint was tried first (2026-09-13). Full-width and flush
     // with the bottom edge on purpose: the round bezel cuts it into a
     // circle segment that echoes the device's shape. (Earlier attempts: a
     // bordered white box read as a text input, an ink pill as a second
@@ -256,7 +258,7 @@ void ScreenManager::renderList(
     lv_obj_set_size(miniBar_, drivers::kLcdHorRes, kMiniBarZoneHeight);
     lv_obj_align(miniBar_, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_obj_set_style_radius(miniBar_, 0, 0);
-    lv_obj_set_style_bg_color(miniBar_, theme::confirmTint(), 0);
+    lv_obj_set_style_bg_color(miniBar_, theme::surfaceAlt(), 0);
     lv_obj_set_style_border_width(miniBar_, 0, 0);
     lv_obj_set_style_pad_all(miniBar_, 0, 0);
     // A long title otherwise made the bar itself scrollable, showing a
