@@ -182,6 +182,35 @@ duplicating it.
   silent until a full power cycle). Before spending time debugging code
   for "X looks like it should work but doesn't, no errors logged" on
   this board, try a full power cycle first.
+- **Boot took 20+ seconds before the SD library scan became visible** --
+  two compounding causes, found via live serial capture (`millis()`
+  timestamps around each boot step) 2026-09-13. First: `computeSignature()`
+  (`src/main.cpp`, called from `loadOrBuildLibraryIndex()`) does one full
+  recursive SD directory walk (`SdFileLister::walk()`) with **zero UI
+  feedback** before "Scanning library..." ever appears -- on a real
+  library (512 tracks, 560 macOS AppleDouble `._` sidecar files also
+  walked) this alone measured ~17-19s on real hardware; fixed by setting
+  the boot label to "Checking library..." before this call. Second, much
+  bigger: `writeIndexCacheFile()` (`kIndexCachePath =
+  "/knobify/library.idx"`) silently failed on **every single boot**
+  (`vfs_api.cpp: open(): ... does not exist, no permits for creation`)
+  because the SD_MMC/FATFS layer refuses to create a file inside a
+  directory that doesn't exist, and nothing ever created `/knobify` --
+  so the cache never persisted and every boot paid for the full
+  directory walk *twice* (once for the signature, once again inside
+  `LibraryScanner::scan()`, which used to call its own `lister.reset()`)
+  plus a full tag-read scan, forever. Fixed by (a) `SD_MMC.mkdir("/knobify")`
+  before the cache write, and (b) giving `FileLister` a `rewind()`
+  (replay already-walked entries, no new SD I/O) distinct from `reset()`
+  (full re-walk), so `LibraryScanner::scan()` no longer re-walks a lister
+  `computeSignature()` already walked. Net effect on this hardware: a
+  routine boot (cache valid, no library changes) went from paying for two
+  full walks + a full scan every single time (~30-38s+) down to the one
+  unavoidable ~17-19s signature walk. That remaining walk time is
+  intrinsic to change-detection needing to visit every file/dir over
+  SDMMC and was not addressed -- if it still feels too slow, that's the
+  next thing to look at (e.g. cheaper change detection than a full
+  per-file walk), not a quick fix.
 
 ## Where things are documented (so you add to the right place)
 

@@ -49,6 +49,9 @@ class SdFileLister : public library::FileLister {
         static_cast<unsigned>(entries_.size()));
   }
 
+  // No re-walk -- just replays the entries reset() already collected.
+  void rewind() override { index_ = 0; }
+
   bool next(library::FileEntry &out) override {
     if (index_ >= entries_.size()) return false;
     out = entries_[index_++];

@@ -29,7 +29,12 @@ LibraryIndex LibraryScanner::scan(FileLister &lister, FileOpener &opener,
                                    ScanProgressListener *progress) {
   LibraryIndex index;
 
-  lister.reset();
+  // Does NOT call lister.reset() -- callers are expected to have already
+  // positioned the lister (e.g. computeSignature() already walked it once
+  // for change-detection; re-walking here would pay for the SD card's
+  // expensive recursive directory walk a second time for no reason).
+  // Callers that just want a fresh scan with no prior walk should call
+  // lister.reset() themselves before this.
   FileEntry entry;
   size_t scanned = 0;
   while (lister.next(entry)) {

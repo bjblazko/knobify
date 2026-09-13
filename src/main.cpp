@@ -48,8 +48,19 @@ std::vector<uint8_t> readIndexCacheFile() {
 }
 
 void writeIndexCacheFile(const std::vector<uint8_t> &bytes) {
+  // The SD_MMC/FATFS layer refuses to create a file inside a directory
+  // that doesn't exist yet -- kIndexCachePath's parent ("/knobify") is
+  // never created anywhere else, so without this every single boot
+  // silently failed to persist the cache and re-did the full scan from
+  // scratch forever. mkdir() on an already-existing dir is a harmless
+  // no-op. Found via live serial capture 2026-09-13 while investigating
+  // slow boot -- see AGENTS.md.
+  SD_MMC.mkdir("/knobify");
   fs::File file = SD_MMC.open(kIndexCachePath, FILE_WRITE);
-  if (!file) return;
+  if (!file) {
+    Serial.println("writeIndexCacheFile: could not open cache file for write");
+    return;
+  }
   file.write(bytes.data(), bytes.size());
   file.close();
 }
@@ -76,6 +87,10 @@ knobify::library::LibraryIndex loadOrBuildLibraryIndex(
   }
 
   Serial.println("Scanning SD card for library (cache missing/stale)...");
+  // computeSignature() above already walked `lister` to the end -- rewind
+  // (not reset!) to replay those same entries instead of paying for a
+  // second full SD directory walk.
+  lister.rewind();
   LibraryIndex freshIndex = LibraryScanner::scan(lister, opener, progress);
   writeIndexCacheFile(IndexCache::encode(freshIndex, currentSignature));
   return freshIndex;
@@ -198,6 +213,17 @@ void setup() {
       lv_timer_handler();
     }
   } else {
+    // computeSignature() (inside loadOrBuildLibraryIndex) does a full
+    // recursive SD directory walk before any per-file progress exists --
+    // on a real library that alone can take many seconds, so update the
+    // label here first. Otherwise the screen stays frozen on "Starting..."
+    // for that whole walk and looks like a dead board, same rationale as
+    // the scan-phase label below (see the "Display comes up FIRST" comment
+    // above; found via live serial capture 2026-09-13, see AGENTS.md).
+    if (bootLabel) {
+      lv_label_set_text(bootLabel, "Checking library...");
+      lv_timer_handler();
+    }
     BootProgressListener progressListener(bootLabel);
     g_libraryIndex = loadOrBuildLibraryIndex(
         g_fileLister, g_fileOpener, bootLabel ? &progressListener : nullptr);
