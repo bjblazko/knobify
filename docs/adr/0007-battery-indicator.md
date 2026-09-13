@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted — 2026-09-13
+Accepted — 2026-09-13. Placement and coloring superseded by
+[ADR 0008](0008-braun-design-system-and-screen-redesign.md) (hidden in
+normal use, red at ≤20%, always shown on the lock screen).
 
 ## Context
 

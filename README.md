@@ -18,10 +18,16 @@ screens described below.
   locked so touch/knob can't trigger anything by accident; unlocking
   requires holding the on-screen unlock button while turning the
   encoder — see [ADR 0005](docs/adr/0005-power-lock-and-round-edge-indicators.md)).
-  Volume and unlock progress are shown as rings hugging the round
-  display's edge, via a small reusable widget.
-- Battery level shown as a color-coded icon (green/yellow/red), visible
-  on every screen — see [ADR 0007](docs/adr/0007-battery-indicator.md).
+  Song progress, volume and unlock progress are shown as rings hugging
+  the round display's edge, via a small reusable widget.
+- Battery level shown only when it matters: red with percentage at 20%
+  or below, and always on the lock screen — see
+  [ADR 0007](docs/adr/0007-battery-indicator.md) and
+  [ADR 0008](docs/adr/0008-braun-design-system-and-screen-redesign.md).
+- A Braun/Dieter-Rams-inspired visual design (warm off-white surface,
+  one orange primary control per screen, tag titles, album cover and
+  release years) — see
+  [the UX guidelines](docs/design/ux-guidelines.md).
   No charging indicator: the board exposes no charge-status signal (no
   dedicated pin, no voltage change on plug/unplug, no status LED).
 

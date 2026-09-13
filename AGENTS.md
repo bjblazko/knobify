@@ -295,6 +295,16 @@ duplicating it.
   bulk/file-sized transfers on this board at all; use WiFi (or physical
   SD card access) instead for anything larger than a few hundred bytes.
 
+- **UI colors must be judged on the device, not a monitor or a
+  screenshot's hex values.** The panel is RGB565 (subtle neutrals get
+  rounded — `#F4F4F0` arrived as neutral `#F6F6F6`) and visibly shifts
+  toward green (a surface that looks warm off-white on the device is
+  peach on a monitor). Use `lib/ui/Theme.h` tokens only. See ADR 0008.
+- **`LV_LABEL_LONG_DOT` does nothing on a content-height label** — it
+  just wraps. Use `setClampedText()` in `ScreenManager.cpp` (explicit
+  line budget). LVGL's built-in Montserrat fonts are also ASCII-only:
+  umlauts, accents and `·` render as boxes. See ADR 0008.
+
 ## Where things are documented (so you add to the right place)
 
 - **Pure hardware facts** (pinout, board identification, electrical

@@ -371,9 +371,11 @@ listed here for visibility):
 - Whether the pocket-brushing-fabric assumption underlying the hold+turn
   gesture actually holds up in real pocket use.
 
-Raised by the 2026-09-13 redesign (need confirmation on the physical
-bezel, not a screenshot):
+The 2026-09-13 redesign's placement questions (song-progress ring
+visibility at the edge, Now Playing offsets with and without a cover)
+were confirmed on the physical device — see
+[ADR 0008](../adr/0008-braun-design-system-and-screen-redesign.md).
 
-- Whether the thin song-progress ring stays visible at the round edge.
-- Final vertical offsets on Now Playing (cover, title block, transport
-  row, quiet lock button at bottom-center).
+- Non-ASCII tag text (umlauts, accents, `·`) renders as missing-glyph
+  boxes with LVGL's built-in fonts; needs custom fonts with a Latin-1
+  range.
