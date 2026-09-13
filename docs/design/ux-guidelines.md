@@ -176,7 +176,10 @@ backlight. Every screen, the lock screen included, uses `surface`.
   - *Quiet*: no fill, `structure` glyph, `surfaceAlt` background only while
     pressed. Navigation and utility — back, lock, scan.
 - **Touch targets** are at least 44px in their smaller dimension, even when
-  the visible glyph is smaller.
+  the visible glyph is smaller. Every button's hit area also extends 10px
+  beyond its drawn bounds (`makeButton()` in `LvglButtonHelpers.h`), so
+  keep at least ~20px between adjacent tappable controls to avoid
+  overlapping hit areas.
 
 ## 4. Hardware Constraints That Drive Every Screen
 

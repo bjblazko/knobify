@@ -47,6 +47,23 @@ bool LvglGlue::begin(drivers::St77916Driver &display) {
   indevDrv_.disp = disp;
   indevDrv_.read_cb = &LvglGlue::touchReadCb;
   indevDrv_.user_data = this;
+#ifdef KNOBIFY_TOUCH_DEBUG
+  indevDrv_.feedback_cb = [](lv_indev_drv_t *, uint8_t code) {
+    const char *name = nullptr;
+    switch (code) {
+      case LV_EVENT_PRESSED: name = "PRESSED"; break;
+      case LV_EVENT_CLICKED: name = "CLICKED"; break;
+      case LV_EVENT_PRESS_LOST: name = "PRESS_LOST"; break;
+      case LV_EVENT_SCROLL_BEGIN: name = "SCROLL_BEGIN"; break;
+      default: return;
+    }
+    lv_obj_t *obj = lv_indev_get_obj_act();
+    lv_area_t a{};
+    if (obj) lv_obj_get_coords(obj, &a);
+    Serial.printf("[lv] t=%lu %s obj=(%d,%d)-(%d,%d)\n", millis(), name,
+                  a.x1, a.y1, a.x2, a.y2);
+  };
+#endif
   lv_indev_drv_register(&indevDrv_);
 
   // Braun palette on a light theme -- see Theme.cpp and
@@ -106,10 +123,19 @@ void LvglGlue::writeScreenshotToSerial() const {
 
 void LvglGlue::touchReadCb(lv_indev_drv_t *drv, lv_indev_data_t *data) {
   auto *self = static_cast<LvglGlue *>(drv->user_data);
-  data->point.x = self->latestTouch_.x;
-  data->point.y = self->latestTouch_.y;
-  data->state = self->latestTouch_.pressed ? LV_INDEV_STATE_PRESSED
-                                            : LV_INDEV_STATE_RELEASED;
+  input::TouchSample touch = self->touchLatch_.read();
+  data->point.x = touch.x;
+  data->point.y = touch.y;
+  data->state = touch.pressed ? LV_INDEV_STATE_PRESSED
+                              : LV_INDEV_STATE_RELEASED;
+#ifdef KNOBIFY_TOUCH_DEBUG
+  static bool lastReported = false;
+  if (touch.pressed != lastReported) {
+    lastReported = touch.pressed;
+    Serial.printf("[lv-read] t=%lu %s (%d,%d)\n", millis(),
+                  lastReported ? "down" : "up", data->point.x, data->point.y);
+  }
+#endif
 }
 
 }  // namespace knobify::ui

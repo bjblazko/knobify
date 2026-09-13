@@ -33,6 +33,7 @@
 #include "SdInit.h"
 #include "St77916Driver.h"
 #include "TabController.h"
+#include "TouchCalibration.h"
 #include "TJpgDecoderAdapter.h"
 #include "Version.h"
 #include "VolumePersistence.h"
@@ -314,6 +315,28 @@ void pollSerialCommands() {
         if (strcmp(buf, "SCREENSHOT") == 0) {
           g_lvglGlue.writeScreenshotToSerial();
         }
+#ifdef KNOBIFY_TOUCH_DEBUG
+        if (strcmp(buf, "CALIB") == 0) {
+          static const int kTargets[][2] = {
+              {180, 180}, {90, 180}, {270, 180}, {180, 90}, {180, 270}};
+          lv_obj_t *layer = lv_layer_top();
+          for (const auto &t : kTargets) {
+            lv_obj_t *h = lv_obj_create(layer);
+            lv_obj_set_size(h, 30, 3);
+            lv_obj_set_pos(h, t[0] - 15, t[1] - 1);
+            lv_obj_set_style_bg_color(h, lv_color_hex(0xFF0000), 0);
+            lv_obj_set_style_border_width(h, 0, 0);
+            lv_obj_set_style_radius(h, 0, 0);
+            lv_obj_t *v = lv_obj_create(layer);
+            lv_obj_set_size(v, 3, 30);
+            lv_obj_set_pos(v, t[0] - 1, t[1] - 15);
+            lv_obj_set_style_bg_color(v, lv_color_hex(0xFF0000), 0);
+            lv_obj_set_style_border_width(v, 0, 0);
+            lv_obj_set_style_radius(v, 0, 0);
+          }
+          Serial.println("CALIB targets drawn");
+        }
+#endif
         len = 0;
       }
     } else if (len < sizeof(buf) - 1) {
@@ -342,6 +365,33 @@ void loop() {
   // as a swipe -- see LvglGlue.h.
   knobify::input::TouchSample touchSample{};
   g_touch.poll(touchSample);
+  touchSample = knobify::input::TouchCalibration::apply(touchSample);
+
+#ifdef KNOBIFY_TOUCH_DEBUG
+  {
+    static uint32_t lastLoopMs = 0, maxLoopMs = 0, windowStartMs = 0;
+    static uint32_t downAtMs = 0;
+    static bool wasDown = false;
+    if (lastLoopMs != 0 && now - lastLoopMs > maxLoopMs) {
+      maxLoopMs = now - lastLoopMs;
+    }
+    lastLoopMs = now;
+    if (touchSample.pressed != wasDown) {
+      wasDown = touchSample.pressed;
+      if (wasDown) downAtMs = now;
+      Serial.printf("[touch] t=%lu %s (%d,%d)%s dur=%lums\n", now,
+                    wasDown ? "down" : "up", touchSample.x, touchSample.y,
+                    wasDown ? "" : "", wasDown ? 0UL : now - downAtMs);
+    }
+    if (now - windowStartMs >= 1000) {
+      if (maxLoopMs > 40) {
+        Serial.printf("[loop] maxLoop=%lums\n", maxLoopMs);
+      }
+      maxLoopMs = 0;
+      windowStartMs = now;
+    }
+  }
+#endif
 
   // Display power and lock are independent states (ADR 0005): any
   // activity resets the idle timer regardless of lock state, and the

@@ -18,6 +18,11 @@ duplicating it.
 
 ## Hardware gotchas (quick index — see linked sections for detail)
 
+- **Touch X is miscalibrated in the raw CST816 data** (raw ~= 1.18 *
+  visual - 66), corrected by `lib/input/TouchCalibration.h`. "Buttons
+  miss taps" → build with `-DKNOBIFY_TOUCH_DEBUG`, send `CALIB` over
+  serial and re-fit before touching sizes/timing. See ADR 0004.
+
 - **This board's rotary encoder is rotation-only** (no click/push) and,
   more subtly, **is not a standard 4-state quadrature encoder** — its
   raw pin states never visit `00` (both contacts closed), only `11`

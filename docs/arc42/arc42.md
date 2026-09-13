@@ -149,7 +149,9 @@ flowchart TB
 - **`lib/playback`** — `PlaybackStateMachine` driving a `PlaybackDriver`
   interface (wraps `ESP32-audioI2S`), plus `VolumePersistence` over a
   `KeyValueStore` interface (wraps NVS).
-- **`lib/input`** — `GestureRecognizer` (raw touch points → tap/swipe
+- **`lib/input`** — `TouchCalibration` (raw CST816 → display
+  coordinates), `TouchLatch` (keeps sub-frame taps from being missed by
+  LVGL's periodic read), `GestureRecognizer` (raw touch points → tap/swipe
   with direction) and `InputRouter` (context-sensitive encoder routing:
   list-scroll vs. volume, by current screen kind).
 - **`lib/power`** (ADR 0005) — `IdleTimer` (display on/off, idle-timeout

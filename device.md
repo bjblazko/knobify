@@ -120,6 +120,13 @@ init/driver code ported from that demo.
   the `flash-device` skill wrapping it) automates this check when
   flashing.
 
+- **CST816 touch X doesn't match the display's X.** Raw X ≈ 1.18 ×
+  visual X − 66 (measured 2026-09-13 with crosshair targets; Y matches).
+  Uncorrected, taps land 20–50px left of the finger. Corrected in
+  `lib/input/TouchCalibration.h`; see ADR 0004 for how to re-measure.
+  The chip also NACKs every I2C read while nothing is touching it, so a
+  failed read means "not pressed".
+
 ## Sources
 
 - https://www.waveshare.com/esp32-s3-knob-touch-lcd-1.8.htm

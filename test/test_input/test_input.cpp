@@ -4,11 +4,15 @@
 
 #include "GestureRecognizer.h"
 #include "InputRouter.h"
+#include "TouchCalibration.h"
+#include "TouchLatch.h"
 
 using knobify::input::GestureRecognizer;
 using knobify::input::GestureType;
 using knobify::input::InputRouter;
 using knobify::input::ListMoveSink;
+using knobify::input::TouchCalibration;
+using knobify::input::TouchLatch;
 using knobify::input::TouchSample;
 using knobify::navigation::Screen;
 using knobify::navigation::ScreenKind;
@@ -166,6 +170,46 @@ void test_gesture_recognizer_ignores_vertical_drag() {
   TEST_ASSERT_FALSE(event.has_value());
 }
 
+void test_touch_calibration_maps_measured_raw_x_back_to_visual_x() {
+  // Raw readings captured on real hardware for crosshairs at x=90/180/270.
+  TouchSample left = TouchCalibration::apply({40, 180, true});
+  TouchSample center = TouchCalibration::apply({148, 180, true});
+  TouchSample right = TouchCalibration::apply({252, 180, true});
+  TEST_ASSERT_INT_WITHIN(12, 90, left.x);
+  TEST_ASSERT_INT_WITHIN(12, 180, center.x);
+  TEST_ASSERT_INT_WITHIN(12, 270, right.x);
+  TEST_ASSERT_EQUAL_INT16(180, center.y);
+  TEST_ASSERT_TRUE(center.pressed);
+}
+
+void test_touch_calibration_clamps_to_screen() {
+  TEST_ASSERT_EQUAL_INT16(359, TouchCalibration::apply({4000, 0, true}).x);
+  TEST_ASSERT_GREATER_OR_EQUAL(0, TouchCalibration::apply({0, 0, true}).x);
+}
+
+void test_touch_latch_reports_press_that_ended_between_reads() {
+  TouchLatch latch;
+  latch.feed({100, 120, true});
+  latch.feed({100, 120, false});
+  TouchSample first = latch.read();
+  TEST_ASSERT_TRUE(first.pressed);
+  TEST_ASSERT_EQUAL_INT16(100, first.x);
+  TEST_ASSERT_EQUAL_INT16(120, first.y);
+  TEST_ASSERT_FALSE(latch.read().pressed);
+}
+
+void test_touch_latch_passes_through_held_press() {
+  TouchLatch latch;
+  latch.feed({10, 20, true});
+  TEST_ASSERT_TRUE(latch.read().pressed);
+  latch.feed({12, 22, true});
+  TouchSample held = latch.read();
+  TEST_ASSERT_TRUE(held.pressed);
+  TEST_ASSERT_EQUAL_INT16(12, held.x);
+  latch.feed({12, 22, false});
+  TEST_ASSERT_FALSE(latch.read().pressed);
+}
+
 int main(int argc, char **argv) {
   UNITY_BEGIN();
   RUN_TEST(test_encoder_scrolls_list_on_browse_screen);
@@ -177,5 +221,9 @@ int main(int argc, char **argv) {
   RUN_TEST(test_gesture_recognizer_detects_swipe_left_to_right);
   RUN_TEST(test_gesture_recognizer_ignores_right_to_left_swipe);
   RUN_TEST(test_gesture_recognizer_ignores_vertical_drag);
+  RUN_TEST(test_touch_calibration_maps_measured_raw_x_back_to_visual_x);
+  RUN_TEST(test_touch_calibration_clamps_to_screen);
+  RUN_TEST(test_touch_latch_reports_press_that_ended_between_reads);
+  RUN_TEST(test_touch_latch_passes_through_held_press);
   return UNITY_END();
 }

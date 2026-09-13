@@ -289,6 +289,24 @@ each one only visible by actually tapping through the UI on hardware:
   library scan succeed. See the hardware-gotchas index in `AGENTS.md`
   for the short version -- read that first the next time "most files
   fail to open" shows up, before re-suspecting code, cards, or wiring.
+- **Small buttons "missed" taps; list rows didn't (2026-09-13).** Lock,
+  back and scan almost never fired, prev/play often missed, next and
+  list rows worked. Suspected undersized hit areas or touch timing, but
+  serial logging of every poll edge, every LVGL indev read and every
+  PRESSED/CLICKED event showed each tap *was* delivered -- just at the
+  wrong X. A crosshair calibration (targets at x=90/180/270) gave raw
+  X ~= 1.18 * visual - 66 (Y correct): taps landed 20-50px left of the
+  finger, outside any button narrower than that, while full-width rows
+  and the right-hand next button still caught them. Fix:
+  `lib/input/TouchCalibration.h` applied right after the poll. The same
+  capture showed `loop()` taking ~65ms during Now Playing redraws, so a
+  quick tap could fall between two LVGL reads -- `lib/input/TouchLatch.h`
+  now guarantees every polled press reaches LVGL. Buttons also got a
+  10px extended click area (`LvglButtonHelpers.h`). Note: the CST816
+  NACKs every I2C read while untouched, so a failed read genuinely means
+  "not pressed" -- don't "fix" it by holding the previous state. The
+  diagnostics stay in the code behind `-DKNOBIFY_TOUCH_DEBUG` (plus a
+  `CALIB` serial command that draws the crosshairs).
 
 ## Consequences
 

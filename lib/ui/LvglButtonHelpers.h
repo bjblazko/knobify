@@ -22,6 +22,13 @@ inline lv_obj_t *makeButton(lv_obj_t *parent, const char *symbolOrGlyph,
   lv_obj_t *btn = lv_btn_create(parent);
   lv_obj_set_size(btn, width, height);
   lv_obj_align(btn, align, xOfs, yOfs);
+  // Hit area reaches kTouchSlop px beyond the drawn button: calibrated
+  // touch still scatters ~10px around the finger (see TouchCalibration.h),
+  // and the header/lock buttons sit near the bezel where aiming is hardest.
+  // 10px keeps adjacent hit areas apart (prev/play/next are 24px apart,
+  // the header buttons end 24px above the list).
+  constexpr lv_coord_t kTouchSlop = 10;
+  lv_obj_set_ext_click_area(btn, kTouchSlop);
   switch (role) {
     case ButtonRole::Primary:
       theme::stylePrimaryButton(btn);

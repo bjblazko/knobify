@@ -4,6 +4,7 @@
 
 #include "GestureRecognizer.h"
 #include "St77916Driver.h"
+#include "TouchLatch.h"
 
 namespace knobify::ui {
 
@@ -30,7 +31,7 @@ class LvglGlue {
  public:
   bool begin(drivers::St77916Driver &display);
   void pump() { lv_timer_handler(); }
-  void feedTouch(const input::TouchSample &sample) { latestTouch_ = sample; }
+  void feedTouch(const input::TouchSample &sample) { touchLatch_.feed(sample); }
 
   // Diagnostic-only: dumps the full-screen shadow framebuffer (kept in
   // sync with the real panel inside flushCb, since LVGL only flushes
@@ -49,7 +50,7 @@ class LvglGlue {
   lv_disp_draw_buf_t drawBuf_{};
   lv_disp_drv_t dispDrv_{};
   lv_indev_drv_t indevDrv_{};
-  input::TouchSample latestTouch_{};
+  input::TouchLatch touchLatch_;
   Arduino_TFT *gfx_ = nullptr;
   // PSRAM-backed (8MB available per device.md; too big to justify from
   // the tight 320KB internal SRAM budget for a diagnostic feature).
