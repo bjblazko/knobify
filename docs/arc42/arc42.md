@@ -90,11 +90,16 @@ flowchart TB
         Lib["lib/library\nmodel, tags, scan, index"]
         Play["lib/playback\nPlaybackStateMachine, VolumePersistence"]
         Input["lib/input\nGestureRecognizer, InputRouter"]
+        Power["lib/power\nIdleTimer, LockController"]
     end
     subgraph UI["lib/ui (hardware-facing, thin)"]
         Screens["ArtistsScreen, AlbumsScreen, TracksScreen,\nFolderScreen, NowPlayingScreen, MiniBar"]
         ScreenMgr["ScreenManager\n(transition animations)"]
         Hint["GestureHintOverlay"]
+        LockUI["LockOverlay\n(lv_layer_top overlay)"]
+    end
+    subgraph Widgets["lib/ui-widgets (reusable LVGL widgets)"]
+        Arc["EdgeArc, IconFont"]
     end
     subgraph Drivers["lib/drivers (thin hardware adapters)"]
         SdDrv["sd/ (SdFileLister)"]
@@ -110,6 +115,7 @@ flowchart TB
     Main --> Lib
     Main --> Play
     Main --> Input
+    Main --> Power
     Main --> UI
     Main --> Drivers
 
@@ -119,6 +125,8 @@ flowchart TB
     UI --> Lib
     UI --> Play
     UI --> Input
+    UI --> Power
+    UI --> Widgets
     Lib --> SdDrv
     Play --> AudioDrv
     Play --> NvsDrv
@@ -126,6 +134,7 @@ flowchart TB
     UI --> DispDrv
     UI --> TouchDrv
     Input --> EncDrv
+    Main --> DispDrv
 ```
 
 - **`lib/navigation`** — `NavigationStack` (injectable-root screen
@@ -143,9 +152,19 @@ flowchart TB
 - **`lib/input`** — `GestureRecognizer` (raw touch points → tap/swipe
   with direction) and `InputRouter` (context-sensitive encoder routing:
   list-scroll vs. volume, by current screen kind).
+- **`lib/power`** (ADR 0005) — `IdleTimer` (display on/off, idle-timeout
+  driven) and `LockController` (lock state + the hold-button-while-
+  turning-encoder unlock gesture). Host-testable, no LVGL/hardware deps,
+  same pattern as `lib/playback`/`lib/navigation`.
 - **`lib/ui`** — LVGL screens, `ScreenManager` (dispatch + transition
-  animation), `GestureHintOverlay` (one-time nudge). Hardware-facing but
-  kept thin; not host-tested.
+  animation), `GestureHintOverlay` (one-time nudge), `LockOverlay` (ADR
+  0005 — the locked-device UI, shown/hidden on LVGL's top layer,
+  independent of `NavigationStack`). Hardware-facing but kept thin; not
+  host-tested.
+- **`lib/ui-widgets`** (ADR 0005) — `EdgeArc` (reusable round-edge ring,
+  backs both the volume indicator and unlock progress) and `IconFont` (a
+  small custom LVGL font for the lock/unlock glyphs LVGL's built-in
+  symbol font doesn't have).
 - **`lib/drivers`** — one thin adapter per peripheral, each the sole
   place its hardware API (Arduino `SD`, LVGL flush callbacks, `CST816`
   reads, GPIO quadrature reads, `ESP32-audioI2S`, `Preferences`/NVS) is
@@ -202,6 +221,39 @@ A left-right swipe pops one level (`NavigationStack::pop`) at any depth,
 or switches the Library/Files tab when already at a tab root
 (`TabController`) — see [ADR 0004](../adr/0004-navigation-library-and-index-architecture.md).
 
+**Idle → display off → wake → locked → unlock** (ADR 0005):
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant Main as main.cpp
+    participant Idle as IdleTimer
+    participant BL as St77916Driver
+    participant Lock as LockController
+    participant Overlay as LockOverlay
+
+    Note over Main,Idle: 60s with no touch/encoder activity
+    Main->>Idle: tick(now) -> false
+    Main->>BL: setBacklight(0)
+
+    U->>Main: touch-down (display was off)
+    Main->>Idle: noteActivity(now)
+    Main->>BL: setBacklight(255)
+    Note over Main: this touch is swallowed -- not fed to<br/>LVGL/GestureRecognizer/LockController
+
+    U->>Main: tap lock icon (Now Playing, unlocked)
+    Main->>Lock: requestLock()
+    Overlay->>Lock: tick() sees isLocked() -> show overlay
+
+    U->>Overlay: press + hold unlock button
+    Overlay->>Lock: onHoldStart(now)
+    U->>Main: turn encoder (while held)
+    Main->>Lock: onHoldEncoderDelta(delta)
+    Lock-->>Overlay: unlockProgress() -> ring fills
+    Note over Lock: threshold reached -> isLocked() = false
+    Overlay->>Overlay: tick() sees !isLocked() -> hide overlay
+```
+
 ## 7. Deployment View
 
 Single target: the ESP32-S3R8 primary MCU on the Waveshare board, flashed
@@ -218,6 +270,11 @@ per project goals.
   back/tab-switch navigation, one-time gesture-hint animation, and
   screen-transition animation. See
   [ADR 0004](../adr/0004-navigation-library-and-index-architecture.md)
+- **Display power and device lock** — idle-timeout display off/wake
+  (with first-touch-after-wake swallowed), and a manual lock using a
+  hold-button-while-turning-encoder unlock gesture, independent states
+  driven by `lib/power`. See
+  [ADR 0005](../adr/0005-power-lock-and-round-edge-indicators.md)
   for the full rationale.
 
 ## 9. Architecture Decisions

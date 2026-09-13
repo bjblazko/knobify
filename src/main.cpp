@@ -3,14 +3,19 @@
 #include <Arduino.h>
 #include <SD_MMC.h>
 
+#include <cstring>
+
 #include "Cst816Driver.h"
 #include "EncoderPins.h"
 #include "Esp32AudioI2SDriver.h"
 #include "GestureRecognizer.h"
 #include "GpioEncoderDriver.h"
+#include "IdleTimer.h"
 #include "IndexCache.h"
 #include "InputRouter.h"
 #include "LibraryScanner.h"
+#include "LockController.h"
+#include "LockOverlay.h"
 #include "LvglGlue.h"
 #include "NvsKeyValueStore.h"
 #include "PlaybackStateMachine.h"
@@ -130,12 +135,19 @@ knobify::drivers::St77916Driver g_display;
 knobify::drivers::Cst816Driver g_touch;
 knobify::ui::LvglGlue g_lvglGlue;
 knobify::library::LibraryIndex g_libraryIndex;
+knobify::power::IdleTimer g_idleTimer;
+knobify::power::LockController g_lockController;
 knobify::ui::ScreenManager g_screenManager(g_tabs, g_libraryIndex,
-                                            g_directoryReader, g_playback);
+                                            g_directoryReader, g_playback,
+                                            g_lockController);
+knobify::ui::LockOverlay g_lockOverlay(g_lockController);
 knobify::input::InputRouter g_inputRouter(g_tabs, g_playback, g_screenManager);
 knobify::input::GestureRecognizer g_gestureRecognizer;
 
 bool g_wasPlaying = false;
+bool g_backlightOn = true;
+bool g_touchPressedPrev = false;
+bool g_swallowingWakeTouch = false;
 
 }  // namespace
 
@@ -197,42 +209,107 @@ void setup() {
 
   if (displayOk) {
     g_screenManager.begin();
+    // Created after the first screen so it's above it on LVGL's top
+    // layer from the start -- see LockOverlay.h.
+    g_lockOverlay.begin();
     if (bootScreen) lv_obj_del(bootScreen);
+  }
+}
+
+// Diagnostic-only: a "SCREENSHOT\n" line over Serial dumps the current
+// display contents (see LvglGlue::writeScreenshotToSerial(), decoded by
+// scripts/screenshot.py into a BMP) -- lets a UI bug be diagnosed from an
+// actual capture instead of a description or a phone photo.
+void pollSerialCommands() {
+  static char buf[16];
+  static size_t len = 0;
+  while (Serial.available()) {
+    char c = static_cast<char>(Serial.read());
+    if (c == '\n' || c == '\r') {
+      if (len > 0) {
+        buf[len] = '\0';
+        if (strcmp(buf, "SCREENSHOT") == 0) {
+          g_lvglGlue.writeScreenshotToSerial();
+        }
+        len = 0;
+      }
+    } else if (len < sizeof(buf) - 1) {
+      buf[len++] = c;
+    }
   }
 }
 
 void loop() {
   g_audioDriver.loop();
   g_lvglGlue.pump();
+  pollSerialCommands();
 
+  uint32_t now = millis();
   int16_t encoderDelta = g_encoder.readDelta();
-  if (encoderDelta != 0) {
-    g_inputRouter.onEncoderDelta(encoderDelta, millis());
-    // Cheap (no full re-render) so it can run on every tick -- see
-    // ScreenManager::updateVolumeDisplay(). A no-op on any screen other
-    // than Now Playing.
-    g_screenManager.updateVolumeDisplay();
-  }
 
-  // Touch is polled exactly once here and fed to both consumers --
-  // LVGL's touch indev (via feedTouch(), for taps on widgets) and the
-  // separate gesture recognizer (for the swipe-to-go-back/switch-tab
-  // gesture, which LVGL widgets don't know about). Polling twice
-  // independently used to feed each one a slightly different sample
-  // (real capacitive touch coordinates jitter between reads), which
-  // could make a single tap also register as a swipe -- see LvglGlue.h.
+  // Touch is polled exactly once here and fanned out from this one
+  // sample -- polling twice independently used to feed different
+  // consumers slightly different coordinates (real capacitive touch
+  // jitters between reads), which could make a single tap also register
+  // as a swipe -- see LvglGlue.h.
   knobify::input::TouchSample touchSample{};
   g_touch.poll(touchSample);
-  g_lvglGlue.feedTouch(touchSample);
-  auto gesture = g_gestureRecognizer.feed(touchSample);
-  if (gesture) {
-    g_inputRouter.onGesture(*gesture);
-    if (gesture->type == knobify::input::GestureType::SwipeLeftToRight) {
-      g_screenManager.render();
+
+  // Display power and lock are independent states (ADR 0005): any
+  // activity resets the idle timer regardless of lock state, and the
+  // very first touch after the display was off is swallowed entirely
+  // below -- it only wakes the screen, never also acts on whatever it
+  // landed on (a button on the table, or the unlock button in a pocket).
+  bool displayWasOn = g_idleTimer.isDisplayOn();
+  if (touchSample.pressed || encoderDelta != 0) {
+    g_idleTimer.noteActivity(now);
+  }
+  bool displayOn = g_idleTimer.tick(now);
+  if (displayOn != g_backlightOn) {
+    g_display.setBacklight(displayOn ? 255 : 0);
+    g_backlightOn = displayOn;
+  }
+
+  bool touchDownEdge = touchSample.pressed && !g_touchPressedPrev;
+  g_touchPressedPrev = touchSample.pressed;
+  if (touchDownEdge && !displayWasOn) {
+    g_swallowingWakeTouch = true;
+  }
+
+  if (g_swallowingWakeTouch) {
+    if (!touchSample.pressed) g_swallowingWakeTouch = false;
+  } else {
+    g_lvglGlue.feedTouch(touchSample);
+    if (!g_lockController.isLocked()) {
+      auto gesture = g_gestureRecognizer.feed(touchSample);
+      if (gesture) {
+        g_inputRouter.onGesture(*gesture);
+        if (gesture->type == knobify::input::GestureType::SwipeLeftToRight) {
+          g_screenManager.render();
+        }
+      }
     }
   }
 
-  g_playback.tick(millis());
+  if (encoderDelta != 0) {
+    if (g_lockController.isLocked()) {
+      // While locked, the encoder only ever feeds the hold-and-turn
+      // unlock gesture (LockController ignores deltas unless the
+      // on-screen unlock button is currently held) -- no volume/list
+      // passthrough while locked, per ADR 0005.
+      g_lockController.onHoldEncoderDelta(encoderDelta);
+    } else {
+      g_inputRouter.onEncoderDelta(encoderDelta, now);
+      // Cheap (no full re-render) so it can run on every tick -- see
+      // ScreenManager::updateVolumeDisplay(). A no-op on any screen
+      // other than Now Playing.
+      g_screenManager.updateVolumeDisplay();
+    }
+  }
+
+  g_lockOverlay.tick();
+
+  g_playback.tick(now);
   // Cheap (no full re-render), a no-op on any screen other than Now
   // Playing -- see ScreenManager::updateElapsedTimeDisplay().
   g_screenManager.updateElapsedTimeDisplay();

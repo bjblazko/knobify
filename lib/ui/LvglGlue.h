@@ -32,6 +32,15 @@ class LvglGlue {
   void pump() { lv_timer_handler(); }
   void feedTouch(const input::TouchSample &sample) { latestTouch_ = sample; }
 
+  // Diagnostic-only: dumps the full-screen shadow framebuffer (kept in
+  // sync with the real panel inside flushCb, since LVGL only flushes
+  // partial stripes -- see kBufHeight in LvglGlue.cpp) to Serial as a
+  // small text header followed by raw RGB565 bytes. Exists so a screen
+  // bug can be diagnosed from a real capture instead of a description or
+  // a photo -- see scripts/screenshot.py, which decodes this into a BMP.
+  // Triggered by main.cpp on receiving "SCREENSHOT\n" over Serial.
+  void writeScreenshotToSerial() const;
+
  private:
   static void flushCb(lv_disp_drv_t *drv, const lv_area_t *area,
                        lv_color_t *colorMap);
@@ -41,6 +50,10 @@ class LvglGlue {
   lv_disp_drv_t dispDrv_{};
   lv_indev_drv_t indevDrv_{};
   input::TouchSample latestTouch_{};
+  Arduino_TFT *gfx_ = nullptr;
+  // PSRAM-backed (8MB available per device.md; too big to justify from
+  // the tight 320KB internal SRAM budget for a diagnostic feature).
+  uint16_t *shadowFrame_ = nullptr;
 };
 
 }  // namespace knobify::ui

@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <cstdio>
 
+#include "IconFont.h"
+#include "LvglButtonHelpers.h"
 #include "St77916Driver.h"
 
 using knobify::navigation::Screen;
@@ -195,14 +197,8 @@ void ScreenManager::renderBackButtonIfNeeded() {
   // Positioned top-center rather than a corner: the round bezel clips
   // corners much more aggressively than top-center at this height.
   if (!tabs_.activeStack().canGoBack()) return;
-  lv_obj_t *backBtn = lv_btn_create(screen_);
-  lv_obj_set_size(backBtn, 56, 32);
-  lv_obj_align(backBtn, LV_ALIGN_TOP_MID, 0, 12);
-  lv_obj_t *backLabel = lv_label_create(backBtn);
-  lv_label_set_text(backLabel, LV_SYMBOL_LEFT);
-  lv_obj_center(backLabel);
-  lv_obj_add_event_cb(backBtn, &ScreenManager::onBackClicked, LV_EVENT_CLICKED,
-                       this);
+  makeIconButton(screen_, LV_SYMBOL_LEFT, 56, 32, LV_ALIGN_TOP_MID, 0, 12,
+                 &ScreenManager::onBackClicked, this);
 }
 
 void ScreenManager::renderNowPlaying() {
@@ -233,38 +229,51 @@ void ScreenManager::renderNowPlaying() {
            playback::PlaybackStateMachine::kMaxVolume);
   lv_label_set_text(volumeLabel_, volText);
 
+  // Round-edge ring, additive alongside the linear bar above -- see ADR
+  // 0005. Not yet validated on real hardware (does it read well next to
+  // the bar/buttons at this size); the bar stays as the primary readout
+  // until that's confirmed, per this screen's history of round-display
+  // surprises (ADR 0004).
+  ui_widgets::EdgeArcConfig volumeArcConfig;
+  volumeArcConfig.startAngle = 135;
+  volumeArcConfig.endAngle = 45;
+  volumeArcConfig.widthPx = 8;
+  // Indigo, matching the theme's primary color already used for the bar
+  // above -- deliberately a different color from LockOverlay's unlock
+  // ring (green) so the two aren't visually confusable as the same
+  // indicator (found on real hardware 2026-09-13: both rendered
+  // identically blue and were mistaken for each other).
+  volumeArcConfig.color = lv_palette_main(LV_PALETTE_INDIGO);
+  volumeArcConfig.hasBackgroundColor = true;
+  volumeArcConfig.backgroundColor = lv_palette_lighten(LV_PALETTE_GREY, 2);
+  lv_obj_t *volumeArcHost = lv_obj_create(screen_);
+  lv_obj_set_size(volumeArcHost, drivers::kLcdHorRes - 16,
+                   drivers::kLcdVerRes - 16);
+  lv_obj_center(volumeArcHost);
+  lv_obj_set_style_bg_opa(volumeArcHost, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(volumeArcHost, 0, 0);
+  lv_obj_clear_flag(volumeArcHost, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(volumeArcHost, LV_OBJ_FLAG_CLICKABLE);
+  volumeArc_.create(volumeArcHost, volumeArcConfig,
+                     playback::PlaybackStateMachine::kMinVolume,
+                     playback::PlaybackStateMachine::kMaxVolume);
+  volumeArc_.setValue(static_cast<int32_t>(playback_.volume()));
+
   // Buttons sit inset from the edges, safely within the round display's
   // visible area rather than at the literal corners -- see decision 6,
   // ADR 0004.
-  lv_obj_t *prevBtn = lv_btn_create(screen_);
-  lv_obj_set_size(prevBtn, 70, 70);
-  lv_obj_align(prevBtn, LV_ALIGN_CENTER, -90, 60);
-  lv_obj_t *prevLabel = lv_label_create(prevBtn);
-  lv_label_set_text(prevLabel, LV_SYMBOL_PREV);
-  lv_obj_center(prevLabel);
-  lv_obj_add_event_cb(prevBtn, &ScreenManager::onPrevClicked, LV_EVENT_CLICKED,
-                       this);
+  makeIconButton(screen_, LV_SYMBOL_PREV, 70, 70, LV_ALIGN_CENTER, -90, 60,
+                 &ScreenManager::onPrevClicked, this);
 
-  lv_obj_t *playPauseBtn = lv_btn_create(screen_);
-  lv_obj_set_size(playPauseBtn, 80, 80);
-  lv_obj_align(playPauseBtn, LV_ALIGN_CENTER, 0, 60);
-  lv_obj_t *playPauseLabel = lv_label_create(playPauseBtn);
-  lv_label_set_text(playPauseLabel,
-                     playback_.state() == playback::PlaybackState::Playing
-                         ? LV_SYMBOL_PAUSE
-                         : LV_SYMBOL_PLAY);
-  lv_obj_center(playPauseLabel);
-  lv_obj_add_event_cb(playPauseBtn, &ScreenManager::onPlayPauseClicked,
-                       LV_EVENT_CLICKED, this);
+  makeIconButton(screen_,
+                 playback_.state() == playback::PlaybackState::Playing
+                     ? LV_SYMBOL_PAUSE
+                     : LV_SYMBOL_PLAY,
+                 80, 80, LV_ALIGN_CENTER, 0, 60,
+                 &ScreenManager::onPlayPauseClicked, this);
 
-  lv_obj_t *nextBtn = lv_btn_create(screen_);
-  lv_obj_set_size(nextBtn, 70, 70);
-  lv_obj_align(nextBtn, LV_ALIGN_CENTER, 90, 60);
-  lv_obj_t *nextLabel = lv_label_create(nextBtn);
-  lv_label_set_text(nextLabel, LV_SYMBOL_NEXT);
-  lv_obj_center(nextLabel);
-  lv_obj_add_event_cb(nextBtn, &ScreenManager::onNextClicked, LV_EVENT_CLICKED,
-                       this);
+  makeIconButton(screen_, LV_SYMBOL_NEXT, 70, 70, LV_ALIGN_CENTER, 90, 60,
+                 &ScreenManager::onNextClicked, this);
 
   // Elapsed play time -- requested after real hardware testing made it
   // clear there was no way to tell whether playback was actually
@@ -275,6 +284,14 @@ void ScreenManager::renderNowPlaying() {
   lv_obj_align(elapsedLabel_, LV_ALIGN_CENTER, 0, 110);
   lv_label_set_text(elapsedLabel_, "0:00");
   updateElapsedTimeDisplay();
+
+  // Lock button -- placement is preliminary (this screen's layout has
+  // repeatedly needed hardware-driven adjustment, per ADR 0004) but
+  // bottom-center, inset from the edge like the back button's top-center
+  // inset, keeps it clear of the round bezel and of the controls above.
+  makeIconButton(screen_, KNOBIFY_ICON_LOCK, 56, 32, LV_ALIGN_BOTTOM_MID, 0,
+                 -12, &ScreenManager::onLockClicked, this,
+                 &knobify_icon_font_28);
 }
 
 void ScreenManager::applyHighlight() {
@@ -414,6 +431,14 @@ void ScreenManager::onNextClicked(lv_event_t *e) {
   auto *self = static_cast<ScreenManager *>(lv_event_get_user_data(e));
   self->playback_.next(millis());
   self->render();
+}
+
+void ScreenManager::onLockClicked(lv_event_t *e) {
+  auto *self = static_cast<ScreenManager *>(lv_event_get_user_data(e));
+  self->lockController_.requestLock();
+  // No re-render needed here: LockOverlay (shown on LVGL's top layer,
+  // independent of ScreenManager) picks up the new lock state on its own
+  // next tick() and covers this screen.
 }
 
 }  // namespace knobify::ui

@@ -7,9 +7,11 @@
 #include <utility>
 #include <vector>
 
+#include "EdgeArc.h"
 #include "FolderBrowser.h"
 #include "InputRouter.h"
 #include "LibraryScanner.h"
+#include "LockController.h"
 #include "PlaybackStateMachine.h"
 #include "TabController.h"
 
@@ -31,11 +33,13 @@ class ScreenManager : public input::ListMoveSink {
   ScreenManager(navigation::TabController &tabs,
                 library::LibraryIndex &library,
                 library::DirectoryReader &directoryReader,
-                playback::PlaybackStateMachine &playback)
+                playback::PlaybackStateMachine &playback,
+                power::LockController &lockController)
       : tabs_(tabs),
         library_(library),
         directoryReader_(directoryReader),
-        playback_(playback) {}
+        playback_(playback),
+        lockController_(lockController) {}
 
   void begin();
 
@@ -72,11 +76,13 @@ class ScreenManager : public input::ListMoveSink {
   static void onPrevClicked(lv_event_t *e);
   static void onPlayPauseClicked(lv_event_t *e);
   static void onNextClicked(lv_event_t *e);
+  static void onLockClicked(lv_event_t *e);
 
   navigation::TabController &tabs_;
   library::LibraryIndex &library_;
   library::DirectoryReader &directoryReader_;
   playback::PlaybackStateMachine &playback_;
+  power::LockController &lockController_;
 
   lv_obj_t *screen_ = nullptr;
   lv_obj_t *list_ = nullptr;
@@ -84,6 +90,7 @@ class ScreenManager : public input::ListMoveSink {
   lv_obj_t *volumeBar_ = nullptr;
   lv_obj_t *volumeLabel_ = nullptr;
   lv_obj_t *elapsedLabel_ = nullptr;
+  ui_widgets::EdgeArc volumeArc_;
   int highlightedIndex_ = 0;
 
   // Kind IDs stashed on each clickable object via lv_obj_set_user_data so

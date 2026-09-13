@@ -8,6 +8,14 @@ Offline music player built on a Waveshare ESP32-S3-Knob-Touch-LCD-1.8 — see [`
 - Audio output via the onboard 3.5mm jack (PCM5100A DAC).
 - Control via the board's rotary encoder(s) + touch display.
 - Fully offline for v1.
+- Display power and device lock, tuned for two real usage contexts: on a
+  table (display times out on its own, a touch wakes it without acting
+  on whatever's underneath) and in a pocket while playing (manually
+  locked so touch/knob can't trigger anything by accident; unlocking
+  requires holding the on-screen unlock button while turning the
+  encoder — see [ADR 0005](docs/adr/0005-power-lock-and-round-edge-indicators.md)).
+  Volume and unlock progress are shown as rings hugging the round
+  display's edge, via a small reusable widget.
 
 ## Explicitly out of scope for now
 
@@ -17,13 +25,11 @@ Offline music player built on a Waveshare ESP32-S3-Knob-Touch-LCD-1.8 — see [`
   SD card — the ESP32-S3's native USB-OTG could expose the SD card as a
   USB drive via TinyUSB's MSC class while plugged in, so the card
   wouldn't need to be physically removed and read on another computer
-- Key/screen lock (avoid accidental input, e.g. in a pocket or bag)
 - Album art display (cover images on the Now Playing screen)
 - Jog/shuttle-style scrubbing through a track's playback position
-- Display sleep/off mode (screen off while still playing, wake on
-  touch/knob/gesture)
-- Circular progress indicators around the display's edge (a ring for
-  playback position, another for volume) instead of/alongside bars
+- A circular progress ring for playback position (the volume and
+  unlock-progress rings are in scope, see Goal above; a position ring
+  around the edge is not)
 - Theming (selectable color schemes / customizable look)
 - General visual polish and animation ("eye candy") beyond the current
   one-time gesture-hint nudge and screen-transition slide
