@@ -13,6 +13,7 @@
 #include "IdleTimer.h"
 #include "IndexCache.h"
 #include "InputRouter.h"
+#include "LibraryRescanner.h"
 #include "LibraryScanner.h"
 #include "LockController.h"
 #include "LockOverlay.h"
@@ -96,47 +97,20 @@ knobify::library::LibraryIndex loadOrBuildLibraryIndex(
   return freshIndex;
 }
 
-// Shows scan progress on-screen -- there's no other feedback on a device
-// with no LEDs, and a slow or SD-error-prone scan (see AGENTS.md) could
-// otherwise look identical to a dead board. Found from real hardware
-// feedback 2026-09-12.
-class BootProgressListener : public knobify::library::ScanProgressListener {
+// Concrete LibraryRescanner: wraps the SD-backed lister/opener (file-scope
+// here, so ScreenManager/LibraryRescanner can't reference them directly)
+// and calls the existing signature-check-then-scan logic on demand, from
+// the library screen's scan button rather than at boot -- see AGENTS.md.
+// Defined out-of-line below, once g_libraryIndex/g_fileLister/g_fileOpener
+// exist.
+class SdLibraryRescanner : public knobify::library::LibraryRescanner {
  public:
-  explicit BootProgressListener(lv_obj_t *label) : label_(label) {}
-
-  void onFileScanned(size_t filesScannedSoFar) override {
-    char text[48];
-    snprintf(text, sizeof(text), "Scanning library...\n%u files",
-             static_cast<unsigned>(filesScannedSoFar));
-    lv_label_set_text(label_, text);
-    // Actually flushing to the panel on every single file would slow
-    // the scan down for no real benefit -- every 5th file is still
-    // clearly "moving" to a human, without adding meaningful overhead.
-    if (filesScannedSoFar % 5 == 0) {
-      lv_timer_handler();
-    }
-  }
-
-  // TEMPORARY DIAGNOSTIC (2026-09-12): investigating "only a handful of
-  // tracks found" reports on real hardware -- see AGENTS.md. Logs every
-  // file the scanner processed, whether it opened, and what tags (if
-  // any) came out, so a failure mode (can't open vs. opens but no tags
-  // vs. tags found but grouped oddly) can be told apart from the serial
-  // log alone. Remove once the SD reliability issue is resolved.
-  void onFileResult(const std::string &path, bool opened,
-                     const knobify::library::TagResult &tags) override {
-    Serial.printf(
-        "[scan] opened=%d artist=\"%s\" album=\"%s\" title=\"%s\" path=%s\n",
-        opened, tags.artist.c_str(), tags.album.c_str(), tags.title.c_str(),
-        path.c_str());
-  }
-
- private:
-  lv_obj_t *label_;
+  void rescan(knobify::library::ScanProgressListener *progress) override;
 };
 
 knobify::drivers::SdFileLister g_fileLister(kMusicRoot);
 knobify::drivers::SdFileOpener g_fileOpener;
+SdLibraryRescanner g_libraryRescanner;
 knobify::drivers::SdDirectoryReader g_directoryReader;
 knobify::drivers::GpioEncoderDriver g_encoder(knobify::drivers::kEncoderPinA,
                                                knobify::drivers::kEncoderPinB);
@@ -154,7 +128,8 @@ knobify::power::IdleTimer g_idleTimer;
 knobify::power::LockController g_lockController;
 knobify::ui::ScreenManager g_screenManager(g_tabs, g_libraryIndex,
                                             g_directoryReader, g_playback,
-                                            g_lockController);
+                                            g_lockController,
+                                            g_libraryRescanner);
 knobify::ui::LockOverlay g_lockOverlay(g_lockController);
 knobify::input::InputRouter g_inputRouter(g_tabs, g_playback, g_screenManager);
 knobify::input::GestureRecognizer g_gestureRecognizer;
@@ -163,6 +138,10 @@ bool g_wasPlaying = false;
 bool g_backlightOn = true;
 bool g_touchPressedPrev = false;
 bool g_swallowingWakeTouch = false;
+
+void SdLibraryRescanner::rescan(knobify::library::ScanProgressListener *progress) {
+  g_libraryIndex = loadOrBuildLibraryIndex(g_fileLister, g_fileOpener, progress);
+}
 
 }  // namespace
 
@@ -213,24 +192,25 @@ void setup() {
       lv_timer_handler();
     }
   } else {
-    // computeSignature() (inside loadOrBuildLibraryIndex) does a full
-    // recursive SD directory walk before any per-file progress exists --
-    // on a real library that alone can take many seconds, so update the
-    // label here first. Otherwise the screen stays frozen on "Starting..."
-    // for that whole walk and looks like a dead board, same rationale as
-    // the scan-phase label below (see the "Display comes up FIRST" comment
-    // above; found via live serial capture 2026-09-13, see AGENTS.md).
-    if (bootLabel) {
-      lv_label_set_text(bootLabel, "Checking library...");
-      lv_timer_handler();
+    // Boot no longer scans the SD card at all -- just loads whatever
+    // library index was last cached (a single small file read, no
+    // directory walk), so the device is usable immediately. Change
+    // detection/full rescan now only happens on demand, via the scan
+    // button on the library screen (ScreenManager::onScanClicked ->
+    // SdLibraryRescanner::rescan()). If no cache exists yet (e.g. first
+    // boot after flashing), the library just starts empty -- see
+    // AGENTS.md.
+    std::vector<uint8_t> cacheBytes = readIndexCacheFile();
+    knobify::library::LibrarySignature ignoredSignature;
+    if (!cacheBytes.empty() && knobify::library::IndexCache::decode(
+                                    cacheBytes, g_libraryIndex, ignoredSignature)) {
+      Serial.printf("Library: %u artists, %u albums, %u tracks (from cache)\n",
+                     static_cast<unsigned>(g_libraryIndex.artists.size()),
+                     static_cast<unsigned>(g_libraryIndex.albums.size()),
+                     static_cast<unsigned>(g_libraryIndex.tracks.size()));
+    } else {
+      Serial.println("No library cache yet -- use the scan button to build one.");
     }
-    BootProgressListener progressListener(bootLabel);
-    g_libraryIndex = loadOrBuildLibraryIndex(
-        g_fileLister, g_fileOpener, bootLabel ? &progressListener : nullptr);
-    Serial.printf("Library: %u artists, %u albums, %u tracks\n",
-                   static_cast<unsigned>(g_libraryIndex.artists.size()),
-                   static_cast<unsigned>(g_libraryIndex.albums.size()),
-                   static_cast<unsigned>(g_libraryIndex.tracks.size()));
   }
 
   if (displayOk) {

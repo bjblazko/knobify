@@ -10,6 +10,7 @@
 #include "EdgeArc.h"
 #include "FolderBrowser.h"
 #include "InputRouter.h"
+#include "LibraryRescanner.h"
 #include "LibraryScanner.h"
 #include "LockController.h"
 #include "PlaybackStateMachine.h"
@@ -34,12 +35,14 @@ class ScreenManager : public input::ListMoveSink {
                 library::LibraryIndex &library,
                 library::DirectoryReader &directoryReader,
                 playback::PlaybackStateMachine &playback,
-                power::LockController &lockController)
+                power::LockController &lockController,
+                library::LibraryRescanner &rescanner)
       : tabs_(tabs),
         library_(library),
         directoryReader_(directoryReader),
         playback_(playback),
-        lockController_(lockController) {}
+        lockController_(lockController),
+        rescanner_(rescanner) {}
 
   void begin();
 
@@ -73,6 +76,7 @@ class ScreenManager : public input::ListMoveSink {
                    bool showMiniBar);
   void renderNowPlaying();
   void renderBackButtonIfNeeded();
+  void renderScanButtonIfNeeded();
   void applyHighlight();
   void goToNowPlaying();
   static std::string friendlyName(const std::string &path);
@@ -84,12 +88,14 @@ class ScreenManager : public input::ListMoveSink {
   static void onPlayPauseClicked(lv_event_t *e);
   static void onNextClicked(lv_event_t *e);
   static void onLockClicked(lv_event_t *e);
+  static void onScanClicked(lv_event_t *e);
 
   navigation::TabController &tabs_;
   library::LibraryIndex &library_;
   library::DirectoryReader &directoryReader_;
   playback::PlaybackStateMachine &playback_;
   power::LockController &lockController_;
+  library::LibraryRescanner &rescanner_;
 
   static constexpr uint32_t kVolumeHudTimeoutMs = 3000;
 

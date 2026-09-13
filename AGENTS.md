@@ -182,35 +182,59 @@ duplicating it.
   silent until a full power cycle). Before spending time debugging code
   for "X looks like it should work but doesn't, no errors logged" on
   this board, try a full power cycle first.
-- **Boot took 20+ seconds before the SD library scan became visible** --
-  two compounding causes, found via live serial capture (`millis()`
-  timestamps around each boot step) 2026-09-13. First: `computeSignature()`
-  (`src/main.cpp`, called from `loadOrBuildLibraryIndex()`) does one full
-  recursive SD directory walk (`SdFileLister::walk()`) with **zero UI
-  feedback** before "Scanning library..." ever appears -- on a real
-  library (512 tracks, 560 macOS AppleDouble `._` sidecar files also
-  walked) this alone measured ~17-19s on real hardware; fixed by setting
-  the boot label to "Checking library..." before this call. Second, much
-  bigger: `writeIndexCacheFile()` (`kIndexCachePath =
+- **Boot used to take 20+ seconds before the SD library scan became
+  visible; boot no longer scans the SD card at all.** Found via live
+  serial capture (`millis()` timestamps around each boot step)
+  2026-09-13. Two compounding causes: `computeSignature()`
+  (`src/main.cpp`) does one full recursive SD directory walk
+  (`SdFileLister::walk()`), ~17-19s on a real library (512 tracks, 560
+  macOS AppleDouble `._` sidecar files also walked) with zero UI
+  feedback; and `writeIndexCacheFile()` (`kIndexCachePath =
   "/knobify/library.idx"`) silently failed on **every single boot**
   (`vfs_api.cpp: open(): ... does not exist, no permits for creation`)
   because the SD_MMC/FATFS layer refuses to create a file inside a
   directory that doesn't exist, and nothing ever created `/knobify` --
-  so the cache never persisted and every boot paid for the full
-  directory walk *twice* (once for the signature, once again inside
-  `LibraryScanner::scan()`, which used to call its own `lister.reset()`)
-  plus a full tag-read scan, forever. Fixed by (a) `SD_MMC.mkdir("/knobify")`
-  before the cache write, and (b) giving `FileLister` a `rewind()`
-  (replay already-walked entries, no new SD I/O) distinct from `reset()`
-  (full re-walk), so `LibraryScanner::scan()` no longer re-walks a lister
-  `computeSignature()` already walked. Net effect on this hardware: a
-  routine boot (cache valid, no library changes) went from paying for two
-  full walks + a full scan every single time (~30-38s+) down to the one
-  unavoidable ~17-19s signature walk. That remaining walk time is
-  intrinsic to change-detection needing to visit every file/dir over
-  SDMMC and was not addressed -- if it still feels too slow, that's the
-  next thing to look at (e.g. cheaper change detection than a full
-  per-file walk), not a quick fix.
+  so the cache never persisted and every boot paid for the full walk
+  *twice* (signature + `LibraryScanner::scan()`, which used to
+  `lister.reset()` again) plus a full tag-read scan, forever. First fix
+  (mkdir + `FileLister::rewind()` so the scanner replays an
+  already-walked lister instead of re-walking) got a routine boot down
+  to the one ~17-19s signature walk. Then, per a follow-up feature
+  request, the signature walk was removed from boot entirely: `setup()`
+  now just decodes the cached `library.idx` directly (a single small
+  file read) and shows whatever that contains, instantly, even if it's
+  stale. Detecting changes and rebuilding the index is now **on-demand
+  only**, via a refresh-icon button (`LV_SYMBOL_REFRESH`) on the library
+  screen's root (`ScreenManager::renderScanButtonIfNeeded()`,
+  `onScanClicked()`) that calls a small `library::LibraryRescanner`
+  interface (`lib/library/LibraryRescanner.h`) implemented in
+  `src/main.cpp` (`SdLibraryRescanner`) so the UI layer doesn't need to
+  know about the concrete SD types. A device with no cache yet (e.g.
+  first boot after flashing) just shows an empty library until the user
+  taps that button.
+- **A UI action that runs a synchronous, multi-second blocking call
+  (like the scan button above) must NOT call `lv_timer_handler()` to
+  flush progress to the screen while it's running -- it corrupts touch
+  input app-wide, not just on that screen.** `LvglGlue::pump()` (called
+  every `loop()`) *is* `lv_timer_handler()`; a button's `LV_EVENT_CLICKED`
+  handler runs from inside that very call, so calling
+  `lv_timer_handler()` again from inside the handler is a reentrant call
+  into LVGL's own timer/input dispatch -- LVGL explicitly does not
+  support this. Symptom on real hardware (2026-09-13): after tapping the
+  scan button once, taps became unreliable everywhere in the app (list
+  items, the lock button, playback controls), not just around the scan
+  UI -- easy to misdiagnose as "the button is dead" or "SD scan runs in
+  the background" (neither was true; the scan was synchronous and
+  finished, but input stayed corrupted afterward). Fix: use
+  `lv_refr_now(nullptr)` instead, which only forces the pending redraw
+  without touching input devices or other timers, so it's safe to call
+  from inside an event handler. Also delete any scratch UI created for
+  the duration (e.g. a progress overlay) with `lv_obj_del_async()`, not
+  `lv_obj_del()`, for the same reason `ScreenManager::render()` already
+  does for screen swaps triggered from a click handler (see that
+  function's own comment). See
+  `lib/ui/ScreenManager.cpp`'s `ScanProgressLabelListener` and
+  `onScanClicked()`.
 
 ## Where things are documented (so you add to the right place)
 

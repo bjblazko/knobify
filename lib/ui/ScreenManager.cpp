@@ -15,6 +15,43 @@ using knobify::navigation::ScreenParams;
 
 namespace knobify::ui {
 
+namespace {
+
+// Updates the scan overlay's label as LibraryRescanner::rescan() walks the
+// SD card -- same text/throttling as the old boot-time listener this
+// replaced (main.cpp no longer scans at boot, see AGENTS.md). Uses
+// lv_refr_now(), NOT lv_timer_handler(), to flush the label: rescan() runs
+// synchronously from inside onScanClicked, which is itself invoked BY an
+// in-progress lv_timer_handler() call (LvglGlue::pump(), called every
+// loop()) -- calling lv_timer_handler() again from in here would be a
+// reentrant call into LVGL's own timer/input dispatch, which isn't
+// reentrant and corrupts touch input state app-wide (found on real
+// hardware 2026-09-13: taps became unreliable everywhere, not just on
+// this screen, after using the scan button -- see AGENTS.md).
+// lv_refr_now() only forces the pending redraw, without touching input
+// devices or other timers, so it's safe to call from here.
+class ScanProgressLabelListener : public knobify::library::ScanProgressListener {
+ public:
+  explicit ScanProgressLabelListener(lv_obj_t *label) : label_(label) {}
+
+  void onFileScanned(size_t filesScannedSoFar) override {
+    char text[48];
+    snprintf(text, sizeof(text), "Scanning library...\n%u files",
+             static_cast<unsigned>(filesScannedSoFar));
+    lv_label_set_text(label_, text);
+    // Actually flushing to the panel on every single file would slow the
+    // scan down for no real benefit -- every 5th file is still clearly
+    // "moving" to a human, without adding meaningful overhead.
+    if (filesScannedSoFar % 5 == 0) {
+      lv_refr_now(nullptr);
+    }
+  }
+
+ private:
+  lv_obj_t *label_;
+};
+
+}  // namespace
 
 void ScreenManager::begin() { render(); }
 
@@ -100,6 +137,7 @@ void ScreenManager::render() {
   // full-screen widget there) but was invisible/unclickable on every
   // list screen.
   renderBackButtonIfNeeded();
+  renderScanButtonIfNeeded();
 }
 
 void ScreenManager::renderList(
@@ -207,6 +245,18 @@ void ScreenManager::renderBackButtonIfNeeded() {
   if (!tabs_.activeStack().canGoBack()) return;
   makeIconButton(screen_, LV_SYMBOL_LEFT, 56, 32, LV_ALIGN_TOP_MID, 0, 12,
                  &ScreenManager::onBackClicked, this);
+}
+
+void ScreenManager::renderScanButtonIfNeeded() {
+  // Boot no longer scans the SD card at all (just loads whatever library
+  // index was last cached, see AGENTS.md) -- this is the only way to pick
+  // up new/changed music. Artists is always the Library tab's root today
+  // (see ScreenId.h), so this doubles as "top of the library list" without
+  // needing a separate marker. Same top-center slot as the back button;
+  // mutually exclusive with it since a stack root never canGoBack().
+  if (tabs_.activeStack().current().kind != ScreenKind::Artists) return;
+  makeIconButton(screen_, LV_SYMBOL_REFRESH, 56, 32, LV_ALIGN_TOP_MID, 0, 12,
+                 &ScreenManager::onScanClicked, this);
 }
 
 void ScreenManager::renderNowPlaying() {
@@ -461,6 +511,46 @@ void ScreenManager::onLockClicked(lv_event_t *e) {
   // No re-render needed here: LockOverlay (shown on LVGL's top layer,
   // independent of ScreenManager) picks up the new lock state on its own
   // next tick() and covers this screen.
+}
+
+void ScreenManager::onScanClicked(lv_event_t *e) {
+  auto *self = static_cast<ScreenManager *>(lv_event_get_user_data(e));
+
+  // A one-shot full-screen overlay on LVGL's top layer, same technique as
+  // LockOverlay -- but built and torn down here rather than a persistent
+  // begin()/tick() class, since a rescan is a single blocking call, not
+  // ongoing state to poll every loop(). rescan() itself blocks (it's the
+  // same synchronous SD walk/scan the old boot path used), so the device
+  // is unresponsive for its duration -- acceptable here since the user
+  // just explicitly asked for this, unlike the old always-blocking boot.
+  lv_obj_t *overlay = lv_obj_create(lv_layer_top());
+  lv_obj_set_size(overlay, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_style_bg_opa(overlay, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(overlay, lv_color_black(), 0);
+  lv_obj_set_style_border_width(overlay, 0, 0);
+  lv_obj_set_style_radius(overlay, 0, 0);
+  lv_obj_add_flag(overlay, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_clear_flag(overlay, LV_OBJ_FLAG_SCROLLABLE);
+
+  lv_obj_t *label = lv_label_create(overlay);
+  lv_label_set_text(label, "Scanning for changes\nin music library...");
+  lv_obj_set_style_text_color(label, lv_color_white(), 0);
+  lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
+  // lv_refr_now(), not lv_timer_handler() -- see ScanProgressLabelListener's
+  // comment above for why a reentrant lv_timer_handler() call from here
+  // corrupts input state.
+  lv_refr_now(nullptr);
+
+  ScanProgressLabelListener progress(label);
+  self->rescanner_.rescan(&progress);
+
+  // Async, not lv_obj_del() -- we're still inside the click event that
+  // LVGL's own (outer) lv_timer_handler() is currently dispatching;
+  // deleting synchronously here risks the same input-state corruption
+  // ScreenManager::render() already guards against for screen_ below.
+  lv_obj_del_async(overlay);
+  self->render();
 }
 
 }  // namespace knobify::ui
