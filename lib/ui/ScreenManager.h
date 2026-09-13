@@ -75,9 +75,9 @@ class ScreenManager : public input::ListMoveSink {
   // showing. Call every loop() iteration, like updateElapsedTimeDisplay().
   void tickVolumeHud(uint32_t nowMs);
 
-  // Cheap live update of the elapsed-time readout on the Now Playing
-  // screen -- call every loop() iteration. A no-op if that screen isn't
-  // currently shown or nothing is playing.
+  // Cheap live update of the elapsed-time readout and song-progress ring
+  // on the Now Playing screen -- call every loop() iteration. A no-op if
+  // that screen isn't currently shown or nothing is playing.
   void updateElapsedTimeDisplay();
 
  private:
@@ -86,6 +86,16 @@ class ScreenManager : public input::ListMoveSink {
   void renderNowPlaying();
   void renderBackButtonIfNeeded();
   void renderScanButtonIfNeeded();
+  void renderContextCaption();
+  void setProgressRingVisible(bool visible);
+  // Tag metadata for a playing file, falling back to friendlyName() for
+  // the title and empty strings otherwise (e.g. untagged Files-tab files).
+  struct TrackInfo {
+    std::string title;
+    std::string artist;
+    std::string album;
+  };
+  TrackInfo trackInfoFor(const std::string &path) const;
   void applyHighlight();
   void goToNowPlaying();
   static std::string friendlyName(const std::string &path);
@@ -112,6 +122,18 @@ class ScreenManager : public input::ListMoveSink {
 
   static constexpr uint32_t kVolumeHudTimeoutMs = 3000;
 
+  // Shared vertical rhythm (px from the top edge of the 360px frame) --
+  // see docs/design/ux-guidelines.md §3a/§7. Header controls are >=44px
+  // tall touch targets; the battery indicator aligns to their row.
+  static constexpr lv_coord_t kHeaderButtonY = 6;
+  static constexpr lv_coord_t kHeaderButtonW = 56;
+  static constexpr lv_coord_t kHeaderButtonH = 44;
+  static constexpr lv_coord_t kCaptionY = kHeaderButtonY + kHeaderButtonH + 2;
+  static constexpr lv_coord_t kListTopY = kCaptionY + 22;
+  static constexpr lv_coord_t kMiniBarZoneHeight = 68;
+  static constexpr lv_coord_t kCoverY = 56;
+  static constexpr lv_coord_t kTransportCenterY = 246;
+
   lv_obj_t *screen_ = nullptr;
   lv_obj_t *list_ = nullptr;
   lv_obj_t *miniBar_ = nullptr;
@@ -123,8 +145,15 @@ class ScreenManager : public input::ListMoveSink {
   lv_img_dsc_t coverImgDsc_{};
   std::vector<uint16_t> coverPixels_;
   lv_obj_t *volumeArcHost_ = nullptr;
+  lv_obj_t *volumeHudPill_ = nullptr;
   lv_obj_t *volumeHudLabel_ = nullptr;
   ui_widgets::EdgeArc volumeArc_;
+  lv_obj_t *progressArcHost_ = nullptr;
+  ui_widgets::EdgeArc progressArc_;
+  // Decoder duration is fetched under the audio task's mutex, so it's
+  // only re-queried when the displayed second changes, not every loop().
+  int32_t lastShownSecond_ = -1;
+  uint32_t durationSeconds_ = 0;
   bool volumeHudVisible_ = false;
   uint32_t volumeHudHideAtMs_ = 0;
   int highlightedIndex_ = 0;

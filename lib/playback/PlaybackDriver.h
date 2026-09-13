@@ -19,6 +19,9 @@ class PlaybackDriver {
   virtual void stop() = 0;
   virtual void setVolume(uint8_t volume) = 0;  // 0-21, ESP32-audioI2S's range.
   virtual bool isRunning() = 0;
+  // Current track's total duration as reported by the decoder; 0 if
+  // unknown (not yet parsed, or the format doesn't expose it).
+  virtual uint32_t durationSeconds() = 0;
   // Pumps the underlying codec; call every loop() iteration.
   virtual void loop() = 0;
 };

@@ -115,6 +115,13 @@ class PlaybackStateMachine {
   uint8_t volume() const { return volume_; }
   bool hasPendingVolumeSave() const { return pendingVolumeSave_; }
 
+  // Current track's duration in seconds, 0 if unknown (see
+  // PlaybackDriver::durationSeconds()).
+  uint32_t durationSeconds() const {
+    if (state_ == PlaybackState::Stopped) return 0;
+    return driver_.durationSeconds();
+  }
+
   // Milliseconds of actual playback since the current track started,
   // excluding time spent paused. 0 when stopped.
   uint32_t elapsedMs(uint32_t nowMs) const {

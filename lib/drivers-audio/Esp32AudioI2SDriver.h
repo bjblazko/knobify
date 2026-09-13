@@ -103,6 +103,11 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
     return audio_.isRunning();
   }
 
+  uint32_t durationSeconds() override {
+    MutexGuard guard(mutex_);
+    return audio_.getAudioFileDuration();
+  }
+
   // No-op: the audio task (started in begin()) services the codec
   // directly and continuously now, independent of src/main.cpp's loop()
   // timing. Kept on the interface (rather than removed) so

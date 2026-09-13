@@ -5,6 +5,8 @@
 
 #include <cstring>
 
+#include "Theme.h"
+
 namespace knobify::ui {
 
 namespace {
@@ -47,18 +49,9 @@ bool LvglGlue::begin(drivers::St77916Driver &display) {
   indevDrv_.user_data = this;
   lv_indev_drv_register(&indevDrv_);
 
-  // Light theme: this is a reflective IPS LCD, not an OLED/AMOLED --
-  // dark UIs (tried first) don't render as well on it. Indigo accent on
-  // a light background instead of the earlier dark/blue theme, per user
-  // request 2026-09-12. The theme's own light-mode contrast rules apply
-  // automatically to every widget already themed via LV_STATE_CHECKED
-  // etc. (see ScreenManager::applyHighlight()) -- no other UI code needs
-  // to change for this.
-  lv_theme_t *theme = lv_theme_default_init(
-      disp, lv_palette_main(LV_PALETTE_INDIGO),
-      lv_palette_main(LV_PALETTE_GREY),
-      /*dark_mode=*/false, LV_FONT_DEFAULT);
-  lv_disp_set_theme(disp, theme);
+  // Braun palette on a light theme -- see Theme.cpp and
+  // docs/design/ux-guidelines.md §3.
+  theme::apply(disp);
 
   return true;
 }

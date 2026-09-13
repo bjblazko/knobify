@@ -7,6 +7,7 @@
 #include "LockController.h"
 #include "LvglButtonHelpers.h"
 #include "St77916Driver.h"
+#include "Theme.h"
 
 namespace knobify::ui {
 
@@ -38,7 +39,9 @@ class LockOverlay {
     root_ = lv_obj_create(lv_layer_top());
     lv_obj_set_size(root_, LV_PCT(100), LV_PCT(100));
     lv_obj_set_style_bg_opa(root_, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(root_, lv_color_black(), 0);
+    // Light like every other screen (ux-guidelines §3 "Why a light
+    // theme") -- an earlier black overlay was the one dark screen left.
+    lv_obj_set_style_bg_color(root_, theme::surface(), 0);
     lv_obj_set_style_border_width(root_, 0, 0);
     lv_obj_set_style_radius(root_, 0, 0);
     // Clickable (even with no click handler of its own) so it absorbs
@@ -48,23 +51,23 @@ class LockOverlay {
     lv_obj_clear_flag(root_, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t *label = lv_label_create(root_);
-    lv_label_set_text(label, "Locked");
-    // The app's light theme's default label color is dark text meant for
-    // a light background -- invisible against this overlay's black
-    // background (same class of bug as ADR 0004's dark-on-dark list
-    // rows). Must be set explicitly, not inherited.
-    lv_obj_set_style_text_color(label, lv_color_white(), 0);
-    lv_obj_align(label, LV_ALIGN_CENTER, 0, -70);
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_20, 0);
+    // Set explicitly rather than inherited: this root lives on
+    // lv_layer_top(), not a themed screen (same class of bug as ADR
+    // 0004's dark-on-dark list rows).
+    lv_obj_set_style_text_color(label, theme::ink(), 0);
+    lv_obj_align(label, LV_ALIGN_CENTER, 0, -84);
 
     ui_widgets::EdgeArcConfig arcConfig;
     arcConfig.startAngle = 135;
     arcConfig.endAngle = 45;
     arcConfig.widthPx = 12;
-    // Green, deliberately distinct from the Now Playing volume ring's
-    // indigo -- see ScreenManager::renderNowPlaying()'s comment.
-    arcConfig.color = lv_palette_main(LV_PALETTE_GREEN);
+    // Confirmation green, deliberately distinct from the Now Playing
+    // volume (ink) and song-progress (anthracite) rings -- similar-looking
+    // indicators carry their meaning in their color (ux-guidelines §3).
+    arcConfig.color = theme::confirm();
     arcConfig.hasBackgroundColor = true;
-    arcConfig.backgroundColor = lv_palette_lighten(LV_PALETTE_GREY, 1);
+    arcConfig.backgroundColor = theme::surfaceAlt();
     // Oversized beyond the display's own bounds, same fix as the Now
     // Playing volume ring (ScreenManager::renderNowPlaying()) -- an
     // lv_arc's default radius stops short of its host's edge (knob
@@ -82,10 +85,10 @@ class LockOverlay {
     progressArc_.setValue(0.0f);
 
     unlockButton_ =
-        makeHoldButton(root_, KNOBIFY_ICON_LOCK_OPEN, 90, 90, LV_ALIGN_CENTER,
-                       0, 40, &LockOverlay::onUnlockPressed,
+        makeHoldButton(root_, KNOBIFY_ICON_LOCK_OPEN, 96, 96, LV_ALIGN_CENTER,
+                       0, 0, &LockOverlay::onUnlockPressed,
                        &LockOverlay::onUnlockReleased, this,
-                       &knobify_icon_font_28);
+                       ButtonRole::Primary, &knobify_icon_font_28);
 
     // Wordless hint (the pulsing ring, started/stopped below) plus a
     // plain-text one -- neither the button nor the ring alone made the
@@ -93,8 +96,8 @@ class LockOverlay {
     // nicht ganz klar").
     hintLabel_ = lv_label_create(root_);
     lv_label_set_text(hintLabel_, "Hold & turn to unlock");
-    lv_obj_set_style_text_color(hintLabel_, lv_color_white(), 0);
-    lv_obj_align(hintLabel_, LV_ALIGN_CENTER, 0, 100);
+    lv_obj_set_style_text_color(hintLabel_, theme::structure(), 0);
+    lv_obj_align(hintLabel_, LV_ALIGN_CENTER, 0, 84);
 
     lv_obj_add_flag(root_, LV_OBJ_FLAG_HIDDEN);
   }

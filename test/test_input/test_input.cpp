@@ -31,6 +31,7 @@ class FakeDriver : public PlaybackDriver {
   void stop() override {}
   void setVolume(uint8_t v) override { lastVolume = v; }
   bool isRunning() override { return true; }
+  uint32_t durationSeconds() override { return 0; }
   void loop() override {}
   uint8_t lastVolume = 0;
 };

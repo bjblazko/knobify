@@ -1,0 +1,53 @@
+#pragma once
+
+#include <lvgl.h>
+
+namespace knobify::ui::theme {
+
+// knobify's Braun-inspired palette -- the single source of truth for
+// every color drawn on screen. Token names and roles are documented in
+// docs/design/ux-guidelines.md §3; UI code uses these, never a raw hex
+// value or an lv_palette_* color.
+inline lv_color_t surface() { return lv_color_hex(0xF4F4F0); }     // Snow White
+inline lv_color_t surfaceAlt() { return lv_color_hex(0xDCDDD8); }  // Light Grey
+inline lv_color_t structure() { return lv_color_hex(0x4A4C4E); }   // Mid Anthracite
+inline lv_color_t ink() { return lv_color_hex(0x1E1F21); }         // Matte Black
+inline lv_color_t accent() { return lv_color_hex(0xE85D04); }      // Orange Signal
+inline lv_color_t confirm() { return lv_color_hex(0x2A8C4A); }     // Functional Green
+inline lv_color_t warning() { return lv_color_hex(0xD62828); }     // Accent Red
+
+// Radius for list rows (ux-guidelines §3a); pills and round controls use
+// LV_RADIUS_CIRCLE instead.
+constexpr lv_coord_t kRowRadius = 12;
+
+// Installs LVGL's default light theme recolored to the palette above,
+// plus a small child theme for the app-wide rules the default theme
+// doesn't cover (screen background, flat unshadowed buttons, borderless
+// lists with rounded, ink-filled selected rows). Call once, after the
+// display is registered.
+void apply(lv_disp_t *disp);
+
+// The two -- and only two -- button roles (ux-guidelines §3a). Applied as
+// local styles, so they win over whatever the theme gave the button.
+//
+// Primary: filled accent circle, white glyph. Exactly one per screen.
+inline void stylePrimaryButton(lv_obj_t *btn) {
+  lv_obj_set_style_radius(btn, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_color(btn, accent(), 0);
+  lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+  lv_obj_set_style_text_color(btn, surface(), 0);
+  lv_obj_set_style_shadow_width(btn, 0, 0);
+}
+
+// Quiet: no fill, anthracite glyph, light-grey background only while
+// pressed. Back, lock, scan, previous, next.
+inline void styleQuietButton(lv_obj_t *btn) {
+  lv_obj_set_style_radius(btn, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_bg_opa(btn, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_bg_color(btn, surfaceAlt(), LV_STATE_PRESSED);
+  lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, LV_STATE_PRESSED);
+  lv_obj_set_style_text_color(btn, structure(), 0);
+  lv_obj_set_style_shadow_width(btn, 0, 0);
+}
+
+}  // namespace knobify::ui::theme

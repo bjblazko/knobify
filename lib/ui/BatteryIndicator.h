@@ -3,6 +3,7 @@
 #include <lvgl.h>
 
 #include "BatteryMonitor.h"
+#include "Theme.h"
 
 namespace knobify::ui {
 
@@ -22,11 +23,10 @@ class BatteryIndicator {
   explicit BatteryIndicator(power::BatteryMonitor &monitor)
       : monitor_(monitor) {}
 
-  // Vertical midline of ScreenManager's back/scan button (TOP_MID, y=12,
-  // height 32 -- see ScreenManager.cpp's renderBackButtonIfNeeded()) --
-  // matched exactly so this icon sits on the same row rather than just
-  // near it.
-  static constexpr int32_t kRowCenterY = 12 + 32 / 2;
+  // Vertical midline of ScreenManager's back/scan button (TOP_MID, y=6,
+  // height 44 -- see ScreenManager.h's kHeaderButtonY/H) -- matched
+  // exactly so this icon sits on the same row rather than just near it.
+  static constexpr int32_t kRowCenterY = 6 + 44 / 2;
   // Sideways offset from center, clear of the back/scan button (56px
   // wide, so its own right edge is at +28) and, per the round-bezel
   // clipping this project has hit repeatedly (see ScreenManager.cpp,
@@ -70,24 +70,26 @@ class BatteryIndicator {
     switch (monitor_.level()) {
       case Level::kEmpty:
         symbol = LV_SYMBOL_BATTERY_EMPTY;
-        color = lv_palette_main(LV_PALETTE_RED);
+        color = theme::warning();
         break;
       case Level::kLow:
         symbol = LV_SYMBOL_BATTERY_1;
-        color = lv_palette_main(LV_PALETTE_RED);
+        color = theme::warning();
         break;
+      // Quiet until it matters (ux-guidelines §6): only low/empty earn a
+      // signal color, the rest is structure grey.
       case Level::kMedium:
         symbol = LV_SYMBOL_BATTERY_2;
-        color = lv_palette_main(LV_PALETTE_YELLOW);
+        color = theme::structure();
         break;
       case Level::kHigh:
         symbol = LV_SYMBOL_BATTERY_3;
-        color = lv_palette_main(LV_PALETTE_GREEN);
+        color = theme::structure();
         break;
       case Level::kFull:
       default:
         symbol = LV_SYMBOL_BATTERY_FULL;
-        color = lv_palette_main(LV_PALETTE_GREEN);
+        color = theme::structure();
         break;
     }
     lv_label_set_text(label_, symbol);

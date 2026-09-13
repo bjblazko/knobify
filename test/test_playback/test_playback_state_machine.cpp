@@ -29,6 +29,7 @@ class FakeDriver : public PlaybackDriver {
   void stop() override { running = false; }
   void setVolume(uint8_t v) override { lastVolume = v; }
   bool isRunning() override { return running; }
+  uint32_t durationSeconds() override { return duration; }
   void loop() override {}
 
   std::string lastPlayed;
@@ -36,6 +37,7 @@ class FakeDriver : public PlaybackDriver {
   uint8_t lastVolume = 255;
   bool running = false;
   bool playSucceeds = true;
+  uint32_t duration = 0;
 };
 
 class FakeStore : public KeyValueStore {
@@ -68,6 +70,20 @@ void test_play_starts_playing_selected_track() {
 
   TEST_ASSERT_TRUE(sm.state() == PlaybackState::Playing);
   TEST_ASSERT_EQUAL_STRING("/b.mp3", driver.lastPlayed.c_str());
+}
+
+void test_duration_unknown_when_stopped_and_passed_through_when_playing() {
+  FakeDriver driver;
+  FakeStore store;
+  VolumePersistence volume(store);
+  PlaybackStateMachine sm(driver, volume);
+  sm.begin();
+  driver.duration = 225;
+
+  TEST_ASSERT_EQUAL_UINT32(0, sm.durationSeconds());
+
+  sm.play({"/a.mp3"}, 0, 0);
+  TEST_ASSERT_EQUAL_UINT32(225, sm.durationSeconds());
 }
 
 void test_toggle_play_pause() {
@@ -209,6 +225,7 @@ void test_loads_persisted_volume_on_begin() {
 int main(int argc, char **argv) {
   UNITY_BEGIN();
   RUN_TEST(test_play_starts_playing_selected_track);
+  RUN_TEST(test_duration_unknown_when_stopped_and_passed_through_when_playing);
   RUN_TEST(test_toggle_play_pause);
   RUN_TEST(test_next_and_prev_move_through_playlist);
   RUN_TEST(test_track_finished_auto_advances);
