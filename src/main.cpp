@@ -290,8 +290,8 @@ void setup() {
     // Created after the first screen so it's above it on LVGL's top
     // layer from the start -- see LockOverlay.h.
     g_lockOverlay.begin();
-    // Created after LockOverlay so it z-orders on top of it too --
-    // battery status stays visible even while locked. See
+    // Created after LockOverlay so it z-orders on top of it too -- the
+    // lock screen is where battery status is always shown. See
     // BatteryIndicator.h.
     g_batteryIndicator.begin();
     g_batteryIndicator.update(g_batteryAdc.readMilliVolts());
@@ -397,6 +397,7 @@ void loop() {
   g_screenManager.tickVolumeHud(now);
 
   g_lockOverlay.tick();
+  g_batteryIndicator.setLocked(g_lockController.isLocked());
 
   if (now - g_lastBatteryUpdateMs >= kBatteryUpdateIntervalMs) {
     g_lastBatteryUpdateMs = now;

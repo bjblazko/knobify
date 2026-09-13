@@ -359,7 +359,16 @@ void ScreenManager::renderBackButtonIfNeeded() {
   // Positioned top-center rather than a corner: the round bezel clips
   // corners much more aggressively than top-center at this height.
   if (!tabs_.activeStack().canGoBack()) return;
-  makeIconButton(screen_, LV_SYMBOL_LEFT, kHeaderButtonW, kHeaderButtonH,
+  // On Now Playing a left chevron read like "previous track" (right
+  // above the previous button) and didn't say where it goes -- a down
+  // chevron instead means "collapse the player" back into the list's
+  // mini-bar, which is exactly what popping this screen does
+  // (ux-guidelines §5).
+  const char *glyph =
+      tabs_.activeStack().current().kind == ScreenKind::NowPlaying
+          ? LV_SYMBOL_DOWN
+          : LV_SYMBOL_LEFT;
+  makeIconButton(screen_, glyph, kHeaderButtonW, kHeaderButtonH,
                  LV_ALIGN_TOP_MID, 0, kHeaderButtonY,
                  &ScreenManager::onBackClicked, this, ButtonRole::Quiet,
                  &lv_font_montserrat_20);

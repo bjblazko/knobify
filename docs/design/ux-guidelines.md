@@ -88,8 +88,8 @@ token, never a raw hex value or an LVGL palette color.
 
 | Token | Name | Hex | Use |
 |---|---|---|---|
-| `surface` | Warm Snow White | `#E6E3D6` | Screen background everywhere, including the lock screen; text on dark elements |
-| `surfaceAlt` | Warm Light Grey | `#D6D2C5` | Unfilled ring tracks, secondary buttons, pressed state of quiet controls, mini-bar area |
+| `surface` | Warm Snow White | `#DEDBC6` | Screen background everywhere, including the lock screen; text on dark elements |
+| `surfaceAlt` | Warm Light Grey | `#CEC7B5` | Unfilled ring tracks, secondary buttons, pressed state of quiet controls, mini-bar area |
 | `structure` | Mid Anthracite | `#4A4C4E` | Secondary text (captions, time), quiet icons, battery |
 | `ink` | Matte Black | `#1E1F21` | Primary text, selected list row, volume readout pill |
 
@@ -118,8 +118,8 @@ neutrals don't — the original Snow White `#F4F4F0` arrived on the panel as
 neutral `#F6F6F6`, losing exactly the warmth that made it Snow White.
 Neutral tokens are therefore exact RGB565 values (verified by sampling a
 serial screenshot), and the surface is dimmed and warmed well beyond the
-nominal Snow White — `#EFEFE7` still looked cold and bright on the real
-panel. The darker, warmer value also reduces glare on the reflective panel
+nominal Snow White — `#EFEFE7` and then `#E6E3D6` still looked cold and
+bright on the real panel. The darker, warmer value also reduces glare on the reflective panel
 and is closer to a matte Braun housing. Judge neutrals on the device, not
 on a monitor.
 
@@ -218,6 +218,11 @@ Full architecture: [ADR 0004](../adr/0004-navigation-library-and-index-architect
   alone wasn't discoverable in real usage (a user reaching Now Playing had
   no visible way back at all) — a supplementary, always-visible quiet
   back affordance sits top-center rather than in a corner (§4, §7).
+- **The back glyph says what going back means.** On list screens it is a
+  left chevron (up one level; the caption names where you are). On Now
+  Playing it is a down chevron — "collapse the player" into the list's
+  mini-bar. A left chevron there sat right above the previous-track
+  button, read like "previous", and didn't say where it led.
 - **Gesture discoverability via a one-time nudge, not a persistent icon.**
   *Decided, not yet implemented.* Each gesture (swipe-to-back,
   swipe-to-switch-tab) is to be taught by briefly animating the screen
@@ -278,15 +283,19 @@ Full architecture: [ADR 0005](../adr/0005-power-lock-and-round-edge-indicators.m
 - **Status indicators live above every screen, not per-screen.** Battery
   level (no charging state — no real signal exists to detect it, and a
   fabricated one would be actively misleading) is rendered once on LVGL's
-  top layer so it's visible everywhere, including the lock overlay.
-- **Status indicators stay quiet until they matter.** The battery icon is
-  `structure` grey at normal charge and turns `warning` red only when low
-  or empty — a permanently green icon would spend the screen's color
-  budget on "nothing to report".
+  top layer rather than added to every individual screen.
+- **Status is shown only when it matters.** During normal use the battery
+  indicator is hidden; at 20% or below it appears as a red icon +
+  percentage in the caption slot under the top control. On the lock
+  screen — the natural moment to glance at status, one tap away via the
+  lock button — it is always shown, neutral unless low, above "Locked".
+  An always-on icon beside the back/scan button (the earlier design) was
+  the only off-axis element on screen and read like a tappable toolbar
+  icon.
 - **Status indicators are corner-safe by placement, not by luck.** The
-  battery icon sits on the same row as the back/scan button (top-center),
-  not a screen corner — an initial corner placement looked correct in a
-  screenshot but was invisible on the physical device (§4, §7).
+  battery indicator is centered on the vertical axis — an initial corner
+  placement looked correct in a screenshot but was invisible on the
+  physical device (§4, §7).
 
 ## 7. Layout & Widget Principles
 
