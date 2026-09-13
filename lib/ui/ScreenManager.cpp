@@ -169,8 +169,11 @@ void ScreenManager::renderList(
   // text clear of the round bezel's curve without wasting space on the
   // (less legibility-critical) trailing/ellipsis end. Rows carry their
   // own inner padding, so the list's side padding is reduced by that.
-  lv_obj_set_style_pad_left(list_, 32, 0);
-  lv_obj_set_style_pad_right(list_, 16, 0);
+  // The selected row's filled background makes the trailing end
+  // visible too, so it needs the same inset as the leading edge: at the
+  // first row's height (y=74) the bezel only shows x~35..325.
+  lv_obj_set_style_pad_left(list_, 36, 0);
+  lv_obj_set_style_pad_right(list_, 36, 0);
   lv_obj_set_style_pad_top(list_, 0, 0);
   // Without a mini-bar the list runs to the bottom edge, where the round
   // bezel narrows sharply -- extra bottom padding lets the last rows

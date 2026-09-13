@@ -271,10 +271,11 @@ Full architecture: [ADR 0005](../adr/0005-power-lock-and-round-edge-indicators.m
 - **Show tag data, not filenames.** Track titles, artists and albums come
   from the library's tags; the filename (without extension) is only the
   fallback when no tag exists (e.g. untagged files in the Files tab).
-- **Asymmetric insets for left-to-right text.** Padding the leading edge
-  more than the trailing edge keeps the start of each row's text clear of
-  the round bezel's curve, without wasting space on the (less
-  legibility-critical) trailing/ellipsis end.
+- **Filled shapes need symmetric insets.** Plain left-to-right text can
+  get away with a larger leading than trailing inset (the ellipsis end is
+  less legibility-critical), but a filled element such as the selected
+  list row shows both ends — so rows are inset equally on both sides,
+  keeping the whole shape inside the bezel's circle at its height.
 - **Edge-hugging rings are deliberately oversized and let the bezel clip
   them.** An arc sized to exactly match the screen still leaves a visible
   gap from the true round edge — oversizing beyond the framebuffer and
