@@ -441,7 +441,9 @@ void ScreenManager::renderNowPlaying() {
 
   std::string meta = info.artist;
   if (!info.album.empty()) {
-    if (!meta.empty()) meta += " \xC2\xB7 ";  // U+00B7 middle dot
+    // Plain ASCII: LVGL's built-in Montserrat only covers 0x20-0x7F (plus
+    // LV_SYMBOL_*), so a middle dot rendered as a missing-glyph box.
+    if (!meta.empty()) meta += " - ";
     meta += info.album;
   }
   if (!meta.empty()) {
