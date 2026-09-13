@@ -91,13 +91,13 @@ token, never a raw hex value or an LVGL palette color.
 | `surface` | Snow White | `#F4F4F0` | Screen background everywhere, including the lock screen; text on dark elements |
 | `surfaceAlt` | Light Grey | `#DCDDD8` | Unfilled ring tracks, pressed state of quiet controls |
 | `structure` | Mid Anthracite | `#4A4C4E` | Secondary text (captions, time), quiet icons, song-progress ring, battery |
-| `ink` | Matte Black | `#1E1F21` | Primary text, selected list row, mini-bar pill, volume ring |
+| `ink` | Matte Black | `#1E1F21` | Primary text, selected list row, volume ring |
 
 **Signal colors** (functional elements only):
 
 | Token | Name | Hex | Meaning |
 |---|---|---|---|
-| `accent` | Orange Signal | `#E85D04` | The single primary action on a screen (Play/Pause, Unlock; on list screens the mini-bar's playback-state glyph) |
+| `accent` | Orange Signal | `#E85D04` | The single primary action on a screen (Play/Pause, Unlock; on list screens the mini-bar pill back to Now Playing) |
 | `confirm` | Functional Green | `#2A8C4A` | Confirmation in progress — unlock progress |
 | `warning` | Accent Red | `#D62828` | Needs attention — low/empty battery |
 
@@ -132,6 +132,9 @@ backlight. Every screen, the lock screen included, uses `surface`.
   14 caption/secondary (artist line, time, list caption, battery) ·
   16 body (mini-bar, hints) · 20 title (list rows, track title, "Locked") ·
   28 numeral & primary glyph (volume readout, Play/Pause icon).
+- **Selection and action never share a color.** The knob-selected list
+  row is `ink`; the mini-bar is an `accent` pill — an ink mini-bar read as
+  a second selected row.
 - **Shapes.** Circles for the round, thumb-operated controls (transport,
   unlock) — echoing the device's own form. 12px radius for list rows;
   fully rounded pills for the mini-bar and volume readout.

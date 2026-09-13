@@ -229,29 +229,30 @@ void ScreenManager::renderList(
   }
 
   if (showMiniBar) {
-    // A dark pill, not a bordered white box -- the old style read as a
-    // text input field. Narrower than full width and inset from the very
+    // An accent pill, not a bordered white box (read as a text input
+    // field) and not ink (read as a second selected row) -- it is the
+    // list screen's one primary action: back to what's playing. Narrower than full width and inset from the very
     // bottom edge: flush-bottom, full-width was clipped by the round
     // bezel down to a sliver (found on real hardware 2026-09-12).
     miniBar_ = lv_obj_create(screen_);
     lv_obj_set_size(miniBar_, 240, 44);
     lv_obj_align(miniBar_, LV_ALIGN_BOTTOM_MID, 0, -16);
     lv_obj_set_style_radius(miniBar_, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(miniBar_, theme::ink(), 0);
+    lv_obj_set_style_bg_color(miniBar_, theme::accent(), 0);
     lv_obj_set_style_border_width(miniBar_, 0, 0);
     lv_obj_set_style_pad_all(miniBar_, 0, 0);
     // A long title otherwise made the pill itself scrollable, showing a
     // scrollbar inside it.
     lv_obj_clear_flag(miniBar_, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Playback *state*, not an action (tapping the pill opens Now
-    // Playing) -- the list screen's one accent element.
+    // Playback *state*, not an action -- tapping the whole pill opens
+    // Now Playing.
     lv_obj_t *stateGlyph = lv_label_create(miniBar_);
     lv_label_set_text(stateGlyph,
                       playback_.state() == playback::PlaybackState::Playing
                           ? LV_SYMBOL_PLAY
                           : LV_SYMBOL_PAUSE);
-    lv_obj_set_style_text_color(stateGlyph, theme::accent(), 0);
+    lv_obj_set_style_text_color(stateGlyph, theme::surface(), 0);
     lv_obj_align(stateGlyph, LV_ALIGN_LEFT_MID, 20, 0);
 
     lv_obj_t *label = lv_label_create(miniBar_);
@@ -464,7 +465,7 @@ void ScreenManager::renderNowPlaying() {
   ui_widgets::EdgeArcConfig progressArcConfig;
   progressArcConfig.startAngle = 135;
   progressArcConfig.endAngle = 45;
-  progressArcConfig.widthPx = 6;
+  progressArcConfig.widthPx = 9;
   progressArcConfig.color = theme::structure();
   progressArcConfig.hasBackgroundColor = true;
   progressArcConfig.backgroundColor = theme::surfaceAlt();

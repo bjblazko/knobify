@@ -52,6 +52,7 @@ class LockOverlay {
 
     lv_obj_t *label = lv_label_create(root_);
     lv_obj_set_style_text_font(label, &lv_font_montserrat_20, 0);
+    lv_label_set_text(label, "Locked");
     // Set explicitly rather than inherited: this root lives on
     // lv_layer_top(), not a themed screen (same class of bug as ADR
     // 0004's dark-on-dark list rows).
