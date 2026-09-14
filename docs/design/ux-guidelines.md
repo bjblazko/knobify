@@ -41,7 +41,7 @@ product.
    telling you *what* the main action is (§3a).
 5. **Good design is unobtrusive.** Widgets serve the content, not the
    other way round — e.g. no album-art placeholder when no cover is
-   cached, navigation and utility controls drawn as quiet unfilled icons, and the
+   cached (the slot shows the live spectrum instead), navigation and utility controls drawn as quiet unfilled icons, and the
    battery indicator staying neutral until it actually needs attention.
 6. **Good design is honest.** Indicators show only what's actually known
    — the battery indicator shows "Charging" only when the rail voltage proves USB power, the progress
@@ -58,7 +58,8 @@ product.
 9. **Good design is environmentally friendly.** On a battery device this
    means energy and longevity: the display powers off when idle (§6), no
    animation runs perpetually (the lock ring's pulse only runs while the
-   lock screen is actually shown), and the device needs no cloud or
+   lock screen is actually shown; the spectrum only while it's on screen,
+   the display is on and the device is unlocked), and the device needs no cloud or
    account — music lives on a user-replaceable SD card.
 10. **Good design is as little design as possible.** Prefer one reusable
     mechanism over several one-off effects — e.g. one `EdgeArc` widget
@@ -219,6 +220,11 @@ Full architecture: [ADR 0004](../adr/0004-navigation-library-and-index-architect
   highlighted list item; on Now Playing, rotating adjusts volume. The
   mapping is unambiguous per screen since no mode button exists to switch
   it explicitly.
+- **The cover slot switches by tap.** Tapping the Now Playing cover
+  swaps it for the dot-matrix spectrum and back; the choice persists.
+  Without a cover the spectrum always shows and the slot isn't tappable.
+  No separate visualizer screen — it would need an undiscoverable gesture
+  ([ADR 0009](../adr/0009-now-playing-spectrum-analyzer.md)).
 - **Always-visible back button, in addition to swipe.** Swipe-to-back
   alone wasn't discoverable in real usage (a user reaching Now Playing had
   no visible way back at all) — a supplementary, always-visible quiet
@@ -237,9 +243,10 @@ Full architecture: [ADR 0004](../adr/0004-navigation-library-and-index-architect
   not yet implemented* — screens currently switch instantly. Push/pop/
   tab-switch transitions are to slide in the gesture's direction, reusing
   one mechanism everywhere rather than building several one-off effects.
-  The lock ring's pulse (§6) is the one existing non-transition
-  animation, justified because it carries meaning (an invitation to
-  interact), not decoration.
+  The lock ring's pulse (§6) and the Now Playing spectrum are the only
+  non-transition animations, each justified because it carries meaning
+  (an invitation to interact; the music's actual frequency content), not
+  decoration.
 
 ## 6. Power, Lock & Status Flows
 
@@ -342,8 +349,8 @@ Full architecture: [ADR 0005](../adr/0005-power-lock-and-round-edge-indicators.m
   a clean ellipsis reads better on a small round display than several
   long names scrolling mid-marquee at once. Every text has an explicit
   line budget: list rows, captions, mini-bar and the artist line get one
-  line; the Now Playing title gets two when no cover is shown, one
-  otherwise. Whatever follows a variable-height text is positioned from
+  line; the Now Playing title gets one, since the cover slot (cover or
+  spectrum) is always there. Whatever follows a variable-height text is positioned from
   its actual height, never a fixed offset.
 - **Minimalism in widgets.** Build a widget for its current, real use
   case (e.g. `EdgeArc` as a thin config+create/setValue wrapper); extend
@@ -351,7 +358,13 @@ Full architecture: [ADR 0005](../adr/0005-power-lock-and-round-edge-indicators.m
   generalizing speculatively.
 - **No placeholder for absent data.** When information isn't available
   (e.g. no cached album art), show nothing rather than a placeholder —
-  the remaining content moves up to fill the space instead.
+  the remaining content moves up to fill the space instead. The Now
+  Playing cover slot is the exception: without a cover it shows the live
+  spectrum, which is real data rather than a placeholder.
+- **The spectrum is a neutral dot matrix.** 12×12 round dots, `ink` lit
+  and `surfaceAlt` unlit, filling the cover's 96px square; no signal
+  colors, gradients or peak markers. Paused audio decays to zero rather
+  than freezing.
 
 ## 8. Scope Boundaries
 

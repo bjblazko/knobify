@@ -2,6 +2,7 @@
 
 #include <Audio.h>
 #include <SD_MMC.h>
+#include <atomic>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
@@ -86,6 +87,7 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
   void setVolume(uint8_t volume) override {
     MutexGuard guard(mutex_);
     audio_.setVolume(volume);
+    volume_.store(volume);
   }
 
   bool isRunning() override {
@@ -97,6 +99,11 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
     MutexGuard guard(mutex_);
     return audio_.getAudioFileDuration();
   }
+
+  // Defined in the .cpp, next to the audio_process_i2s hook that fills the
+  // sample ring it reads from.
+  playback::SampleWindow readRecentSamples(int16_t *dst,
+                                           size_t maxSamples) override;
 
   // No-op: the audio task (started in begin()) services the codec
   // directly and continuously now, independent of src/main.cpp's loop()
@@ -137,6 +144,10 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
 
   Audio audio_;
   bool paused_ = false;
+  // Mirrors the last setVolume() so readRecentSamples() can report the
+  // gain without taking mutex_ at spectrum frame rate.
+  std::atomic<uint8_t> volume_{0};
+  uint32_t lastSampleCount_ = 0;
   SemaphoreHandle_t mutex_ = nullptr;
   TaskHandle_t taskHandle_ = nullptr;
 };

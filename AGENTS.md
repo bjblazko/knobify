@@ -23,6 +23,11 @@ duplicating it.
   miss taps" → build with `-DKNOBIFY_TOUCH_DEBUG`, send `CALIB` over
   serial and re-fit before touching sizes/timing. See ADR 0004.
 
+- **Spectrum frame cost**: build with `-DKNOBIFY_SPECTRUM_DEBUG` to log
+  samples/rate/gain and the worst per-frame analyzer time every 90 frames
+  (~2 ms measured 2026-09-14). The driver copies ESP32-audioI2S's volume
+  table to divide gain out of the tapped samples — re-check it if the
+  library is upgraded. See ADR 0009.
 - **This board's rotary encoder is rotation-only** (no click/push) and,
   more subtly, **is not a standard 4-state quadrature encoder** — its
   raw pin states never visit `00` (both contacts closed), only `11`

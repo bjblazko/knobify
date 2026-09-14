@@ -28,6 +28,9 @@ screens described below.
   one orange primary control per screen, tag titles, album cover and
   release years) — see
   [the UX guidelines](docs/design/ux-guidelines.md).
+- A dot-matrix spectrum analyzer in Now Playing's cover slot: tap the
+  cover to switch, shown by default when an album has no cover — see
+  [ADR 0009](docs/adr/0009-now-playing-spectrum-analyzer.md).
   No charging indicator: the board exposes no charge-status signal (no
   dedicated pin, no voltage change on plug/unplug, no status LED).
 
@@ -44,7 +47,6 @@ screens described below.
 - General visual polish and animation ("eye candy") beyond the planned
   one-time gesture-hint nudge and screen-transition slide
 - Voice memo / dictation recording via the onboard PDM microphone
-- Audio visualizations (spectrum analyzer, VU meter, etc.)
 - A richer Now Playing screen (more detail/interactivity beyond the
   current controls + elapsed time)
 - Using the rotary encoder as a jog dial for scrolling long lists/menus

@@ -73,7 +73,11 @@ void setClampedText(lv_obj_t *label, const char *text, int maxLines) {
 
 }  // namespace
 
-void ScreenManager::begin() { render(); }
+void ScreenManager::begin() {
+  uint8_t stored = 0;
+  preferSpectrum_ = settings_.getU8(kSpectrumSettingKey, stored) && stored != 0;
+  render();
+}
 
 void ScreenManager::render() {
   itemContexts_.clear();
@@ -104,6 +108,8 @@ void ScreenManager::render() {
   list_ = nullptr;
   miniBar_ = nullptr;
   elapsedLabel_ = nullptr;
+  coverImg_ = nullptr;
+  spectrum_.detach();
   volumeArcHost_ = nullptr;
   volumeHudPill_ = nullptr;
   volumeHudLabel_ = nullptr;
@@ -462,9 +468,10 @@ void ScreenManager::renderNowPlaying() {
   // artist/album line, transport row, time, lock button. Every element
   // is centered horizontally -- corners are clipped by the round bezel.
   //
-  // Album cover. No cover cached for this album -> no widget at all and
-  // the text block moves up to fill the gap, rather than showing a
-  // placeholder.
+  // Cover slot: the album cover or the dot-matrix spectrum (ADR 0009),
+  // switched by tapping it. No cover cached for this album -> the spectrum
+  // takes the slot; it's live data, not a placeholder, so the layout below
+  // is the same either way.
   uint16_t coverSize = 0;
   std::string albumFolderPath =
       library::CoverArtCache::albumFolderPathFor(playback_.currentPath());
@@ -502,7 +509,25 @@ void ScreenManager::renderNowPlaying() {
     coverPixels_.clear();
   }
 
-  lv_coord_t titleY = coverSize != 0 ? kCoverY + coverSize + 12 : 112;
+  static_assert(ui_widgets::DotMatrixSpectrum::kSize ==
+                    library::CoverArtCache::kCoverSize,
+                "the spectrum replaces the cover in the same slot");
+  lv_obj_t *spectrum = spectrum_.create(screen_, theme::ink(),
+                                        theme::surfaceAlt(), theme::surface());
+  lv_obj_align(spectrum, LV_ALIGN_TOP_MID, 0, kCoverY);
+  if (coverImg_) {
+    // Only switchable when there's something to switch to.
+    for (lv_obj_t *slot : {coverImg_, spectrum}) {
+      lv_obj_add_flag(slot, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_add_event_cb(slot, &ScreenManager::onCoverSlotClicked,
+                          LV_EVENT_CLICKED, this);
+    }
+  }
+  applyCoverSlotMode();
+  lastSpectrumTickMs_ = millis();
+
+  const lv_coord_t slotSize = ui_widgets::DotMatrixSpectrum::kSize;
+  lv_coord_t titleY = kCoverY + slotSize + 12;
   TrackInfo info = trackInfoFor(playback_.currentPath());
 
   lv_obj_t *title = lv_label_create(screen_);
@@ -511,11 +536,10 @@ void ScreenManager::renderNowPlaying() {
   // Wide: without a cover this block sits near the vertical middle, where
   // the round screen is ~330px across; with a cover (y~164) still ~320px.
   lv_obj_set_width(title, 280);
-  // Long titles: two lines when there's no cover to make room for, one
-  // line otherwise -- with a cover the transport row leaves no space for
-  // a second line. Either way the artist line follows the title's actual
-  // height rather than a fixed offset.
-  setClampedText(title, info.title.c_str(), coverSize != 0 ? 1 : 2);
+  // One line: the cover slot (cover or spectrum) is always there, and the
+  // transport row leaves no space for a second line. The artist line
+  // follows the title's actual height rather than a fixed offset.
+  setClampedText(title, info.title.c_str(), 1);
   lv_obj_align(title, LV_ALIGN_TOP_MID, 0, titleY);
   lv_coord_t metaY = titleY + lv_obj_get_height(title) + 4;
 
@@ -579,16 +603,12 @@ void ScreenManager::renderNowPlaying() {
   volumeArc_.setValue(static_cast<int32_t>(playback_.volume()));
   lv_obj_add_flag(volumeArcHost_, LV_OBJ_FLAG_HIDDEN);
 
-  // Numeric readout in an ink pill over the cover's center -- readable on
-  // top of any cover image, and created after the cover so LVGL's
-  // creation-order z-stacking draws it on top. Without a cover the title
-  // moves up into that spot, so the pill goes into the free gap between
-  // the back button and the title instead (it covered the title there,
-  // found on real hardware 2026-09-13).
+  // Numeric readout in an ink pill over the cover slot's center --
+  // readable on top of any cover image or the spectrum, and created after
+  // them so LVGL's creation-order z-stacking draws it on top.
   volumeHudPill_ = lv_obj_create(screen_);
   lv_obj_set_size(volumeHudPill_, 72, 44);
-  lv_coord_t pillY = coverSize != 0 ? kCoverY + coverSize / 2 - 22
-                                    : kHeaderButtonY + kHeaderButtonH + 8;
+  lv_coord_t pillY = kCoverY + slotSize / 2 - 22;
   lv_obj_align(volumeHudPill_, LV_ALIGN_TOP_MID, 0, pillY);
   lv_obj_set_style_radius(volumeHudPill_, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_bg_color(volumeHudPill_, theme::ink(), 0);
@@ -659,6 +679,58 @@ void ScreenManager::applyHighlight() {
       lv_obj_clear_state(btn, LV_STATE_CHECKED);
     }
   }
+}
+
+void ScreenManager::applyCoverSlotMode() {
+  bool showSpectrum = preferSpectrum_ || !coverImg_;
+  if (coverImg_) {
+    if (showSpectrum) {
+      lv_obj_add_flag(coverImg_, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_clear_flag(coverImg_, LV_OBJ_FLAG_HIDDEN);
+    }
+  }
+  if (!spectrum_.raw()) return;
+  if (showSpectrum) {
+    lv_obj_clear_flag(spectrum_.raw(), LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_add_flag(spectrum_.raw(), LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+void ScreenManager::tickSpectrum(uint32_t nowMs, bool visible) {
+  lv_obj_t *canvas = spectrum_.raw();
+  if (!canvas || lv_obj_has_flag(canvas, LV_OBJ_FLAG_HIDDEN)) return;
+  if (!visible) {
+    lastSpectrumTickMs_ = nowMs;
+    return;
+  }
+  uint32_t dtMs = nowMs - lastSpectrumTickMs_;
+  if (dtMs < kSpectrumFrameMs) return;
+  lastSpectrumTickMs_ = nowMs;
+  if (dtMs > 100) dtMs = 100;  // After a stall, don't jump straight to empty.
+
+#ifdef KNOBIFY_SPECTRUM_DEBUG
+  int64_t startUs = esp_timer_get_time();
+#endif
+  playback::SampleWindow window = playback_.readRecentSamples(
+      spectrumSamples_.data(), spectrumSamples_.size());
+  analyzer_.update(spectrumSamples_.data(), window.count, window.sampleRate,
+                   window.gain, dtMs);
+  spectrum_.setLevels(analyzer_.levels());
+#ifdef KNOBIFY_SPECTRUM_DEBUG
+  static uint32_t frames = 0;
+  static int64_t worstUs = 0;
+  int64_t tookUs = esp_timer_get_time() - startUs;
+  if (tookUs > worstUs) worstUs = tookUs;
+  if (++frames % 90 == 0) {
+    Serial.printf("[spectrum] n=%u rate=%u gain=%.3f worst=%lldus\n",
+                  static_cast<unsigned>(window.count),
+                  static_cast<unsigned>(window.sampleRate), window.gain,
+                  worstUs);
+    worstUs = 0;
+  }
+#endif
 }
 
 void ScreenManager::setProgressRingVisible(bool visible) {
@@ -833,6 +905,13 @@ void ScreenManager::onNextClicked(lv_event_t *e) {
   auto *self = static_cast<ScreenManager *>(lv_event_get_user_data(e));
   self->playback_.next(millis());
   self->render();
+}
+
+void ScreenManager::onCoverSlotClicked(lv_event_t *e) {
+  auto *self = static_cast<ScreenManager *>(lv_event_get_user_data(e));
+  self->preferSpectrum_ = !self->preferSpectrum_;
+  self->applyCoverSlotMode();
+  self->settings_.setU8(kSpectrumSettingKey, self->preferSpectrum_ ? 1 : 0);
 }
 
 void ScreenManager::onLockClicked(lv_event_t *e) {

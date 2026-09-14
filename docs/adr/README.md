@@ -16,4 +16,5 @@ supersedes the old one (and the old one is marked "Superseded by NNNN").
 | [0005](0005-power-lock-and-round-edge-indicators.md) | Device lock, display power, and round-edge UI widgets | Accepted |
 | [0006](0006-audio-task-concurrency.md) | Dedicated FreeRTOS task for audio decode | Accepted |
 | [0007](0007-battery-indicator.md) | Battery indicator | Accepted (placement superseded by 0008) |
-| [0008](0008-braun-design-system-and-screen-redesign.md) | Braun design system and screen redesign | Accepted |
+| [0008](0008-braun-design-system-and-screen-redesign.md) | Braun design system and screen redesign | Accepted (Now Playing no-cover layout amended by 0009) |
+| [0009](0009-now-playing-spectrum-analyzer.md) | Now Playing spectrum analyzer | Accepted |

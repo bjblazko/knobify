@@ -122,6 +122,13 @@ class PlaybackStateMachine {
     return driver_.durationSeconds();
   }
 
+  // Recent DAC samples for the spectrum analyzer; nothing unless actually
+  // playing, so a paused track's last buffer never looks live.
+  SampleWindow readRecentSamples(int16_t *dst, size_t maxSamples) {
+    if (state_ != PlaybackState::Playing) return {};
+    return driver_.readRecentSamples(dst, maxSamples);
+  }
+
   // Milliseconds of actual playback since the current track started,
   // excluding time spent paused. 0 when stopped.
   uint32_t elapsedMs(uint32_t nowMs) const {

@@ -2,19 +2,23 @@
 
 #include <lvgl.h>
 
+#include <array>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "CoverArtCache.h"
+#include "DotMatrixSpectrum.h"
 #include "EdgeArc.h"
 #include "FolderBrowser.h"
 #include "InputRouter.h"
 #include "LibraryRescanner.h"
 #include "LibraryScanner.h"
+#include "KeyValueStore.h"
 #include "LockController.h"
 #include "PlaybackStateMachine.h"
+#include "SpectrumAnalyzer.h"
 #include "TabController.h"
 
 namespace knobify::ui {
@@ -41,7 +45,8 @@ class ScreenManager : public input::ListMoveSink {
                 library::CoverArtReader &coverReader,
                 library::FileOpener &fileOpener,
                 library::JpegDecoder &jpegDecoder,
-                library::CoverWriter &coverWriter)
+                library::CoverWriter &coverWriter,
+                playback::KeyValueStore &settings)
       : tabs_(tabs),
         library_(library),
         directoryReader_(directoryReader),
@@ -51,7 +56,8 @@ class ScreenManager : public input::ListMoveSink {
         coverReader_(coverReader),
         fileOpener_(fileOpener),
         jpegDecoder_(jpegDecoder),
-        coverWriter_(coverWriter) {}
+        coverWriter_(coverWriter),
+        settings_(settings) {}
 
   void begin();
 
@@ -80,6 +86,12 @@ class ScreenManager : public input::ListMoveSink {
   // that screen isn't currently shown or nothing is playing.
   void updateElapsedTimeDisplay();
 
+  // Advances the Now Playing spectrum (ADR 0009) at ~30 fps. A no-op
+  // unless the spectrum is actually visible: another screen, the cover
+  // shown instead, or `visible == false` (display off, locked) all skip
+  // the FFT and every redraw. Call every loop() iteration.
+  void tickSpectrum(uint32_t nowMs, bool visible);
+
  private:
   void renderList(const std::vector<std::pair<std::string, int>> &items,
                    bool showMiniBar);
@@ -88,6 +100,7 @@ class ScreenManager : public input::ListMoveSink {
   void renderScanButtonIfNeeded();
   void renderContextCaption();
   void setProgressRingVisible(bool visible);
+  void applyCoverSlotMode();
   // Tag metadata for a playing file, falling back to friendlyName() for
   // the title and empty strings otherwise (e.g. untagged Files-tab files).
   struct TrackInfo {
@@ -108,6 +121,7 @@ class ScreenManager : public input::ListMoveSink {
   static void onNextClicked(lv_event_t *e);
   static void onLockClicked(lv_event_t *e);
   static void onScanClicked(lv_event_t *e);
+  static void onCoverSlotClicked(lv_event_t *e);
 
   navigation::TabController &tabs_;
   library::LibraryIndex &library_;
@@ -119,6 +133,7 @@ class ScreenManager : public input::ListMoveSink {
   library::FileOpener &fileOpener_;
   library::JpegDecoder &jpegDecoder_;
   library::CoverWriter &coverWriter_;
+  playback::KeyValueStore &settings_;
 
   static constexpr uint32_t kVolumeHudTimeoutMs = 3000;
 
@@ -133,6 +148,9 @@ class ScreenManager : public input::ListMoveSink {
   static constexpr lv_coord_t kMiniBarZoneHeight = 88;
   static constexpr lv_coord_t kCoverY = 56;
   static constexpr lv_coord_t kTransportCenterY = 246;
+  static constexpr uint32_t kSpectrumFrameMs = 33;
+  // Persisted cover-slot choice: 1 = spectrum, 0 = cover.
+  static constexpr char kSpectrumSettingKey[] = "npSpectrum";
 
   lv_obj_t *screen_ = nullptr;
   lv_obj_t *list_ = nullptr;
@@ -144,6 +162,13 @@ class ScreenManager : public input::ListMoveSink {
   // long as it's on screen, well past that function returning.
   lv_img_dsc_t coverImgDsc_{};
   std::vector<uint16_t> coverPixels_;
+  // The cover slot shows either the cover or the spectrum; always the
+  // spectrum when there's no cover (user decision, ADR 0009).
+  ui_widgets::DotMatrixSpectrum spectrum_;
+  visualizer::SpectrumAnalyzer analyzer_;
+  std::array<int16_t, visualizer::SpectrumAnalyzer::kFftSize> spectrumSamples_{};
+  bool preferSpectrum_ = false;
+  uint32_t lastSpectrumTickMs_ = 0;
   lv_obj_t *volumeArcHost_ = nullptr;
   lv_obj_t *volumeHudPill_ = nullptr;
   lv_obj_t *volumeHudLabel_ = nullptr;

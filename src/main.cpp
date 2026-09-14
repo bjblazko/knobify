@@ -192,7 +192,7 @@ knobify::power::LockController g_lockController;
 knobify::ui::ScreenManager g_screenManager(
     g_tabs, g_libraryIndex, g_directoryReader, g_playback, g_lockController,
     g_libraryRescanner, g_coverReader, g_fileOpener, g_jpegDecoder,
-    g_coverWriter);
+    g_coverWriter, g_nvsStore);
 knobify::ui::LockOverlay g_lockOverlay(g_lockController);
 knobify::drivers::BatteryAdcDriver g_batteryAdc;
 knobify::power::BatteryMonitor g_batteryMonitor;
@@ -460,6 +460,9 @@ void loop() {
   // Cheap (no full re-render), a no-op on any screen other than Now
   // Playing -- see ScreenManager::updateElapsedTimeDisplay().
   g_screenManager.updateElapsedTimeDisplay();
+  // ~30 fps while the Now Playing spectrum is on screen and actually seen;
+  // skipped entirely otherwise (ADR 0009).
+  g_screenManager.tickSpectrum(now, displayOn && !g_lockController.isLocked());
 
   // Detect track-finished as a Playing->not-running transition. Pausing
   // also makes isRunning() report false, so this only applies while we

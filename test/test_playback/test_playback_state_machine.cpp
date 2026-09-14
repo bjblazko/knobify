@@ -30,6 +30,9 @@ class FakeDriver : public PlaybackDriver {
   void setVolume(uint8_t v) override { lastVolume = v; }
   bool isRunning() override { return running; }
   uint32_t durationSeconds() override { return duration; }
+  knobify::playback::SampleWindow readRecentSamples(int16_t *, size_t) override {
+    return {};
+  }
   void loop() override {}
 
   std::string lastPlayed;
