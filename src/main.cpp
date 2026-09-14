@@ -352,7 +352,6 @@ void loop() {
   // comment for why. Still called through the interface for consistency
   // with PlaybackDriver's contract.
   g_audioDriver.loop();
-  g_lvglGlue.pump();
   pollSerialCommands();
 
   uint32_t now = millis();
@@ -407,6 +406,10 @@ void loop() {
     g_display.setBacklight(displayOn ? 255 : 0);
     g_backlightOn = displayOn;
   }
+  // Nothing to render on a dark panel (this also stops the lock screen's
+  // endless pulse animation). LVGL keeps its invalidated areas, so the
+  // first pump after waking redraws the current state.
+  if (displayOn) g_lvglGlue.pump();
 
   bool touchDownEdge = touchSample.pressed && !g_touchPressedPrev;
   g_touchPressedPrev = touchSample.pressed;
@@ -459,7 +462,7 @@ void loop() {
   g_playback.tick(now);
   // Cheap (no full re-render), a no-op on any screen other than Now
   // Playing -- see ScreenManager::updateElapsedTimeDisplay().
-  g_screenManager.updateElapsedTimeDisplay();
+  if (displayOn) g_screenManager.updateElapsedTimeDisplay();
   // ~30 fps while the Now Playing spectrum is on screen and actually seen;
   // skipped entirely otherwise (ADR 0009).
   g_screenManager.tickSpectrum(now, displayOn && !g_lockController.isLocked());
@@ -476,4 +479,9 @@ void loop() {
     g_screenManager.render();
   }
   g_wasPlaying = isPlayingNow;
+
+  // Don't busy-spin core 1: lets FreeRTOS idle the CPU between iterations.
+  // Safe because the encoder counts in its ISR and short taps are latched
+  // (TouchLatch); with the display off, only a wake touch needs catching.
+  delay(displayOn ? 5 : 20);
 }
