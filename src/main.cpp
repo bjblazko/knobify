@@ -480,7 +480,12 @@ void loop() {
     if (!touchSample.pressed) g_swallowingWakeTouch = false;
   } else {
     g_lvglGlue.feedTouch(touchSample);
-    if (!g_lockController.isLocked()) {
+    // Sideways drift while turning the knob during a shuttle hold
+    // (ADR 0013) can register as a swipe and pop Now Playing right when
+    // the user is mid-scrub -- skip recognizing/acting on gestures while
+    // held, but keep feeding LVGL its touch above so the pill itself
+    // still tracks the finger.
+    if (!g_lockController.isLocked() && !g_shuttle.isHeld()) {
       auto gesture = g_gestureRecognizer.feed(touchSample);
       if (gesture) {
         g_inputRouter.onGesture(*gesture);
