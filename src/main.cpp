@@ -437,10 +437,11 @@ void loop() {
   // very first touch after the display was off is swallowed entirely
   // below -- it only wakes the screen, never also acts on whatever it
   // landed on (a button on the table, or the unlock button in a pocket).
+  // A dark display only wakes from the knob after a deliberate quarter
+  // turn, not from a nudge in a pocket (IdleTimer::kEncoderWakeDetents).
   bool displayWasOn = g_idleTimer.isDisplayOn();
-  if (touchSample.pressed || encoderDelta != 0) {
-    g_idleTimer.noteActivity(now);
-  }
+  if (touchSample.pressed) g_idleTimer.noteActivity(now);
+  if (encoderDelta != 0) g_idleTimer.noteEncoderDelta(encoderDelta, now);
   bool displayOn = g_idleTimer.tick(now);
   // Also follows the brightness setting live while it's being adjusted.
   uint8_t backlightDuty = displayOn ? g_brightness.duty() : 0;

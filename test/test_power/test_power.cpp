@@ -45,6 +45,56 @@ void test_idle_timer_activity_after_off_turns_display_back_on() {
   TEST_ASSERT_TRUE(timer.isDisplayOn());
 }
 
+// Puts the display to sleep; returns the time it went dark.
+static uint32_t sleepDisplay(IdleTimer& timer) {
+  timer.noteActivity(0);
+  timer.tick(IdleTimer::kIdleTimeoutMs);
+  return IdleTimer::kIdleTimeoutMs;
+}
+
+void test_idle_timer_single_detents_below_threshold_keep_display_off() {
+  IdleTimer timer;
+  uint32_t t = sleepDisplay(timer);
+  for (int i = 0; i < IdleTimer::kEncoderWakeDetents - 1; ++i) {
+    timer.noteEncoderDelta(1, t += 100);
+  }
+  TEST_ASSERT_FALSE(timer.isDisplayOn());
+  timer.noteEncoderDelta(1, t += 100);
+  TEST_ASSERT_TRUE(timer.isDisplayOn());
+}
+
+void test_idle_timer_back_and_forth_jiggle_does_not_wake() {
+  IdleTimer timer;
+  uint32_t t = sleepDisplay(timer);
+  for (int i = 0; i < 10; ++i) {
+    timer.noteEncoderDelta(4, t += 50);
+    timer.noteEncoderDelta(-4, t += 50);
+  }
+  TEST_ASSERT_FALSE(timer.isDisplayOn());
+}
+
+void test_idle_timer_pause_resets_encoder_wake_count() {
+  IdleTimer timer;
+  uint32_t t = sleepDisplay(timer);
+  timer.noteEncoderDelta(IdleTimer::kEncoderWakeDetents - 1, t += 100);
+  timer.noteEncoderDelta(1, t += IdleTimer::kEncoderWakeWindowMs + 1);
+  TEST_ASSERT_FALSE(timer.isDisplayOn());
+}
+
+void test_idle_timer_batched_quarter_turn_wakes() {
+  IdleTimer timer;
+  uint32_t t = sleepDisplay(timer);
+  timer.noteEncoderDelta(-IdleTimer::kEncoderWakeDetents, t + 100);
+  TEST_ASSERT_TRUE(timer.isDisplayOn());
+}
+
+void test_idle_timer_encoder_detent_resets_timeout_while_on() {
+  IdleTimer timer;
+  timer.noteActivity(0);
+  timer.noteEncoderDelta(1, IdleTimer::kIdleTimeoutMs - 1);
+  TEST_ASSERT_TRUE(timer.tick(2 * IdleTimer::kIdleTimeoutMs - 2));
+}
+
 // --- LockController ---
 
 void test_lock_controller_starts_unlocked() {
@@ -183,6 +233,11 @@ int main(int argc, char **argv) {
   RUN_TEST(test_idle_timer_turns_off_after_timeout_with_no_activity);
   RUN_TEST(test_idle_timer_activity_resets_timeout);
   RUN_TEST(test_idle_timer_activity_after_off_turns_display_back_on);
+  RUN_TEST(test_idle_timer_single_detents_below_threshold_keep_display_off);
+  RUN_TEST(test_idle_timer_back_and_forth_jiggle_does_not_wake);
+  RUN_TEST(test_idle_timer_pause_resets_encoder_wake_count);
+  RUN_TEST(test_idle_timer_batched_quarter_turn_wakes);
+  RUN_TEST(test_idle_timer_encoder_detent_resets_timeout_while_on);
   RUN_TEST(test_lock_controller_starts_unlocked);
   RUN_TEST(test_request_lock_locks);
   RUN_TEST(test_hold_and_turn_past_threshold_unlocks);
