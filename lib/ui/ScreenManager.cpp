@@ -717,14 +717,14 @@ void ScreenManager::renderNowPlaying() {
   const lv_coord_t timeY = kTransportCenterY + 44;
   if (playback_.canSeek()) {
     // Hold-and-turn shuttle (ADR 0013): the readout of the song position
-    // is the control that changes it. ◀◀ ▶▶ marks say it can be held;
-    // no marks (Ogg) means it can't. No extended hit area -- the
+    // is the control that changes it. Fast-wind marks say it can be
+    // held; no marks (Ogg) means it can't. No extended hit area -- the
     // shuffle/repeat toggles sit 12 px away.
     timePill_ = makeHoldButton(screen_, "0:00", kTimePillW, kTimePillH,
                                LV_ALIGN_TOP_MID, 0, timeY - 6,
                                &ScreenManager::onTimePillPressed,
                                &ScreenManager::onTimePillReleased, this,
-                               ButtonRole::Secondary, &lv_font_montserrat_14);
+                               ButtonRole::Secondary, &knobify_icon_font_16);
     lv_obj_set_ext_click_area(timePill_, 0);
     elapsedLabel_ = lv_obj_get_child(timePill_, 0);
   } else {
@@ -911,13 +911,15 @@ void ScreenManager::updateElapsedTimeDisplay() {
       // Speed instead of the total, so the pill doesn't grow. ASCII "x":
       // the built-in font has no "×".
       snprintf(text, sizeof(text), "%u:%02u %s %ux", em, es,
-               step > 0 ? LV_SYMBOL_NEXT : LV_SYMBOL_PREV,
+               step > 0 ? KNOBIFY_ICON_FAST_FORWARD : KNOBIFY_ICON_FAST_REWIND,
                1u << std::abs(step));
     } else if (timePill_ && durationSeconds_ != 0) {
-      snprintf(text, sizeof(text), LV_SYMBOL_PREV " %u:%02u / %u:%02u " LV_SYMBOL_NEXT,
+      snprintf(text, sizeof(text),
+               KNOBIFY_ICON_FAST_REWIND " %u:%02u / %u:%02u " KNOBIFY_ICON_FAST_FORWARD,
                em, es, dm, ds);
     } else if (timePill_) {
-      snprintf(text, sizeof(text), LV_SYMBOL_PREV " %u:%02u " LV_SYMBOL_NEXT, em, es);
+      snprintf(text, sizeof(text),
+               KNOBIFY_ICON_FAST_REWIND " %u:%02u " KNOBIFY_ICON_FAST_FORWARD, em, es);
     } else if (durationSeconds_ != 0) {
       snprintf(text, sizeof(text), "%u:%02u / %u:%02u", em, es, dm, ds);
     } else {
