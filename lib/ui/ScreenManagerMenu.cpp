@@ -21,12 +21,14 @@ namespace knobify::ui {
 namespace {
 
 // One row per main-menu entry; adding a destination means adding a row
-// here (and, beyond four entries, revisiting the grid below on the
+// here (and, beyond three entries, revisiting the tile row below on the
 // device).
 struct MenuEntry {
   const char *icon;
   const char *label;
   void (*open)(navigation::TabController &tabs);
+  // The label shows the sleep timer's time left while it runs (ADR 0015).
+  bool showsSleepTimer = false;
 };
 
 constexpr MenuEntry kMenuEntries[] = {
@@ -36,6 +38,11 @@ constexpr MenuEntry kMenuEntries[] = {
      [](navigation::TabController &tabs) {
        tabs.activeStack().push(Screen{ScreenKind::Settings, {}});
      }},
+    {KNOBIFY_ICON_BEDTIME, "Sleep",
+     [](navigation::TabController &tabs) {
+       tabs.activeStack().push(Screen{ScreenKind::SleepTimer, {}});
+     },
+     true},
 };
 constexpr int kMenuEntryCount =
     static_cast<int>(sizeof(kMenuEntries) / sizeof(kMenuEntries[0]));
@@ -55,16 +62,26 @@ lv_obj_t *makeMark(lv_obj_t *parent, lv_coord_t cx, lv_coord_t cy,
   return mark;
 }
 
-// Tile geometry. Two columns whose circles sit 28px apart -- more than the
-// 20px two touch-slop margins need (ux-guidelines §3a). The first row's
-// circles span x=54..306 at y=88..200, inside the ~25..335 the bezel
-// shows at y=88; the row's position doesn't move with the mini-bar, so
-// the menu never jumps when playback starts.
-constexpr lv_coord_t kTileSize = 112;
-constexpr lv_coord_t kTileCenterDx = 70;
-constexpr lv_coord_t kTileTopY = 88;
-constexpr lv_coord_t kTileRowPitch = 150;
+// Tile geometry (ADR 0015): one row of three, circles 22px apart -- more
+// than the 20px two touch-slop margins need (ux-guidelines §3a). They span
+// x=32..328 at y=96..180, where the bezel shows ~21..339 at the top edge
+// and ~5..355 at the middle; labels end above the mini-bar zone (y>=272).
+// The row doesn't move with the mini-bar, so the menu never jumps when
+// playback starts. A 2x2 grid of 112px tiles didn't fit three: the second
+// row ran into the mini-bar and its label behind the bezel.
+constexpr lv_coord_t kTileSize = 84;
+constexpr lv_coord_t kTileCenterDx = 106;
+constexpr lv_coord_t kTileTopY = 96;
 constexpr lv_coord_t kCellHeight = kTileSize + 34;
+
+// "Off" or "25 min".
+void formatSleepMinutes(char *out, size_t size, uint32_t minutes) {
+  if (minutes == 0) {
+    snprintf(out, size, "Off");
+  } else {
+    snprintf(out, size, "%u min", static_cast<unsigned>(minutes));
+  }
+}
 
 }  // namespace
 
@@ -85,9 +102,9 @@ void ScreenManager::renderHome() {
     // tappable too.
     lv_obj_t *cell = lv_obj_create(tiles_);
     lv_obj_set_size(cell, kTileSize, kCellHeight);
-    lv_coord_t dx = (i % 2 == 0) ? -kTileCenterDx : kTileCenterDx;
-    if (i == kMenuEntryCount - 1 && i % 2 == 0) dx = 0;  // Odd one out centers.
-    lv_obj_align(cell, LV_ALIGN_TOP_MID, dx, kTileTopY + (i / 2) * kTileRowPitch);
+    lv_coord_t dx = static_cast<lv_coord_t>((2 * i - (kMenuEntryCount - 1)) *
+                                            kTileCenterDx / 2);
+    lv_obj_align(cell, LV_ALIGN_TOP_MID, dx, kTileTopY);
     lv_obj_set_style_bg_opa(cell, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(cell, 0, 0);
     lv_obj_set_style_pad_all(cell, 0, 0);
@@ -124,6 +141,7 @@ void ScreenManager::renderHome() {
     lv_obj_set_style_text_color(label, theme::ink(), 0);
     lv_label_set_text(label, kMenuEntries[i].label);
     lv_obj_align(label, LV_ALIGN_TOP_MID, 0, kTileSize + 8);
+    if (kMenuEntries[i].showsSleepTimer) sleepTileLabel_ = label;
 
     // Touch selects on press and opens on release, so the finger and the
     // knob drive the same visible selection.
@@ -135,6 +153,8 @@ void ScreenManager::renderHome() {
 
   highlightedIndex_ = std::min(homeSelection_, kMenuEntryCount - 1);
   applyHighlight();
+
+  tickSleepTimer(millis());
 
   if (playback_.state() != playback::PlaybackState::Stopped) renderMiniBar();
 }
@@ -205,6 +225,69 @@ void ScreenManager::updateBrightnessDisplay() {
   snprintf(text, sizeof(text), "%u%%",
            static_cast<unsigned>(brightness_.percent()));
   lv_label_set_text(brightnessLabel_, text);
+}
+
+void ScreenManager::renderSleepTimer() {
+  // Laid out like Brightness: one value, set with the knob, an accent ring
+  // at the bezel. The ring counts down while the timer runs, on a scale of
+  // the longest preset.
+  constexpr lv_coord_t kGlyphY = 104;
+
+  lv_obj_t *glyph = lv_label_create(screen_);
+  lv_obj_set_style_text_font(glyph, &knobify_icon_font_48, 0);
+  lv_obj_set_style_text_color(glyph, theme::structure(), 0);
+  lv_label_set_text(glyph, KNOBIFY_ICON_BEDTIME);
+  lv_obj_align(glyph, LV_ALIGN_TOP_MID, 0, kGlyphY);
+
+  sleepValueLabel_ = lv_label_create(screen_);
+  lv_obj_set_style_text_font(sleepValueLabel_, &lv_font_montserrat_28, 0);
+  lv_obj_set_style_text_color(sleepValueLabel_, theme::ink(), 0);
+  lv_obj_align(sleepValueLabel_, LV_ALIGN_TOP_MID, 0, kGlyphY + 60);
+
+  lv_obj_t *hint = lv_label_create(screen_);
+  lv_obj_set_style_text_font(hint, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_color(hint, theme::structure(), 0);
+  lv_label_set_text(hint, "Turn to set");
+  lv_obj_align(hint, LV_ALIGN_TOP_MID, 0, kGlyphY + 104);
+
+  ui_widgets::EdgeArcConfig arcConfig;
+  arcConfig.startAngle = 135;
+  arcConfig.endAngle = 45;
+  arcConfig.widthPx = 12;
+  arcConfig.color = theme::accent();
+  arcConfig.hasBackgroundColor = true;
+  arcConfig.backgroundColor = theme::surfaceAlt();
+  sleepArcHost_ = makeEdgeArcHost(screen_);
+  sleepArc_.create(sleepArcHost_, arcConfig, 0,
+                   power::SleepTimer::kPresetsMin[power::SleepTimer::kPresetCount - 1] *
+                       60);
+
+  tickSleepTimer(millis());
+}
+
+void ScreenManager::tickSleepTimer(uint32_t nowMs) {
+  if (!sleepValueLabel_ && !sleepTileLabel_) return;
+  uint32_t minutes = sleepTimer_.remainingMinutesCeil(nowMs);
+  uint32_t seconds = (sleepTimer_.remainingMs(nowMs) + 999) / 1000;
+  if (sleepArcHost_ && seconds != shownSleepSeconds_) {
+    sleepArc_.setValue(static_cast<int32_t>(seconds));
+  }
+  shownSleepSeconds_ = seconds;
+  if (minutes == shownSleepMinutes_) return;
+  shownSleepMinutes_ = minutes;
+  char text[16];
+  if (sleepValueLabel_) {
+    formatSleepMinutes(text, sizeof(text), minutes);
+    lv_label_set_text(sleepValueLabel_, text);
+  }
+  if (sleepTileLabel_) {
+    if (minutes == 0) {
+      lv_label_set_text(sleepTileLabel_, "Sleep");
+    } else {
+      formatSleepMinutes(text, sizeof(text), minutes);
+      lv_label_set_text(sleepTileLabel_, text);
+    }
+  }
 }
 
 void ScreenManager::renderTouchCalibration() {

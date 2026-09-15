@@ -51,6 +51,11 @@ class PlaybackStateMachine {
     driver_.setVolume(volume_);
   }
 
+  // Scales the output by 0..4096 (unity) without changing volume() or
+  // saving anything -- the sleep timer's fade (ADR 0015), so a faded-out
+  // volume is never what comes back after waking.
+  void setOutputGain(uint16_t gain) { driver_.setOutputGain(gain); }
+
   // Replaces the queue. `shuffle` plays the whole playlist in random order
   // (startIndex is then ignored); without it shuffle is switched off, so a
   // tapped track always plays its list in order.

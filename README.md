@@ -71,7 +71,6 @@ screens described below.
   [ADR 0007](docs/adr/0007-battery-indicator.md))
 - Shuffle for a Files-tab folder (library shuffle by album/artist/all
   exists, see ADR 0011; tapping a file still plays it alone)
-- A sleep timer (auto-stop playback after a set time)
 - Volume normalization / ReplayGain-style loudness matching across
   tracks
 - EQ presets (bass/treble/flat, etc.) built on the library's existing

@@ -27,13 +27,14 @@ LV_FONT_DECLARE(knobify_icon_font_28);
 #define KNOBIFY_ICON_IMAGE "\xEE\x8F\xB4"       // U+E3F4
 #define KNOBIFY_ICON_EQUALIZER "\xEE\x80\x9D"   // U+E01D
 
-// 48px glyphs for the main menu tiles and the Brightness screen (ADR
-// 0010) -- IconFont48.c, same source font.
+// 48px glyphs for the main menu tiles and the Brightness and Sleep
+// screens (ADR 0010, ADR 0015) -- IconFont48.c, same source font.
 LV_FONT_DECLARE(knobify_icon_font_48);
 
 #define KNOBIFY_ICON_MUSIC_NOTE "\xEE\x90\x85"  // U+E405
 #define KNOBIFY_ICON_SETTINGS "\xEE\xA2\xB8"    // U+E8B8
 #define KNOBIFY_ICON_LIGHT_MODE "\xEE\x94\x98"  // U+E518
+#define KNOBIFY_ICON_BEDTIME "\xEE\xBD\x84"     // U+EF44
 
 // 16px fast_rewind/fast_forward for Now Playing's time pill shuttle marks
 // (ADR 0013) -- IconFont16.c, same source font. Only carries these two

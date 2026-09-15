@@ -52,6 +52,17 @@ class Cst816Driver : public input::TouchDriver {
     return true;
   }
 
+  // Before the sleep timer's deep sleep (ADR 0015): the chip must keep
+  // scanning and pull INT low on a touch, since that is what wakes the
+  // ESP32. Register values from the CST816S datasheet (0xFA IrqCtl:
+  // EnTouch | EnChange; 0xFE DisAutoSleep) -- unverified on this board.
+  void armWakeOnTouch() {
+    uint8_t irqOnTouch = 0x60;
+    writeRegister(0xFA, &irqOnTouch, 1);
+    uint8_t noAutoSleep = 0x01;
+    writeRegister(0xFE, &noAutoSleep, 1);
+  }
+
  private:
   void writeRegister(uint8_t reg, const uint8_t *data, size_t len) {
     uint8_t buf[8];

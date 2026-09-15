@@ -55,6 +55,7 @@ class FakeDriver : public PlaybackDriver {
   void resume() override {}
   void stop() override {}
   void setVolume(uint8_t) override {}
+  void setOutputGain(uint16_t) override {}
   bool isRunning() override { return true; }
   uint32_t durationSeconds() override { return 0; }
   knobify::playback::SampleWindow readRecentSamples(int16_t *, size_t) override {
@@ -301,6 +302,23 @@ void test_scheduler_saves_position_only_changes_at_the_slow_interval() {
   TEST_ASSERT_EQUAL(2, store.writes);
 }
 
+void test_scheduler_save_now_writes_immediately_and_only_when_changed() {
+  FakeStore store;
+  FakeSource source;
+  ResumeScheduler scheduler(store, {&source});
+  scheduler.restore(0);
+  source.state = musicAt("/a.mp3", 7);
+  scheduler.tick(500);  // Captured, but the structure hasn't settled.
+  TEST_ASSERT_EQUAL(0, store.writes);
+  scheduler.saveNow(600);  // Within the capture interval, too.
+  TEST_ASSERT_EQUAL(1, store.writes);
+  ResumeRecord saved;
+  TEST_ASSERT_TRUE(ResumeCodec::decode(store.blobs[ResumeScheduler::kKey], saved));
+  TEST_ASSERT_TRUE(saved == source.state);
+  scheduler.saveNow(700);
+  TEST_ASSERT_EQUAL(1, store.writes);
+}
+
 void test_scheduler_never_writes_while_nothing_changes() {
   FakeStore store;
   FakeSource source;
@@ -463,6 +481,7 @@ int main() {
   RUN_TEST(test_scheduler_saves_a_structural_change_after_it_settles);
   RUN_TEST(test_scheduler_waits_while_structure_keeps_changing);
   RUN_TEST(test_scheduler_saves_position_only_changes_at_the_slow_interval);
+  RUN_TEST(test_scheduler_save_now_writes_immediately_and_only_when_changed);
   RUN_TEST(test_scheduler_never_writes_while_nothing_changes);
   RUN_TEST(test_scheduler_restores_and_does_not_rewrite_the_same_state);
   RUN_TEST(test_scheduler_ignores_a_corrupt_record);

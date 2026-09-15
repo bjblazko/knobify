@@ -99,6 +99,9 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
     volume_.store(volume);
   }
 
+  // Lock-free: read per sample on the audio task (audio_process_i2s()).
+  void setOutputGain(uint16_t gain) override;
+
   bool isRunning() override {
     MutexGuard guard(mutex_);
     return audio_.isRunning();

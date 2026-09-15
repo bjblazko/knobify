@@ -96,6 +96,11 @@ void ScreenManager::render() {
   tiles_ = nullptr;
   brightnessArcHost_ = nullptr;
   brightnessLabel_ = nullptr;
+  sleepArcHost_ = nullptr;
+  sleepValueLabel_ = nullptr;
+  sleepTileLabel_ = nullptr;
+  shownSleepMinutes_ = UINT32_MAX;
+  shownSleepSeconds_ = UINT32_MAX;
   calibrationArcHost_ = nullptr;
   miniBar_ = nullptr;
   elapsedLabel_ = nullptr;
@@ -128,6 +133,8 @@ void ScreenManager::render() {
     renderHome();
   } else if (current.kind == ScreenKind::Brightness) {
     renderBrightness();
+  } else if (current.kind == ScreenKind::SleepTimer) {
+    renderSleepTimer();
   } else if (current.kind == ScreenKind::TouchCalibration) {
     // No back button or caption: the top target sits where they would,
     // and the knob is the way out (renderTouchCalibration()).
@@ -391,6 +398,9 @@ void ScreenManager::renderContextCaption() {
       break;
     case ScreenKind::Brightness:
       caption = "Brightness";
+      break;
+    case ScreenKind::SleepTimer:
+      caption = "Sleep timer";
       break;
     case ScreenKind::Albums:
       for (const auto &artist : library_.artists) {

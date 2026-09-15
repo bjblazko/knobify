@@ -42,6 +42,9 @@ namespace {
 constexpr size_t kSampleRingSize = 1024;  // Power of two.
 int16_t g_sampleRing[kSampleRingSize];
 std::atomic<uint32_t> g_samplesWritten{0};
+// setOutputGain()'s 0..4096 (unity), applied per sample on the audio task.
+constexpr int32_t kUnityOutputGain = 4096;
+std::atomic<uint16_t> g_outputGain{kUnityOutputGain};
 
 // ESP32-audioI2S's volumetable (Audio.h): Gain() multiplies by entry/64.
 // The library's own >>1 and this file's x2 compensation cancel out.
@@ -68,8 +71,14 @@ playback::SampleWindow Esp32AudioI2SDriver::readRecentSamples(
   // rate would wait on the audio task's decode chunks, and a stale rate
   // for one frame right after a track change is harmless.
   window.sampleRate = audio_.getSampleRate();
-  window.gain = kVolumeTable[std::min<uint8_t>(volume_.load(), 21)] / 64.0f;
+  window.gain = kVolumeTable[std::min<uint8_t>(volume_.load(), 21)] / 64.0f *
+                g_outputGain.load(std::memory_order_relaxed) / kUnityOutputGain;
   return window;
+}
+
+void Esp32AudioI2SDriver::setOutputGain(uint16_t gain) {
+  g_outputGain.store(std::min<int32_t>(gain, kUnityOutputGain),
+                     std::memory_order_relaxed);
 }
 
 }  // namespace knobify::drivers
@@ -85,11 +94,13 @@ playback::SampleWindow Esp32AudioI2SDriver::readRecentSamples(
 namespace {
 constexpr int32_t kHeadroomCompensation = 2;
 
-int16_t compensate(int16_t s) {
+// Also applies the output gain (the sleep timer's fade), which can never
+// exceed unity.
+int16_t compensate(int16_t s, int32_t gain) {
   // Clamp is a safety net only: the input was halved, so x2 can't clip
   // unless the library's EQ (setTone) is ever used to boost.
-  return static_cast<int16_t>(
-      std::clamp<int32_t>(s * kHeadroomCompensation, INT16_MIN, INT16_MAX));
+  return static_cast<int16_t>(std::clamp<int32_t>(
+      s * kHeadroomCompensation * gain / kUnityOutputGain, INT16_MIN, INT16_MAX));
 }
 }  // namespace
 
@@ -97,8 +108,9 @@ void audio_process_i2s(uint32_t *sample, bool *continueI2S) {
   // Packed as Gain() returns it: left in the high 16 bits, right in the low.
   // Verified on hardware 2026-09-13: loud tracks peak at 16383 in, 32766
   // out, zero clipped samples.
-  const int16_t left = compensate(static_cast<int16_t>(*sample >> 16));
-  const int16_t right = compensate(static_cast<int16_t>(*sample & 0xFFFF));
+  const int32_t gain = g_outputGain.load(std::memory_order_relaxed);
+  const int16_t left = compensate(static_cast<int16_t>(*sample >> 16), gain);
+  const int16_t right = compensate(static_cast<int16_t>(*sample & 0xFFFF), gain);
   uint32_t written = g_samplesWritten.load(std::memory_order_relaxed);
   g_sampleRing[written & (kSampleRingSize - 1)] =
       static_cast<int16_t>((static_cast<int32_t>(left) + right) / 2);

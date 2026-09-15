@@ -3,6 +3,7 @@
 #include <lvgl.h>
 
 #include <array>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -21,6 +22,7 @@
 #include "MessageArea.h"
 #include "PlaybackStateMachine.h"
 #include "Shuttle.h"
+#include "SleepTimer.h"
 #include "SpectrumAnalyzer.h"
 #include "St77916Driver.h"
 #include "TabController.h"
@@ -54,6 +56,7 @@ class ScreenManager : public input::ListMoveSink {
                 library::CoverWriter &coverWriter,
                 playback::KeyValueStore &settings,
                 power::BrightnessSetting &brightness,
+                power::SleepTimer &sleepTimer,
                 input::TouchCalibrationFlow &touchCalibration,
                 ui_widgets::MessageArea &messages)
       : tabs_(tabs),
@@ -69,6 +72,7 @@ class ScreenManager : public input::ListMoveSink {
         coverWriter_(coverWriter),
         settings_(settings),
         brightness_(brightness),
+        sleepTimer_(sleepTimer),
         touchCalibration_(touchCalibration),
         messages_(messages) {}
 
@@ -109,6 +113,11 @@ class ScreenManager : public input::ListMoveSink {
   // call after any encoder tick. A no-op on every other screen.
   void updateBrightnessDisplay();
 
+  // Keeps the sleep timer's time left current (ADR 0015): the Sleep
+  // screen's value and ring, and the Home tile's label. Redraws only when
+  // the shown value changes. Call every loop().
+  void tickSleepTimer(uint32_t nowMs);
+
   // Drives the Touch calibration screen: re-renders as targets are taken
   // or the phase changes, runs the Keep countdown, and leaves the screen
   // (with a message) once the flow ends -- however it ended. Also cancels
@@ -123,6 +132,7 @@ class ScreenManager : public input::ListMoveSink {
   // Main menu and settings -- ScreenManagerMenu.cpp (ADR 0010).
   void renderHome();
   void renderBrightness();
+  void renderSleepTimer();
   void renderTouchCalibration();
   static void onCalibrationKeepClicked(lv_event_t *e);
   void runRescan();
@@ -184,6 +194,7 @@ class ScreenManager : public input::ListMoveSink {
   library::CoverWriter &coverWriter_;
   playback::KeyValueStore &settings_;
   power::BrightnessSetting &brightness_;
+  power::SleepTimer &sleepTimer_;
   input::TouchCalibrationFlow &touchCalibration_;
   ui_widgets::MessageArea &messages_;
 
@@ -242,6 +253,14 @@ class ScreenManager : public input::ListMoveSink {
   lv_obj_t *brightnessArcHost_ = nullptr;
   lv_obj_t *brightnessLabel_ = nullptr;
   ui_widgets::EdgeArc brightnessArc_;
+  // The Sleep screen's value and ring, and the Home tile label that shows
+  // the time left; what they show, to redraw only on change.
+  lv_obj_t *sleepArcHost_ = nullptr;
+  lv_obj_t *sleepValueLabel_ = nullptr;
+  ui_widgets::EdgeArc sleepArc_;
+  lv_obj_t *sleepTileLabel_ = nullptr;
+  uint32_t shownSleepMinutes_ = UINT32_MAX;
+  uint32_t shownSleepSeconds_ = UINT32_MAX;
   // What the Touch calibration screen currently shows, to re-render only
   // on change.
   input::CalibrationPhase shownCalibrationPhase_ = input::CalibrationPhase::Idle;

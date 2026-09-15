@@ -69,6 +69,26 @@ class ResumeScheduler {
                    ? nowMs - structureChangedMs_ >= kStructureDelayMs
                    : nowMs - lastSaveMs_ >= kPositionIntervalMs;
     if (!due) return;
+    write(std::move(record), nowMs);
+  }
+
+  // Captures and saves right away, ignoring the delays -- for a shutdown we
+  // do know about: the sleep timer's deep sleep (ADR 0015). Still no write
+  // if nothing changed.
+  void saveNow(uint32_t nowMs) {
+    ResumeRecord record;
+    for (ResumeSource *source : sources_) source->capture(record, nowMs);
+    lastCaptureMs_ = nowMs;
+    lastStructure_ = withoutPosition(record);
+    structureChangedMs_ = nowMs;
+    if (record == saved_) return;
+    write(std::move(record), nowMs);
+  }
+
+  uint32_t saveCount() const { return saveCount_; }
+
+ private:
+  void write(ResumeRecord record, uint32_t nowMs) {
     // Remembered even if the write fails, so a failing store is retried on
     // the next change, not hammered every second.
     std::vector<uint8_t> bytes = ResumeCodec::encode(record);
@@ -78,9 +98,6 @@ class ResumeScheduler {
     ++saveCount_;
   }
 
-  uint32_t saveCount() const { return saveCount_; }
-
- private:
   void begin(ResumeRecord saved, uint32_t nowMs) {
     lastStructure_ = withoutPosition(saved);
     saved_ = std::move(saved);

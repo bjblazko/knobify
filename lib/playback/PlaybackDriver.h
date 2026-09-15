@@ -38,6 +38,10 @@ class PlaybackDriver {
   virtual void resume() = 0;
   virtual void stop() = 0;
   virtual void setVolume(uint8_t volume) = 0;  // 0-21, ESP32-audioI2S's range.
+  // A fine gain on top of the volume, 0..4096 (4096 = unity), applied per
+  // sample so it can change smoothly -- the sleep timer's fade (ADR 0015).
+  // The volume's 22 steps are far too coarse for that.
+  virtual void setOutputGain(uint16_t gain) = 0;
   virtual bool isRunning() = 0;
   // Current track's total duration as reported by the decoder; 0 if
   // unknown (not yet parsed, or the format doesn't expose it).

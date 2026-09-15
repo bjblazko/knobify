@@ -9,6 +9,7 @@
 #include "GestureRecognizer.h"
 #include "InputRouter.h"
 #include "Shuttle.h"
+#include "SleepTimer.h"
 #include "TouchCalibration.h"
 #include "TouchCalibrator.h"
 #include "TouchLatch.h"
@@ -29,6 +30,7 @@ using knobify::navigation::Screen;
 using knobify::navigation::ScreenKind;
 using knobify::navigation::TabController;
 using knobify::power::BrightnessSetting;
+using knobify::power::SleepTimer;
 using knobify::playback::KeyValueStore;
 using knobify::playback::PlaybackDriver;
 using knobify::playback::PlaybackStateMachine;
@@ -50,6 +52,7 @@ class FakeDriver : public PlaybackDriver {
   void resume() override {}
   void stop() override {}
   void setVolume(uint8_t v) override { lastVolume = v; }
+  void setOutputGain(uint16_t) override {}
   bool isRunning() override { return true; }
   uint32_t durationSeconds() override { return 0; }
   knobify::playback::SampleWindow readRecentSamples(int16_t *, size_t) override {
@@ -133,7 +136,9 @@ void test_encoder_scrolls_list_on_browse_screen() {
   Shuttle shuttle(playback);
   FakeBlobStore blobs;
   TouchCalibrationFlow calibration(blobs);
-  InputRouter router(tabs, playback, shuttle, brightness, calibration, sink);
+  SleepTimer sleepTimer;
+  InputRouter router(tabs, playback, shuttle, brightness, sleepTimer,
+                     calibration, sink);
 
   router.onEncoderDelta(3, 0);
 
@@ -153,7 +158,9 @@ void test_encoder_adjusts_volume_on_now_playing_screen() {
   Shuttle shuttle(playback);
   FakeBlobStore blobs;
   TouchCalibrationFlow calibration(blobs);
-  InputRouter router(tabs, playback, shuttle, brightness, calibration, sink);
+  SleepTimer sleepTimer;
+  InputRouter router(tabs, playback, shuttle, brightness, sleepTimer,
+                     calibration, sink);
 
   uint8_t before = playback.volume();
   router.onEncoderDelta(2, 0);
@@ -175,7 +182,9 @@ void test_encoder_shuttles_instead_of_volume_while_held() {
   Shuttle shuttle(playback);
   FakeBlobStore blobs;
   TouchCalibrationFlow calibration(blobs);
-  InputRouter router(tabs, playback, shuttle, brightness, calibration, sink);
+  SleepTimer sleepTimer;
+  InputRouter router(tabs, playback, shuttle, brightness, sleepTimer,
+                     calibration, sink);
 
   uint8_t before = playback.volume();
   TEST_ASSERT_TRUE(shuttle.hold(0));
@@ -204,7 +213,9 @@ void test_encoder_adjusts_brightness_on_brightness_screen() {
   Shuttle shuttle(playback);
   FakeBlobStore blobs;
   TouchCalibrationFlow calibration(blobs);
-  InputRouter router(tabs, playback, shuttle, brightness, calibration, sink);
+  SleepTimer sleepTimer;
+  InputRouter router(tabs, playback, shuttle, brightness, sleepTimer,
+                     calibration, sink);
 
   uint8_t volumeBefore = playback.volume();
   router.onEncoderDelta(-3, 0);
@@ -212,6 +223,28 @@ void test_encoder_adjusts_brightness_on_brightness_screen() {
   TEST_ASSERT_EQUAL_INT(0, sink.calls);
   TEST_ASSERT_TRUE(playback.volume() == volumeBefore);
   TEST_ASSERT_EQUAL_UINT8(BrightnessSetting::kMaxLevel - 3, brightness.level());
+}
+
+void test_encoder_sets_sleep_timer_on_sleep_screen() {
+  FakeDriver driver;
+  FakeStore store;
+  VolumePersistence volume(store);
+  PlaybackStateMachine playback(driver, volume);
+  TabController tabs;
+  tabs.activeStack().push(Screen{ScreenKind::SleepTimer, {}});
+  RecordingListSink sink;
+  BrightnessSetting brightness(store);
+  Shuttle shuttle(playback);
+  FakeBlobStore blobs;
+  TouchCalibrationFlow calibration(blobs);
+  SleepTimer sleepTimer;
+  InputRouter router(tabs, playback, shuttle, brightness, sleepTimer,
+                     calibration, sink);
+
+  router.onEncoderDelta(2, 0);
+
+  TEST_ASSERT_EQUAL_INT(0, sink.calls);
+  TEST_ASSERT_EQUAL_UINT32(30u * 60000u, sleepTimer.remainingMs(0));
 }
 
 void test_encoder_moves_tile_selection_on_home() {
@@ -225,7 +258,9 @@ void test_encoder_moves_tile_selection_on_home() {
   Shuttle shuttle(playback);
   FakeBlobStore blobs;
   TouchCalibrationFlow calibration(blobs);
-  InputRouter router(tabs, playback, shuttle, brightness, calibration, sink);
+  SleepTimer sleepTimer;
+  InputRouter router(tabs, playback, shuttle, brightness, sleepTimer,
+                     calibration, sink);
 
   router.onEncoderDelta(1, 0);
 
@@ -245,7 +280,9 @@ void test_swipe_pops_when_possible() {
   Shuttle shuttle(playback);
   FakeBlobStore blobs;
   TouchCalibrationFlow calibration(blobs);
-  InputRouter router(tabs, playback, shuttle, brightness, calibration, sink);
+  SleepTimer sleepTimer;
+  InputRouter router(tabs, playback, shuttle, brightness, sleepTimer,
+                     calibration, sink);
 
   router.onGesture({GestureType::SwipeLeftToRight, 0, 0});
 
@@ -264,7 +301,9 @@ void test_swipe_switches_tab_at_root() {
   Shuttle shuttle(playback);
   FakeBlobStore blobs;
   TouchCalibrationFlow calibration(blobs);
-  InputRouter router(tabs, playback, shuttle, brightness, calibration, sink);
+  SleepTimer sleepTimer;
+  InputRouter router(tabs, playback, shuttle, brightness, sleepTimer,
+                     calibration, sink);
 
   router.onGesture({GestureType::SwipeLeftToRight, 0, 0});
 
@@ -283,7 +322,9 @@ void test_tap_is_not_routed_by_input_router() {
   Shuttle shuttle(playback);
   FakeBlobStore blobs;
   TouchCalibrationFlow calibration(blobs);
-  InputRouter router(tabs, playback, shuttle, brightness, calibration, sink);
+  SleepTimer sleepTimer;
+  InputRouter router(tabs, playback, shuttle, brightness, sleepTimer,
+                     calibration, sink);
 
   router.onGesture({GestureType::Tap, 10, 10});
 
@@ -460,7 +501,9 @@ void test_encoder_cancels_touch_calibration() {
   calibration.begin();
   calibration.start(0);
   feedTaps(calibration, {{170, 60}, {300, 170}, {170, 280}, {40, 170}});
-  InputRouter router(tabs, playback, shuttle, brightness, calibration, sink);
+  SleepTimer sleepTimer;
+  InputRouter router(tabs, playback, shuttle, brightness, sleepTimer,
+                     calibration, sink);
 
   router.onEncoderDelta(1, 0);
 
@@ -499,6 +542,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_encoder_adjusts_volume_on_now_playing_screen);
   RUN_TEST(test_encoder_shuttles_instead_of_volume_while_held);
   RUN_TEST(test_encoder_adjusts_brightness_on_brightness_screen);
+  RUN_TEST(test_encoder_sets_sleep_timer_on_sleep_screen);
   RUN_TEST(test_encoder_moves_tile_selection_on_home);
   RUN_TEST(test_swipe_pops_when_possible);
   RUN_TEST(test_swipe_switches_tab_at_root);

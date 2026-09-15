@@ -12,6 +12,7 @@
 #include "BatteryMonitor.h"
 #include "BrightnessSetting.h"
 #include "CoverArtCache.h"
+#include "DeepSleep.h"
 #include "Cst816Driver.h"
 #include "EncoderPins.h"
 #include "Esp32AudioI2SDriver.h"
@@ -38,6 +39,7 @@
 #include "SdFileOpener.h"
 #include "SdInit.h"
 #include "Shuttle.h"
+#include "SleepTimer.h"
 #include "St77916Driver.h"
 #include "TabController.h"
 #include "TouchCalibrator.h"
@@ -192,6 +194,7 @@ knobify::playback::PlaybackStateMachine g_playback(g_audioDriver, g_volume);
 knobify::playback::Shuttle g_shuttle(g_playback);
 knobify::navigation::TabController g_tabs;
 knobify::power::BrightnessSetting g_brightness(g_nvsStore);
+knobify::power::SleepTimer g_sleepTimer;
 knobify::input::TouchCalibrationFlow g_touchCalibration(g_nvsStore);
 
 knobify::drivers::St77916Driver g_display;
@@ -204,14 +207,15 @@ knobify::ui_widgets::MessageArea g_messageArea;
 knobify::ui::ScreenManager g_screenManager(
     g_tabs, g_libraryIndex, g_directoryReader, g_playback, g_shuttle,
     g_lockController, g_libraryRescanner, g_coverReader, g_fileOpener,
-    g_jpegDecoder, g_coverWriter, g_nvsStore, g_brightness, g_touchCalibration, g_messageArea);
+    g_jpegDecoder, g_coverWriter, g_nvsStore, g_brightness, g_sleepTimer,
+    g_touchCalibration, g_messageArea);
 knobify::ui::LockOverlay g_lockOverlay(g_lockController);
 knobify::drivers::BatteryAdcDriver g_batteryAdc;
 knobify::power::BatteryMonitor g_batteryMonitor;
 knobify::ui::BatteryIndicator g_batteryIndicator(g_batteryMonitor);
 knobify::input::InputRouter g_inputRouter(g_tabs, g_playback, g_shuttle,
-                                          g_brightness, g_touchCalibration,
-                                          g_screenManager);
+                                          g_brightness, g_sleepTimer,
+                                          g_touchCalibration, g_screenManager);
 knobify::input::GestureRecognizer g_gestureRecognizer;
 
 bool sdFileExists(const std::string &path) { return SD_MMC.exists(path.c_str()); }
@@ -231,6 +235,8 @@ bool g_wasPlaying = false;
 uint8_t g_backlightDuty = 255;
 bool g_touchPressedPrev = false;
 bool g_swallowingWakeTouch = false;
+// Whether the sleep timer's fade has started (its message shows once).
+bool g_sleepFading = false;
 uint32_t g_lastBatteryUpdateMs = 0;
 // Battery voltage moves slowly -- no need to re-read/re-render every
 // loop() iteration like touch/encoder input does.
@@ -240,6 +246,24 @@ void SdLibraryRescanner::rescan(knobify::library::ScanProgressListener *progress
   g_libraryIndex = loadOrBuildLibraryIndex(g_fileLister, g_fileOpener,
                                             g_directoryReader, g_jpegDecoder,
                                             g_coverWriter, progress);
+}
+
+// The sleep timer ran out (ADR 0015): keep what's worth keeping, then deep
+// sleep until a touch. The fade has already brought the output to 0.
+[[noreturn]] void enterSleepTimerDeepSleep(uint32_t now) {
+  Serial.println("[sleep] timer expired -- entering deep sleep");
+  if (g_playback.state() == knobify::playback::PlaybackState::Playing) {
+    g_playback.togglePlayPause(now);
+  }
+  g_resumeScheduler.saveNow(now);
+  // Volume and brightness changes still inside their save debounce.
+  g_playback.tick(now + knobify::playback::PlaybackStateMachine::kVolumeSaveDebounceMs);
+  g_brightness.tick(now + knobify::power::BrightnessSetting::kSaveDebounceMs);
+  g_display.setBacklight(0);
+  if (g_display.gfx()) g_display.gfx()->displayOff();
+  g_touch.armWakeOnTouch();
+  Serial.flush();
+  knobify::drivers::enterDeepSleepUntilTouch();
 }
 
 }  // namespace
@@ -255,6 +279,9 @@ void setup() {
   heap_caps_malloc_extmem_enable(32);
   Serial.begin(115200);
   Serial.printf("knobify %s starting\n", knobify::kVersion);
+  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0) {
+    Serial.println("[sleep] woke from deep sleep by touch");
+  }
 
   g_encoder.begin();
   g_batteryAdc.begin();
@@ -460,6 +487,39 @@ void loop() {
     g_swallowingWakeTouch = true;
   }
 
+  // Sleep timer (ADR 0015). During its fade a touch or (with the display
+  // on) a turn means someone is still awake: cancel, and let that input do
+  // nothing else. Not while locked -- that's a pocket.
+  knobify::power::SleepPhase sleepPhase = g_sleepTimer.tick(now);
+  if (sleepPhase == knobify::power::SleepPhase::Fading) {
+    constexpr knobify::ui_widgets::MessageAnchor kCenter{
+        knobify::drivers::kLcdHorRes / 2, knobify::drivers::kLcdVerRes / 2};
+    bool stillAwake = !g_lockController.isLocked() &&
+                      (touchDownEdge || (displayOn && encoderDelta != 0));
+    if (stillAwake) {
+      Serial.println("[sleep] cancelled during fade");
+      g_sleepTimer.cancel();
+      g_playback.setOutputGain(knobify::power::SleepTimer::kUnityGain);
+      g_sleepFading = false;
+      if (touchDownEdge) g_swallowingWakeTouch = true;
+      encoderDelta = 0;
+      g_messageArea.show("Sleep timer off", kCenter, now);
+    } else {
+      if (!g_sleepFading) {
+        g_sleepFading = true;
+        Serial.println("[sleep] fading out");
+        g_messageArea.show("Going to sleep", kCenter, now);
+      }
+      g_playback.setOutputGain(g_sleepTimer.fadeGain(now));
+    }
+  } else if (sleepPhase == knobify::power::SleepPhase::Expired) {
+    enterSleepTimerDeepSleep(now);
+  } else if (g_sleepFading) {
+    // Turned off or re-set on the Sleep screen mid-fade.
+    g_sleepFading = false;
+    g_playback.setOutputGain(knobify::power::SleepTimer::kUnityGain);
+  }
+
   if (g_swallowingWakeTouch) {
     if (!touchSample.pressed) g_swallowingWakeTouch = false;
   } else if (g_touchCalibration.isCapturing()) {
@@ -502,6 +562,7 @@ void loop() {
     }
   }
   g_screenManager.tickVolumeHud(now);
+  if (displayOn) g_screenManager.tickSleepTimer(now);
 
   // A calibration never survives the display going dark or the lock
   // screen: nobody is there to confirm it (TouchCalibrator.h).

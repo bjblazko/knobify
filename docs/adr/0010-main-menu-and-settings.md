@@ -28,7 +28,9 @@ remembered, so coming back selects the tile you left from.
 
 Entries are one row in a table (`kMenuEntries`, `ScreenManagerMenu.cpp`).
 Up to four fit as a 2×2 grid inside the circle; anything beyond that needs
-a new layout decision, verified on the device.
+a new layout decision, verified on the device. *(Superseded 2026-09-15 by
+ADR 0015: the grid didn't fit a third tile with the mini-bar, so Home is a
+single row of three 84 px tiles.)*
 
 A dial carousel (one big item, the knob rotating the next one in) was
 considered: it fits the round knob and scales to any count, but shows only

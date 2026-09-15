@@ -38,6 +38,7 @@ class FakeDriver : public PlaybackDriver {
   void resume() override { running = true; }
   void stop() override { running = false; }
   void setVolume(uint8_t v) override { lastVolume = v; }
+  void setOutputGain(uint16_t gain) override { lastOutputGain = gain; }
   bool isRunning() override { return running; }
   uint32_t durationSeconds() override { return duration; }
   knobify::playback::SampleWindow readRecentSamples(int16_t *, size_t) override {
@@ -48,6 +49,7 @@ class FakeDriver : public PlaybackDriver {
   std::string lastPlayed;
   int playCount = 0;
   uint8_t lastVolume = 255;
+  uint16_t lastOutputGain = 0;
   bool running = false;
   bool playSucceeds = true;
   uint32_t duration = 0;
@@ -237,6 +239,22 @@ void test_loads_persisted_volume_on_begin() {
 
   TEST_ASSERT_EQUAL_UINT8(15, sm.volume());
   TEST_ASSERT_EQUAL_UINT8(15, driver.lastVolume);
+}
+
+void test_output_gain_goes_to_the_driver_and_never_touches_volume() {
+  FakeDriver driver;
+  FakeStore store;
+  store.values[VolumePersistence::kKey] = 20;
+  VolumePersistence volume(store);
+  PlaybackStateMachine sm(driver, volume);
+  sm.begin();
+
+  sm.setOutputGain(512);
+  TEST_ASSERT_EQUAL_UINT16(512, driver.lastOutputGain);
+  TEST_ASSERT_EQUAL_UINT8(20, driver.lastVolume);
+  TEST_ASSERT_EQUAL_UINT8(20, sm.volume());
+  sm.tick(100000);
+  TEST_ASSERT_EQUAL_INT(0, store.saveCount);
 }
 
 void test_repeat_all_wraps_to_first_track_when_last_finishes() {
@@ -449,6 +467,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_elapsed_ms_excludes_paused_time);
   RUN_TEST(test_elapsed_ms_zero_when_stopped);
   RUN_TEST(test_loads_persisted_volume_on_begin);
+  RUN_TEST(test_output_gain_goes_to_the_driver_and_never_touches_volume);
   RUN_TEST(test_repeat_all_wraps_to_first_track_when_last_finishes);
   RUN_TEST(test_repeat_one_restarts_the_finished_track);
   RUN_TEST(test_cycle_repeat_goes_off_all_one_off);

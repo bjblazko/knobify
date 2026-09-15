@@ -31,6 +31,7 @@ class FakeDriver : public PlaybackDriver {
   void resume() override {}
   void stop() override {}
   void setVolume(uint8_t) override {}
+  void setOutputGain(uint16_t) override {}
   bool isRunning() override { return true; }
   uint32_t durationSeconds() override { return duration; }
   knobify::playback::SampleWindow readRecentSamples(int16_t *, size_t) override {

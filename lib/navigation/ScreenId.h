@@ -22,6 +22,9 @@ enum class ScreenKind {
   // (NavigationResumeSource), and a calibration in progress is never
   // resumed -- anything past NowPlaying is dropped on restore.
   TouchCalibration,
+  // Past NowPlaying too: a sleep timer is never set after a reboot, so its
+  // screen isn't restored either (ADR 0015).
+  SleepTimer,
 };
 
 // Parameters a screen needs to render itself. Only the fields relevant
