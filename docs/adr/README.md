@@ -21,3 +21,4 @@ supersedes the old one (and the old one is marked "Superseded by NNNN").
 | [0010](0010-main-menu-and-settings.md) | Main menu, settings, and display brightness | Accepted |
 | [0011](0011-shuffle-and-repeat.md) | Shuffle and repeat | Accepted |
 | [0012](0012-resume-session.md) | Resume where you left off | Accepted |
+| [0013](0013-jog-shuttle.md) | Jog/shuttle on Now Playing | Accepted (amends 0008's one-edge-ring rule) |
