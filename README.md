@@ -48,15 +48,22 @@ screens described below.
 - Jog/shuttle: hold the time readout on Now Playing and turn the knob to
   fast forward or rewind (five speeds each way, CD-style cue); letting go
   plays on from there — see [ADR 0013](docs/adr/0013-jog-shuttle.md).
+- M4A (AAC) plays natively with tags, exact durations and embedded covers;
+  progressive JPEG covers decode too. Settings > USB drive exposes the
+  SD card to a computer over the USB cable — see
+  [ADR 0016](docs/adr/0016-native-formats-and-usb-drive.md) (proposed).
 
 ## Explicitly out of scope for now
 
 - Bluetooth headphone output
 - Wi-Fi-based features (time/date sync, weather, podcasts, internet radio)
-- USB mass-storage ("drive") mode for copying music without swapping the
-  SD card — the ESP32-S3's native USB-OTG could expose the SD card as a
-  USB drive via TinyUSB's MSC class while plugged in, so the card
-  wouldn't need to be physically removed and read on another computer
+- Ogg Vorbis playback (ESP32-audioI2S 2.3.0 has no Vorbis decoder;
+  stb_vorbis runs 2.5x realtime on the device — a second decode path,
+  see ADR 0016) and 24-bit FLAC
+- Formatting the SD card from Settings with 32 KB clusters, which USB
+  drive mode needs on macOS (ADR 0016)
+- A desktop sync tool (mirror a folder to the knob, delete removed
+  albums) on top of USB drive mode
 - Theming (selectable color schemes / customizable look)
 - General visual polish and animation ("eye candy") beyond the planned
   one-time gesture-hint nudge and screen-transition slide

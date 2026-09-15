@@ -282,37 +282,46 @@ duplicating it.
   expect this same failure and budget time to design around it (e.g.
   interleave the opens into the walk itself) rather than pacing/delays,
   which did not help in testing.
-- **Most real-world embedded ID3 cover art (APIC frames) is Progressive
-  JPEG, which `TJpg_Decoder` (this project's on-device JPEG library,
-  `lib/drivers-jpeg/TJpgDecoderAdapter.h`) cannot decode at all** --
-  `TJpgDec.getJpgSize()` simply fails. Found 2026-09-13: sampling this
-  library's covers showed ~90% (194/216) were progressive. Baseline
-  JPEGs decode and render correctly (verified end-to-end on real
-  hardware). Fix is upstream of the device: `scripts/convert-music-library.sh`
-  now forces embedded art to baseline JPEG via ffmpeg's `mjpeg` encoder
-  (`-codec:v mjpeg` instead of `copy`) for both the mp3-passthrough and
-  transcode paths, while leaving the audio itself untouched
-  (`-codec:a copy`/unchanged bitrate settings) -- re-run that script
-  (into a fresh or emptied destination; it skips files that already
-  exist) to pick up correctly-decodable covers. `JPEGDEC`
-  (bitbank2/JPEGDEC) was considered as an alternative that natively
-  supports progressive JPEG, but it only does "thumbnail (DC-only)"
-  decoding of progressive images, not a full decode -- fixing the
-  source data was judged better than accepting that quality/complexity
-  trade-off.
-- **This board's native USB-CDC serial silently drops bytes under
-  sustained load with no error and no flow control** -- found
-  2026-09-13 sending a JPEG file to the device over a throwaway
-  diagnostic serial command: a single `Serial.write()` of a few hundred
-  bytes from the host reliably arrived truncated (the device-side loop
-  just stops receiving further bytes, forever, with no crash or
-  timeout). Sending in small chunks (~32-512 bytes) with a short
-  `time.sleep()` and explicit `flush()` between chunks made small
-  payloads (a few hundred bytes) reliable, but a real ~80KB file still
-  stalled partway even chunked -- plain serial is not viable for
-  bulk/file-sized transfers on this board at all; use WiFi (or physical
-  SD card access) instead for anything larger than a few hundred bytes.
-
+- **Most real-world embedded cover art is Progressive JPEG** (~90% of
+  this library's ID3 APIC and MP4 covr pictures), which TJpg_Decoder
+  couldn't decode at all. Since ADR 0016 covers go through JPEGDEC
+  (`lib/drivers-jpeg/JpegDecAdapter.h`): progressive images decode from
+  their DC coefficients at 1/8 scale (19 ms, ~11 KB for 600 px). Don't
+  switch to a full progressive decoder: stb_image needed 4.2 MB of PSRAM
+  at 600 px and ran out above ~1000 px (measured 2026-09-15).
+- **The firmware uses TinyUSB, not the S3's USB-Serial-JTAG** (ADR 0016,
+  `ARDUINO_USB_MODE=0`), for the USB drive. Consequences found on the
+  device 2026-09-16:
+  - Flashing needs a **1200-baud touch** to reboot into the ROM
+    bootloader (esptool's DTR/RTS reset fails with "No serial data
+    received"); `scripts/flash-primary-mcu.sh` does it. The first switch
+    from a USB-Serial-JTAG build needed one USB replug.
+  - **A crash's output never reaches USB** (the port reappears after
+    boot). Send `INFO` over serial: reset reason 4 is a panic. Then run
+    `scripts/read-coredump.sh` (the core dump sits in the `coredump`
+    partition) with the ELF of the crashing build.
+  - **`Serial.write()` spins forever while a host holds the port open
+    without reading** (Arduino-ESP32 2.0.x `USBCDC::write` has no
+    timeout) -- the whole loop freezes. Keep a monitor reading
+    continuously, and never run two readers on the port.
+  - The port drops on every USB drive start/stop (re-enumeration):
+    `UsbMscStorage::printEvents()` prints the drive's host events later.
+  - Serial commands for driving the device without a hand on it:
+    `TAP x y`, `KNOB n`, `INFO`, `SCREENSHOT`.
+  - Bulk transfer over the old USB-Serial-JTAG CDC dropped bytes; TinyUSB
+    CDC with an 8 KB ack per chunk was reliable but slow (0.14 MB/s) and
+    stalled once after ~30 MB. Use USB drive mode for files.
+- **ESP32-audioI2S 2.3.0 calls the weak `audio_info()` hook without a null
+  check when it prints AAC codec parameters** (`Audio::showCodecParams()`)
+  -- without a definition the first decoded M4A frame jumps to address 0
+  and panics (`InstFetchProhibited`, pc 0, task `audio`). MP3 never
+  reaches that call. `Esp32AudioI2SDriver.cpp` defines the hook; keep it.
+- **USB drive on macOS**: macOS reads the entire FAT when mounting, at the
+  drive's ~0.87 MB/s. 4 KB clusters on a 32 GB card (31 MB FAT) time out;
+  32 KB clusters (3.9 MB) mount in ~6 s. And **a locked Mac ejects new
+  removable storage right after probing it** (START STOP UNIT with eject,
+  ~1.5 s after export) -- check `CGSSessionScreenIsLocked` before
+  debugging the firmware.
 - **UI colors must be judged on the device, not a monitor or a
   screenshot's hex values.** The panel is RGB565 (subtle neutrals get
   rounded — `#F4F4F0` arrived as neutral `#F6F6F6`) and visibly shifts
