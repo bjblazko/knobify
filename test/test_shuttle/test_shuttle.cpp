@@ -186,6 +186,58 @@ void test_hold_from_pause_plays_cue_and_release_pauses_again() {
   TEST_ASSERT_TRUE(f.playback.state() == PlaybackState::Paused);
 }
 
+void test_release_while_parked_at_start_resumes_playing() {
+  Fixture f;
+  f.shuttle.hold(1000);
+  f.shuttle.turn(-5, 1000);
+  f.shuttle.tick(1300);  // Parked at the start stop (paused).
+  TEST_ASSERT_TRUE(f.playback.state() == PlaybackState::Paused);
+
+  f.shuttle.release(1400);
+
+  TEST_ASSERT_FALSE(f.shuttle.isHeld());
+  TEST_ASSERT_TRUE(f.playback.state() == PlaybackState::Playing);
+}
+
+void test_shrinking_step_that_keeps_its_sign_stays_parked() {
+  Fixture f;
+  f.shuttle.hold(238000);
+  f.shuttle.turn(5, 238000);
+  f.shuttle.tick(238300);  // Parked at the end stop.
+  TEST_ASSERT_EQUAL_UINT(1, f.driver.seeks.size());
+
+  f.shuttle.turn(-3, 238400);  // Step +5 -> +2: still pushing forward.
+  TEST_ASSERT_EQUAL_INT8(2, f.shuttle.step());
+  f.shuttle.tick(238500);
+
+  TEST_ASSERT_EQUAL_UINT(1, f.driver.seeks.size());  // No new seek.
+  TEST_ASSERT_TRUE(f.playback.state() == PlaybackState::Paused);
+}
+
+void test_consecutive_cycles_accumulate_up_to_the_end_stop() {
+  Fixture f;  // 240 s track -> end stop at 239000 ms.
+  f.shuttle.hold(230000);
+  f.shuttle.turn(2, 230000);  // Step +2: speed 4x, jump (4-1)*300 = 900 ms/cycle.
+
+  f.shuttle.tick(230300);  // 230000 + 300 played + 900 jump = 231200.
+  TEST_ASSERT_EQUAL_INT32(900, f.driver.seeks[0]);
+  TEST_ASSERT_EQUAL_UINT32(231200, f.playback.elapsedMs(230300));
+
+  f.shuttle.tick(230600);  // 231200 + 300 + 900 = 232400.
+  TEST_ASSERT_EQUAL_INT32(900, f.driver.seeks[1]);
+  TEST_ASSERT_EQUAL_UINT32(232400, f.playback.elapsedMs(230600));
+
+  // Keep cycling until the end stop is reached.
+  uint32_t nowMs = 230600;
+  while (f.playback.state() == PlaybackState::Playing) {
+    nowMs += 300;
+    f.shuttle.tick(nowMs);
+  }
+
+  TEST_ASSERT_TRUE(f.playback.state() == PlaybackState::Paused);
+  TEST_ASSERT_EQUAL_UINT32(239000, f.playback.elapsedMs(nowMs));
+}
+
 void test_track_change_drops_the_hold() {
   Fixture f;
   f.shuttle.hold(0);
@@ -255,5 +307,8 @@ int main(int argc, char **argv) {
   RUN_TEST(test_no_jumps_while_duration_unknown);
   RUN_TEST(test_repeat_one_restart_of_same_path_drops_the_hold);
   RUN_TEST(test_hold_on_cued_track_then_tick_stays_held);
+  RUN_TEST(test_release_while_parked_at_start_resumes_playing);
+  RUN_TEST(test_shrinking_step_that_keeps_its_sign_stays_parked);
+  RUN_TEST(test_consecutive_cycles_accumulate_up_to_the_end_stop);
   return UNITY_END();
 }
