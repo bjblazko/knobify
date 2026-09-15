@@ -332,6 +332,20 @@ duplicating it.
   `heap_caps_malloc_extmem_enable(32)` first (93.9 KB internal free after
   boot, unchanged by the queue). If SD opens start failing with 257,
   check internal heap before suspecting the card. See ADR 0011.
+- **ESP32-audioI2S's positions and durations are estimates, and wrong
+  for this library.** Every MP3 here is VBR (checked 2026-09-15). The
+  library ignores the Xing/VBRI header and derives duration and byte/time
+  conversions from the average bitrate of the first ~200 frames, so the
+  shown end time started minutes too long and shrank over the first
+  seconds of each track. `library::Mp3Duration` reads the exact frame count
+  instead; `Esp32AudioI2SDriver` uses it for `durationSeconds()` and seek
+  sizes. Also: `getFilePos()` is the *reader*, a whole input buffer ahead
+  of what is heard -- subtract `inBufferFilled()` (resume, seeks). And a
+  seek (`setFilePos`) makes the library discard its input buffer and stay
+  silent until it is full again, so the buffer size is audible: the 300 KB
+  default gave ~290 ms of silence per seek, `kInputBufferBytes` (64 KB)
+  ~80 ms (measured with a sample-gap log in `audio_process_i2s`). See ADR
+  0012 and ADR 0013.
 
 ## Where things are documented (so you add to the right place)
 

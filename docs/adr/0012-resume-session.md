@@ -116,8 +116,11 @@ already parsed. Skipping while cued plays the other track from its start.
   saves on the device.
 - Two albums of the same artist with the same title are indistinguishable by
   name; resuming a Tracks screen picks the first.
-- The saved position is where the decoder had *read* to. It sits a little
-  ahead of what was heard (read-ahead buffer), plus up to 30 s behind from
-  save spacing.
+- The saved position is what was heard: the reader position minus what is
+  still in the decoder's input buffer (as `Audio::stopSong()` computes it).
+  It was first the reader position itself, a whole buffer ahead -- resume
+  landed seconds late (up to ~17 s with the library's 300 KB buffer); fixed
+  2026-09-15 and verified on the device. While playing it can still be up
+  to 30 s behind from save spacing; a pause is saved within 3 s.
 - Tests: `test/test_resume/` (codec truncation and bit-flip rejection,
   scheduler timing, restore after rescan and with vanished items, cued play).

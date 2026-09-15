@@ -131,7 +131,13 @@ busier. The speed readout in the pill covers the exact step.
   (a real pause, so track-finished detection can't fire), restoring
   play/pause.
 - `PlaybackDriver::seekByMs(int32_t)` in `Esp32AudioI2SDriver` under the
-  existing mutex (ADR 0006), via average bitrate and `setFilePos`.
+  existing mutex (ADR 0006), via `setFilePos`, from the heard position
+  (reader minus buffered bytes). Bytes per millisecond come from the file's
+  true average bitrate -- audio data size over the exact duration read from
+  the MP3's VBR header (`library::Mp3Duration`). The library's own average
+  covers only the first ~200 frames of a VBR file, so jumps right after a
+  track started were too long or too short; it remains the fallback for
+  files without that header.
 - `PlaybackStateMachine::seekBy()` shifts the wall-clock elapsed time by
   each jump; `canSeek()` decides by file extension (MP3/WAV), so a track
   cued after a reboot already shows its marks.
