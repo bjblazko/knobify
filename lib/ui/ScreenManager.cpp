@@ -243,8 +243,7 @@ void ScreenManager::renderList(
     // Album rows end in the release year -- albums are sorted by it
     // (LibraryIndex::albumsFor()), so this makes the order legible. Plain
     // text, no pill/badge (ux-guidelines §7), and nothing at all when the
-    // year is unknown. No explicit color: it inherits the row's text color
-    // at reduced opacity, so it stays readable on the ink selected row too.
+    // year is unknown. Colored per row state by applyHighlight().
     if (current.kind == ScreenKind::Albums) {
       for (const auto &album : library_.albums) {
         if (album.id != static_cast<library::AlbumId>(items[i].second) ||
@@ -256,7 +255,6 @@ void ScreenManager::renderList(
                  static_cast<unsigned>(album.year));
         lv_obj_t *yearLabel = lv_label_create(btn);
         lv_obj_set_style_text_font(yearLabel, &lv_font_montserrat_14, 0);
-        lv_obj_set_style_text_opa(yearLabel, LV_OPA_60, 0);
         lv_label_set_text(yearLabel, yearText);
         lv_obj_set_style_pad_column(btn, 10, 0);
         break;
@@ -271,7 +269,6 @@ void ScreenManager::renderList(
                static_cast<unsigned>(brightness_.percent()));
       lv_obj_t *valueLabel = lv_label_create(btn);
       lv_obj_set_style_text_font(valueLabel, &lv_font_montserrat_14, 0);
-      lv_obj_set_style_text_opa(valueLabel, LV_OPA_60, 0);
       lv_label_set_text(valueLabel, valueText);
       lv_obj_set_style_pad_column(btn, 10, 0);
     }
@@ -849,10 +846,22 @@ void ScreenManager::applyHighlight() {
   uint32_t count = lv_obj_get_child_cnt(list_);
   for (uint32_t i = 0; i < count; ++i) {
     lv_obj_t *btn = lv_obj_get_child(list_, i);
-    if (static_cast<int>(i) == highlightedIndex_) {
+    bool selected = static_cast<int>(i) == highlightedIndex_;
+    if (selected) {
       lv_obj_add_state(btn, LV_STATE_CHECKED);
     } else {
       lv_obj_clear_state(btn, LV_STATE_CHECKED);
+    }
+    // Trailing value labels (album year, brightness percent) after the
+    // title: inheriting the row color at reduced opacity came out as dark
+    // grey on the ink selected row, barely readable (user feedback
+    // 2026-09-15) -- so light grey there, mid anthracite otherwise.
+    uint32_t parts = lv_obj_get_child_cnt(btn);
+    for (uint32_t c = 1; c < parts; ++c) {
+      lv_obj_t *value = lv_obj_get_child(btn, c);
+      if (!lv_obj_check_type(value, &lv_label_class)) continue;
+      lv_obj_set_style_text_color(
+          value, selected ? theme::surfaceAlt() : theme::structure(), 0);
     }
   }
 }
