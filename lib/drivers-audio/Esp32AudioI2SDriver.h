@@ -123,28 +123,35 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
   // (ADR 0013) -- so convert ms to bytes with the average bitrate and use
   // setFilePos(), which the decoder applies on its next chunk (and
   // re-aligns to a frame boundary itself). getFilePos() is the reader
-  // position, not what's actually heard: with PSRAM the library's input
-  // buffer holds up to ~283 KB of read-ahead (~17.7 s at 128 kbps), so
-  // seeking from getFilePos() would drift forward by a whole buffer's
-  // worth on every call. Audio::stopSong() faces the same problem and
+  // position, not what's actually heard: it runs a whole input buffer
+  // ahead (kInputBufferBytes; the library's 300 KB default was ~17.7 s at
+  // 128 kbps), so seeking from getFilePos() would drift forward by that
+  // much on every call. Audio::stopSong() faces the same problem and
   // solves it the same way (Audio.cpp ~2281): subtract inBufferFilled()
   // to get the position actually being decoded/heard.
   bool seekByMs(int32_t deltaMs) override {
     MutexGuard guard(mutex_);
-    uint32_t avgBitrate = audio_.getBitRate(true);
+    int64_t start = audio_.getAudioDataStartPos();
+    int64_t end = audio_.getFileSize();
+    // With the exact duration known, the true average bitrate is the audio
+    // data over its length. The library's own average only covers the
+    // first ~200 frames, so for VBR files it is off -- most right after a
+    // track starts -- and jumps came out too long or too short.
+    uint32_t avgBitrate =
+        exactDurationSeconds_ != 0 && end > start
+            ? static_cast<uint32_t>((end - start) * 8 / exactDurationSeconds_)
+            : audio_.getBitRate(true);
     if (avgBitrate == 0) return false;
     int64_t bytes = static_cast<int64_t>(deltaMs) * avgBitrate / 8000;
     int64_t heard = static_cast<int64_t>(audio_.getFilePos()) -
                     static_cast<int64_t>(audio_.inBufferFilled());
     int64_t target = heard + bytes;
-    int64_t start = audio_.getAudioDataStartPos();
     // setFilePos() clamps to m_audioDataStart itself, but a value of
     // exactly 0 is treated as "no resume pending" (m_resumeFilePos is
     // checked for truthiness) and silently ignored -- and an MP3 with no
     // ID3 tag has a data start of 0. Floor at 1 so a rewind to the very
     // start of such a file still takes effect.
     if (start < 1) start = 1;
-    int64_t end = audio_.getFileSize();
     if (target < start) target = start;
     if (target > end) target = end;
     return audio_.setFilePos(static_cast<uint32_t>(target));
