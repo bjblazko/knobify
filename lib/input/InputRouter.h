@@ -25,8 +25,8 @@ class ListMoveSink {
 // deltas to list/tile selection, volume, the shuttle (while held, ADR 0013) or
 // brightness depending on the current screen, and routes the one recognized
 // gesture (left-to-right swipe) to TabController's pop-or-switch-tab logic.
-// Pure logic over TabController/PlaybackStateMachine/ListMoveSink -- host-testable, no
-// hardware or LVGL involved.
+// Pure logic over TabController/PlaybackStateMachine/Shuttle/ListMoveSink --
+// host-testable, no hardware or LVGL involved.
 class InputRouter {
  public:
   InputRouter(navigation::TabController &tabs,
