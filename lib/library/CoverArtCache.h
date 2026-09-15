@@ -12,8 +12,8 @@
 namespace knobify::library {
 
 // Decodes a JPEG byte buffer into a fixed-size square RGB565 pixel
-// buffer (center-cropped/scaled as needed). Wraps TJpg_Decoder on
-// device; fakeable on host for testing since TJpg_Decoder itself is an
+// buffer (center-cropped/scaled as needed). Wraps JPEGDEC on
+// device; fakeable on host for testing since JPEGDEC itself is an
 // Arduino-ecosystem library that doesn't build for the `native` test
 // environment.
 class JpegDecoder {

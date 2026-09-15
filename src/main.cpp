@@ -21,6 +21,7 @@
 #include "IdleTimer.h"
 #include "IndexCache.h"
 #include "InputRouter.h"
+#include "JpegDecAdapter.h"
 #include "LibraryRescanner.h"
 #include "LibraryScanner.h"
 #include "LockController.h"
@@ -43,7 +44,6 @@
 #include "St77916Driver.h"
 #include "TabController.h"
 #include "TouchCalibrator.h"
-#include "TJpgDecoderAdapter.h"
 #include "Theme.h"
 #include "Version.h"
 #include "VolumePersistence.h"
@@ -184,7 +184,7 @@ SdLibraryRescanner g_libraryRescanner;
 knobify::drivers::SdDirectoryReader g_directoryReader;
 knobify::drivers::SdCoverWriter g_coverWriter;
 knobify::drivers::SdCoverReader g_coverReader;
-knobify::drivers::TJpgDecoderAdapter g_jpegDecoder;
+knobify::drivers::JpegDecAdapter g_jpegDecoder;
 knobify::drivers::GpioEncoderDriver g_encoder(knobify::drivers::kEncoderPinA,
                                                knobify::drivers::kEncoderPinB);
 knobify::drivers::NvsKeyValueStore g_nvsStore;

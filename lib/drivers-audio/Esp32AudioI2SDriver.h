@@ -8,6 +8,7 @@
 #include <freertos/task.h>
 
 #include "Mp3Duration.h"
+#include "Mp4Parser.h"
 #include "PlaybackDriver.h"
 #include "SdRawFile.h"
 
@@ -60,7 +61,7 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
 
   // The library corrects the offset to a frame boundary per codec itself.
   bool playFileAt(const std::string &path, uint32_t filePosition) override {
-    exactDurationSeconds_ = readExactDuration(path);
+    timing_ = readTrackTiming(path);
     MutexGuard guard(mutex_);
     paused_ = false;
     bool ok = audio_.connecttoFS(SD_MMC, path.c_str(), filePosition);
@@ -136,13 +137,19 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
     MutexGuard guard(mutex_);
     int64_t start = audio_.getAudioDataStartPos();
     int64_t end = audio_.getFileSize();
+    // An M4A's moov atom (tags, cover, sample tables) can sit after the
+    // audio, so the file size overstates the audio data.
+    if (timing_.dataEnd != 0) {
+      start = timing_.dataStart;
+      end = timing_.dataEnd;
+    }
     // With the exact duration known, the true average bitrate is the audio
     // data over its length. The library's own average only covers the
     // first ~200 frames, so for VBR files it is off -- most right after a
     // track starts -- and jumps came out too long or too short.
     uint32_t avgBitrate =
-        exactDurationSeconds_ != 0 && end > start
-            ? static_cast<uint32_t>((end - start) * 8 / exactDurationSeconds_)
+        timing_.durationSeconds != 0 && end > start
+            ? static_cast<uint32_t>((end - start) * 8 / timing_.durationSeconds)
             : audio_.getBitRate(true);
     if (avgBitrate == 0) return false;
     int64_t bytes = static_cast<int64_t>(deltaMs) * avgBitrate / 8000;
@@ -160,11 +167,12 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
     return audio_.setFilePos(static_cast<uint32_t>(target));
   }
 
-  // The exact duration from the MP3's VBR header when it has one; otherwise
-  // the library's bitrate-based estimate (which for VBR files starts too
-  // long and corrects itself over the first seconds -- see Mp3Duration.h).
+  // The exact duration from the MP3's VBR header or the M4A's movie header
+  // when there is one; otherwise the library's bitrate-based estimate (which
+  // for VBR files starts too long and corrects itself over the first seconds
+  // -- see Mp3Duration.h, Mp4Parser.h).
   uint32_t durationSeconds() override {
-    if (exactDurationSeconds_ != 0) return exactDurationSeconds_;
+    if (timing_.durationSeconds != 0) return timing_.durationSeconds;
     MutexGuard guard(mutex_);
     return audio_.getAudioFileDuration();
   }
@@ -194,19 +202,35 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
     SemaphoreHandle_t m_;
   };
 
+  // What the decoder's own estimates get wrong, read from the file itself.
+  struct TrackTiming {
+    uint32_t durationSeconds = 0;  // 0 when unknown.
+    size_t dataStart = 0;          // Audio data byte range; both 0 when
+    size_t dataEnd = 0;            // the library's own values are right.
+  };
+
   // One extra open per track start, before the decoder opens the file; not
   // under mutex_: it's a separate handle, and SD_MMC serializes card access
-  // itself. Only MP3s carry the header.
-  static uint32_t readExactDuration(const std::string &path) {
+  // itself.
+  static TrackTiming readTrackTiming(const std::string &path) {
+    TrackTiming timing;
     auto dot = path.find_last_of('.');
-    if (dot == std::string::npos) return 0;
+    if (dot == std::string::npos) return timing;
     std::string ext = path.substr(dot + 1);
     for (char &c : ext) c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
-    if (ext != "mp3") return 0;
+    if (ext != "mp3" && ext != "m4a") return timing;
     fs::File file = SD_MMC.open(path.c_str());
-    if (!file) return 0;
+    if (!file) return timing;
     SdRawFile raw(std::move(file));
-    return library::Mp3Duration::readSeconds(raw);
+    if (ext == "mp3") {
+      timing.durationSeconds = library::Mp3Duration::readSeconds(raw);
+      return timing;
+    }
+    library::Mp4Info info = library::Mp4Parser::parse(raw);
+    timing.durationSeconds = (info.durationMs + 500) / 1000;
+    timing.dataStart = info.mdatStart;
+    timing.dataEnd = info.mdatEnd;
+    return timing;
   }
 
   static void audioTaskTrampoline(void *self) {
@@ -228,9 +252,9 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
 
   Audio audio_;
   bool paused_ = false;
-  // From the current MP3's VBR header, 0 when unknown (set in playFileAt(),
-  // read by durationSeconds() -- both on the main task).
-  uint32_t exactDurationSeconds_ = 0;
+  // Of the current track (set in playFileAt(), read by durationSeconds() and
+  // seekByMs() -- all on the main task).
+  TrackTiming timing_;
   // Mirrors the last setVolume() so readRecentSamples() can report the
   // gain without taking mutex_ at spectrum frame rate.
   std::atomic<uint8_t> volume_{0};
