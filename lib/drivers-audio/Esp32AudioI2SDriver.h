@@ -103,6 +103,24 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
     return audio_.getFilePos();
   }
 
+  // setTimeOffset() only takes whole seconds -- too coarse for 2× cue
+  // (ADR 0013) -- so convert ms to bytes with the average bitrate and use
+  // setFilePos(), which the decoder applies on its next chunk (and
+  // re-aligns to a frame boundary itself). getFilePos() includes the
+  // library's read-ahead, so jumps are approximate; fine for cueing.
+  bool seekByMs(int32_t deltaMs) override {
+    MutexGuard guard(mutex_);
+    uint32_t avgBitrate = audio_.getBitRate(true);
+    if (avgBitrate == 0) return false;
+    int64_t bytes = static_cast<int64_t>(deltaMs) * avgBitrate / 8000;
+    int64_t target = static_cast<int64_t>(audio_.getFilePos()) + bytes;
+    int64_t start = audio_.getAudioDataStartPos();
+    int64_t end = audio_.getFileSize();
+    if (target < start) target = start;
+    if (target > end) target = end;
+    return audio_.setFilePos(static_cast<uint32_t>(target));
+  }
+
   uint32_t durationSeconds() override {
     MutexGuard guard(mutex_);
     return audio_.getAudioFileDuration();

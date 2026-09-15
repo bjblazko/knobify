@@ -34,6 +34,7 @@ class FakeDriver : public PlaybackDriver {
   bool playFile(const std::string &) override { return true; }
   bool playFileAt(const std::string &, uint32_t) override { return true; }
   uint32_t filePosition() override { return 0; }
+  bool seekByMs(int32_t) override { return true; }
   void pause() override {}
   void resume() override {}
   void stop() override {}

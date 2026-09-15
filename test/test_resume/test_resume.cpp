@@ -50,6 +50,7 @@ class FakeDriver : public PlaybackDriver {
     return true;
   }
   uint32_t filePosition() override { return position; }
+  bool seekByMs(int32_t) override { return true; }
   void pause() override {}
   void resume() override {}
   void stop() override {}
