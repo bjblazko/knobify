@@ -32,7 +32,9 @@ Constraints:
 ### Hold the time pill and turn
 
 The elapsed-time readout becomes a quiet grey pill: `◀◀ 1:23 / 4:05 ▶▶`
-(LVGL's `LV_SYMBOL_BACKWARD`/`LV_SYMBOL_FORWARD`). While you hold the pill,
+(Material Symbols `fast_rewind`/`fast_forward` from a generated 16 px icon
+font `knobify_icon_font_16` with fallback to Montserrat 14 for digits and
+text). While you hold the pill,
 turning the knob shuttles. Lifting your finger ends it, and the knob sets
 the volume again straight away.
 
@@ -43,8 +45,9 @@ control sits where its value is shown: you hold the song position to
 change it. The gesture is the same hold-and-turn as unlocking (ADR 0005).
 
 While held, the pill switches to its pressed state and shows the speed
-instead of the total time: `1:23 ▶▶ 8×` or `1:23 ◀◀ 8×`. The arc alone
-can't show the exact step, and this adds nothing to the layout.
+instead of the total time: `1:23 ▶▶ 8x` or `1:23 ◀◀ 8x` (ASCII `x`: the
+built-in font has no `×`). The arc alone can't show the exact step, and
+this adds nothing to the layout.
 
 For a track that can't seek (Ogg), the pill shows no ◀◀ ▶▶ marks and
 ignores the hold. It looks like the plain time readout it was before.
@@ -120,25 +123,26 @@ busier. The speed readout in the pill covers the exact step.
 
 ## Implementation outline
 
-- **`playback::Shuttle`** (`lib/playback/Shuttle.h`, pure logic,
-  host-tested)
-  - hold/release and step clamping
-  - the cue-cycle timing and jump math
-  - end stops
-  - restoring play/pause on release
-- **`PlaybackDriver`**
-  - `canSeek()`
-  - `seekByMs(int32_t)`
-  - `positionMs()`
-  - Implemented in `Esp32AudioI2SDriver` under the existing mutex
-    (ADR 0006).
-- **`PlaybackStateMachine`**: shifts its wall-clock elapsed time by each
-  jump, so the time readout and progress ring move with it.
-- **`InputRouter`**: `setShuttleHeld(bool)`. While held on Now Playing,
-  encoder deltas go to `Shuttle` instead of `adjustVolume`.
-- **`EdgeArcConfig`**: gains a `mode` field for the symmetrical arc.
-- **The time pill** uses the existing press/release button helper
-  (`LV_EVENT_PRESSED`, `RELEASED`, `PRESS_LOST`).
+- `playback::Shuttle` (`lib/playback/Shuttle.h`, pure logic, host-tested):
+  hold/release, step clamping, cue-cycle timing and jump math, end stops
+  (a real pause, so track-finished detection can't fire), restoring
+  play/pause.
+- `PlaybackDriver::seekByMs(int32_t)` in `Esp32AudioI2SDriver` under the
+  existing mutex (ADR 0006), via average bitrate and `setFilePos`.
+- `PlaybackStateMachine::seekBy()` shifts the wall-clock elapsed time by
+  each jump; `canSeek()` decides by file extension (MP3/WAV), so a track
+  cued after a reboot already shows its marks.
+- `InputRouter` sends encoder deltas to `Shuttle` instead of
+  `adjustVolume` while it is held. The pill's press/release callbacks call
+  the shuttle directly; `main.cpp` also releases it when the touch ends
+  or Now Playing goes away.
+- `EdgeArcConfig` gains a `mode` field for the symmetrical arc;
+  `makeEdgeArcHost` an inset.
+- The pill's ◀◀ ▶▶ marks use `knobify_icon_font_16` (Material Symbols
+  `fast_rewind`/`fast_forward`), which has `lv_font_montserrat_14` as
+  fallback so digits render in the same label; `line_height` and
+  `base_line` are set to Montserrat 14's values (16/3) because LVGL labels
+  size and position by the primary font.
 
 ## Consequences
 

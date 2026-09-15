@@ -233,8 +233,9 @@ Full architecture: [ADR 0004](../adr/0004-navigation-library-and-index-architect
   dedicated picker UI and mirrors the same context-sensitivity principle
   applied to the encoder.
 - **Context-sensitive encoder.** On browse screens, rotating scrolls the
-  highlighted list item; on Now Playing, rotating adjusts volume; on Home
-  it moves the tile selection; on Brightness it sets brightness. The
+  highlighted list item; on Now Playing, rotating adjusts volume (or
+  shuttles through the track while the time pill is held, ADR 0013); on
+  Home it moves the tile selection; on Brightness it sets brightness. The
   mapping is unambiguous per screen since no mode button exists to switch
   it explicitly.
 - **Scope comes from where you start.** Artists, Albums and Tracks lists
@@ -312,6 +313,10 @@ Full architecture: [ADR 0005](../adr/0005-power-lock-and-round-edge-indicators.m
   progress ring is the resting state; while volume is being adjusted the
   volume ring temporarily replaces it, then hands back. Two concentric
   rings at once would be noise.
+  One exception (ADR 0013): while the time pill is held, a thin `ink`
+  shuttle arc sits just inside the progress ring with a marker at the top
+  — speed and position are both needed while scrubbing, and both vanish
+  with the finger.
 - **Song progress is shown only when known.** The progress ring is hidden
   if the decoder reports no duration — no fabricated progress.
 - **Volume feedback follows a phone's volume-HUD shape.** Volume shows as

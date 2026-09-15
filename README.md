@@ -41,6 +41,9 @@ screens described below.
   the last track paused near where it was (no auto-play). State is saved
   periodically and power-cut safe — see
   [ADR 0012](docs/adr/0012-resume-session.md).
+- Jog/shuttle: hold the time readout on Now Playing and turn the knob to
+  fast forward or rewind (five speeds each way, CD-style cue); letting go
+  plays on from there — see [ADR 0013](docs/adr/0013-jog-shuttle.md).
 
 ## Explicitly out of scope for now
 
@@ -50,7 +53,6 @@ screens described below.
   SD card — the ESP32-S3's native USB-OTG could expose the SD card as a
   USB drive via TinyUSB's MSC class while plugged in, so the card
   wouldn't need to be physically removed and read on another computer
-- Jog/shuttle-style scrubbing through a track's playback position
 - Theming (selectable color schemes / customizable look)
 - General visual polish and animation ("eye candy") beyond the planned
   one-time gesture-hint nudge and screen-transition slide
