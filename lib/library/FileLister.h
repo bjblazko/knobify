@@ -11,7 +11,7 @@ struct FileEntry {
   uint32_t mtime = 0;  // Unix-ish timestamp; only used for change detection.
 };
 
-// Recursively yields every audio file (by extension: mp3/ogg/wav) under
+// Recursively yields every audio file (by extension, see AudioFileTypes.h) under
 // the SD card's music root. Concrete adapter (SdFileLister) lives in
 // lib/drivers-sd/ and wraps Arduino's SD API; this interface exists so
 // LibraryScanner/FolderBrowser are host-testable against a fake.

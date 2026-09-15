@@ -3,18 +3,11 @@
 #include <algorithm>
 #include <cctype>
 
+#include "AudioFileTypes.h"
+
 namespace knobify::library {
 
 namespace {
-
-bool isAudioFile(const std::string &name) {
-  auto dot = name.find_last_of('.');
-  if (dot == std::string::npos) return false;
-  std::string ext = name.substr(dot + 1);
-  std::transform(ext.begin(), ext.end(), ext.begin(),
-                  [](unsigned char c) { return std::tolower(c); });
-  return ext == "mp3" || ext == "ogg" || ext == "wav";
-}
 
 // macOS AppleDouble sidecar (e.g. "._06 Merge.mp3") -- see
 // lib/drivers-sd/SdFileLister.h's isAppleDoubleSidecar() for why this
@@ -31,7 +24,7 @@ std::vector<FolderEntry> FolderBrowser::list(DirectoryReader &reader,
   std::vector<FolderEntry> filtered;
   for (auto &entry : all) {
     if (isAppleDoubleSidecar(entry.name)) continue;
-    if (entry.isDirectory || isAudioFile(entry.name)) {
+    if (entry.isDirectory || isAudioFileName(entry.name)) {
       filtered.push_back(entry);
     }
   }

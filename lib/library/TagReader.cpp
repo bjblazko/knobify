@@ -4,6 +4,7 @@
 #include <cctype>
 
 #include "Id3v2Parser.h"
+#include "Mp4Parser.h"
 #include "RiffInfoParser.h"
 #include "VorbisCommentParser.h"
 
@@ -100,6 +101,8 @@ TagResult TagReader::read(RawFile &file, const std::string &filePath) {
 
   if (ext == "mp3") {
     result = Id3v2Parser::parse(file);
+  } else if (ext == "m4a") {
+    result = Mp4Parser::parse(file).tags;
   } else if (ext == "ogg") {
     result = VorbisCommentParser::parse(file);
   } else if (ext == "wav") {

@@ -6,11 +6,12 @@
 #include <string>
 #include <vector>
 
+#include "AudioFileTypes.h"
 #include "FileLister.h"
 
 namespace knobify::drivers {
 
-// Recursively lists every audio file (mp3/ogg/wav) under a root path on
+// Recursively lists every audio file (see AudioFileTypes.h) under a root path on
 // the SD card, for the tag-based library scan (lib/library/LibraryScanner).
 // Not a hot path (runs once at boot, or when the cache is stale), so it
 // eagerly walks the whole tree into memory on reset() rather than
@@ -67,23 +68,15 @@ class SdFileLister : public library::FileLister {
   }
 
  private:
-  static bool isAudioFile(const std::string &name) {
-    auto dot = name.find_last_of('.');
-    if (dot == std::string::npos) return false;
-    std::string ext = name.substr(dot + 1);
-    for (auto &c : ext) c = static_cast<char>(tolower(c));
-    return ext == "mp3" || ext == "ogg" || ext == "wav";
-  }
-
   // macOS creates a "._<name>" AppleDouble sidecar file next to any file
   // or folder it copies (e.g. a real "06 Merge.mp3" gets a
   // "._06 Merge.mp3" alongside it) -- these are metadata blobs, not real
-  // audio, but they otherwise pass isAudioFile() since they keep the
+  // audio, but they otherwise pass isAudioFileName() since they keep the
   // real file's extension. Without this check they get scanned as
   // "tracks" that fail to read correctly. Found on real hardware
   // 2026-09-12 (a library copied via a Mac).
   //
-  // Takes the same string entry.name() returns for isAudioFile() --
+  // Takes the same string entry.name() returns for isAudioFileName() --
   // this project's SD_MMC/FS stack returns the FULL PATH from name()
   // (not just the filename, despite the Arduino File API convention
   // elsewhere), so the sidecar prefix must be checked against the
@@ -113,7 +106,7 @@ class SdFileLister : public library::FileLister {
         walk(entry);
       } else {
         ++filesVisited_;
-        if (isAudioFile(name)) {
+        if (library::isAudioFileName(name)) {
           entries_.push_back(library::FileEntry{
               entry.path(), static_cast<uint32_t>(entry.size()),
               static_cast<uint32_t>(entry.getLastWrite())});
