@@ -361,8 +361,10 @@ Full architecture: [ADR 0005](../adr/0005-power-lock-and-round-edge-indicators.m
   control names the current context (artist, album, folder), since the
   top of a round screen is too narrow to be useful for rows anyway.
 - **Secondary facts are plain text, never badges.** Album rows end in the
-  release year (14px, the row's text color at reduced opacity) — it
-  explains the chronological sort. No pills or overlays: they cost width
+  release year, the Brightness row in its percentage (14px, `structure`;
+  `surfaceAlt` on the `ink` selected row). The year explains the
+  chronological sort. The row's own text color at reduced opacity was
+  tried first and came out barely readable on the selected row. No pills or overlays: they cost width
   on a narrow round screen and compete with the selected row. Nothing is
   shown when the year is unknown, and no release type (album/EP/single)
   is shown at all, since no reliable tag exists and guessing from track
