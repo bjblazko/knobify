@@ -42,6 +42,13 @@ class NavigationStack {
 
   bool canGoBack() const { return depth_ > 1; }
 
+  // Read access for persisting the stack (ADR 0012); 0 is the root.
+  std::size_t depth() const { return depth_; }
+  const Screen &at(std::size_t index) const { return stack_[index]; }
+
+  // Drops everything above the root.
+  void popToRoot() { depth_ = 1; }
+
  private:
   std::array<Screen, kMaxDepth> stack_;
   std::size_t depth_;

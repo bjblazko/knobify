@@ -32,6 +32,8 @@ namespace {
 class FakeDriver : public PlaybackDriver {
  public:
   bool playFile(const std::string &) override { return true; }
+  bool playFileAt(const std::string &, uint32_t) override { return true; }
+  uint32_t filePosition() override { return 0; }
   void pause() override {}
   void resume() override {}
   void stop() override {}

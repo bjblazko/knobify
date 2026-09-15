@@ -20,3 +20,4 @@ supersedes the old one (and the old one is marked "Superseded by NNNN").
 | [0009](0009-now-playing-spectrum-analyzer.md) | Now Playing spectrum analyzer | Accepted |
 | [0010](0010-main-menu-and-settings.md) | Main menu, settings, and display brightness | Accepted |
 | [0011](0011-shuffle-and-repeat.md) | Shuffle and repeat | Accepted |
+| [0012](0012-resume-session.md) | Resume where you left off | Accepted |

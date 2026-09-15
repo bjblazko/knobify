@@ -11,6 +11,10 @@ namespace knobify::playback {
 // Off -> All -> One, the order the Now Playing repeat toggle cycles through.
 enum class RepeatMode : uint8_t { Off = 0, All = 1, One = 2 };
 
+// What a queue was started from: a single file, or a library album, artist
+// or the whole library (ADR 0011). Stored values -- append only (ADR 0012).
+enum class PlayScope : uint8_t { File = 0, Album = 1, Artist = 2, Library = 3 };
+
 // The tracks PlaybackStateMachine plays, in original or shuffled order --
 // see docs/adr/0011-shuffle-and-repeat.md. Pure logic, no driver: each
 // move returns whether there is a track to play and leaves it in current().
@@ -67,6 +71,8 @@ class PlayQueue {
   }
 
   bool empty() const { return tracks_.empty(); }
+  // In original (unshuffled) order.
+  const std::vector<std::string> &tracks() const { return tracks_; }
   bool shuffled() const { return shuffled_; }
   const std::string &current() const { return tracks_[order_[pos_]]; }
   // Position in play order, not in the original list.

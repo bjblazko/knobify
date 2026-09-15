@@ -25,6 +25,11 @@ class FakeDriver : public PlaybackDriver {
     running = true;
     return playSucceeds;
   }
+  bool playFileAt(const std::string &path, uint32_t position) override {
+    lastPosition = position;
+    return playFile(path);
+  }
+  uint32_t filePosition() override { return position; }
   void pause() override { running = false; }
   void resume() override { running = true; }
   void stop() override { running = false; }
@@ -42,6 +47,8 @@ class FakeDriver : public PlaybackDriver {
   bool running = false;
   bool playSucceeds = true;
   uint32_t duration = 0;
+  uint32_t lastPosition = 0;
+  uint32_t position = 0;
 };
 
 class FakeStore : public KeyValueStore {

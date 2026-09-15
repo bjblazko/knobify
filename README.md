@@ -37,6 +37,10 @@ screens described below.
   Tracks lists shuffles the library, the artist or the album. Two toggles
   on Now Playing switch shuffle and repeat (off / all / one) — see
   [ADR 0011](docs/adr/0011-shuffle-and-repeat.md).
+- Resume after power loss: the device comes back on the last screen with
+  the last track paused near where it was (no auto-play). State is saved
+  periodically and power-cut safe — see
+  [ADR 0012](docs/adr/0012-resume-session.md).
 
 ## Explicitly out of scope for now
 
@@ -69,8 +73,8 @@ screens described below.
   reusing it
 - Favorites/playlists (marking tracks or albums for quick access)
 - A "recently played" / "recently added" quick-access list
-- Resuming playback position after a restart or power loss, not just
-  the persisted volume
+- Resume support for future sources (podcasts, web radio, video) — each
+  adds its own section to the resume record, see ADR 0012
 - M3U playlist file import
 - Gapless playback (for live albums, concept albums, etc.)
 - On-device firmware updates from a file on the SD card (no Wi-Fi

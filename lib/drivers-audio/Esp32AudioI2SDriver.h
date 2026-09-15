@@ -51,10 +51,13 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
   // main.cpp the linker silently dropped those hooks entirely.
   void begin();
 
-  bool playFile(const std::string &path) override {
+  bool playFile(const std::string &path) override { return playFileAt(path, 0); }
+
+  // The library corrects the offset to a frame boundary per codec itself.
+  bool playFileAt(const std::string &path, uint32_t filePosition) override {
     MutexGuard guard(mutex_);
     paused_ = false;
-    bool ok = audio_.connecttoFS(SD_MMC, path.c_str());
+    bool ok = audio_.connecttoFS(SD_MMC, path.c_str(), filePosition);
     // TEMPORARY DIAGNOSTIC (2026-09-12): investigating "play does
     // nothing, no sound" reports on real hardware -- see AGENTS.md.
     Serial.printf("Esp32AudioI2SDriver::playFile('%s') -> connecttoFS=%s\n",
@@ -93,6 +96,11 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
   bool isRunning() override {
     MutexGuard guard(mutex_);
     return audio_.isRunning();
+  }
+
+  uint32_t filePosition() override {
+    MutexGuard guard(mutex_);
+    return audio_.getFilePos();
   }
 
   uint32_t durationSeconds() override {

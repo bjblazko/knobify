@@ -32,6 +32,20 @@ class TabController {
   }
 
   Tab activeTab() const { return active_; }
+  // The music tab openMusic() returns to.
+  Tab lastMusicTab() const { return lastMusicTab_; }
+
+  NavigationStack &stack(Tab tab) { return stackFor(tab); }
+  const NavigationStack &stack(Tab tab) const {
+    return const_cast<TabController *>(this)->stackFor(tab);
+  }
+
+  // Restores which tab is active after a reboot (ADR 0012). A
+  // `lastMusicTab` that isn't a music tab is ignored.
+  void restoreTabs(Tab active, Tab lastMusicTab) {
+    active_ = active;
+    if (lastMusicTab != Tab::Menu) lastMusicTab_ = lastMusicTab;
+  }
 
   bool isMusicTab() const { return active_ != Tab::Menu; }
 

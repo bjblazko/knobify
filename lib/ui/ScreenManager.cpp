@@ -882,22 +882,24 @@ void ScreenManager::onListItemClicked(lv_event_t *e) {
   if (ctx->isShuffle) {
     std::vector<std::string> playlist;
     std::string name = "library";
+    playback::PlayScope scope;
     if (current.kind == ScreenKind::Artists) {
       playlist = library::PlaylistBuilder::forLibrary(self->library_);
-      self->playScope_ = PlayScope::Library;
+      scope = playback::PlayScope::Library;
     } else if (current.kind == ScreenKind::Albums) {
       playlist = library::PlaylistBuilder::forArtist(self->library_,
                                                      current.params.artistId);
-      self->playScope_ = PlayScope::Artist;
+      scope = playback::PlayScope::Artist;
       name = self->library_.artists[current.params.artistId].name;
     } else {
       playlist = library::PlaylistBuilder::forAlbum(self->library_,
                                                     current.params.albumId);
-      self->playScope_ = PlayScope::Album;
+      scope = playback::PlayScope::Album;
       name = self->library_.albums[current.params.albumId].title;
     }
     if (playlist.empty()) return;
-    self->playback_.play(std::move(playlist), 0, millis(), /*shuffle=*/true);
+    self->playback_.play(std::move(playlist), 0, millis(), /*shuffle=*/true,
+                         scope);
     self->goToNowPlaying();
     self->messages_.show(("Shuffling " + name).c_str(), kNowPlayingMessageAnchor,
                          millis());
@@ -921,11 +923,11 @@ void ScreenManager::onListItemClicked(lv_event_t *e) {
     case ScreenKind::Tracks: {
       // Rows follow tracksFor() order, so the row index is the start index.
       // In order, shuffle off: a tapped track always plays its album as listed.
-      self->playScope_ = PlayScope::Album;
       self->playback_.play(
           library::PlaylistBuilder::forAlbum(self->library_,
                                              current.params.albumId),
-          static_cast<size_t>(ctx->index), millis());
+          static_cast<size_t>(ctx->index), millis(), /*shuffle=*/false,
+          playback::PlayScope::Album);
       self->goToNowPlaying();
       break;
     }
@@ -935,7 +937,6 @@ void ScreenManager::onListItemClicked(lv_event_t *e) {
             Screen{ScreenKind::Folder, ScreenParams{.folderPath = ctx->path}});
         self->render();
       } else {
-        self->playScope_ = PlayScope::File;
         self->playback_.play({ctx->path}, 0, millis());
         self->goToNowPlaying();
       }
@@ -1010,17 +1011,17 @@ void ScreenManager::onRepeatClicked(lv_event_t *e) {
 void ScreenManager::showShuffleMessage() {
   const char *text = "Shuffle off - in order";
   if (playback_.shuffle()) {
-    switch (playScope_) {
-      case PlayScope::Album:
+    switch (playback_.scope()) {
+      case playback::PlayScope::Album:
         text = "Shuffle on - album";
         break;
-      case PlayScope::Artist:
+      case playback::PlayScope::Artist:
         text = "Shuffle on - artist";
         break;
-      case PlayScope::Library:
+      case playback::PlayScope::Library:
         text = "Shuffle on - library";
         break;
-      case PlayScope::File:
+      case playback::PlayScope::File:
         text = "Shuffle on";
         break;
     }

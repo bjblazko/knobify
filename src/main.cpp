@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <SD_MMC.h>
 #include <esp_heap_caps.h>
+#include <esp_system.h>
 
 #include <cstring>
 
@@ -24,8 +25,11 @@
 #include "LockController.h"
 #include "LockOverlay.h"
 #include "LvglGlue.h"
+#include "MusicResumeSource.h"
+#include "NavigationResumeSource.h"
 #include "NvsKeyValueStore.h"
 #include "PlaybackStateMachine.h"
+#include "ResumeScheduler.h"
 #include "ScreenManager.h"
 #include "SdCoverReader.h"
 #include "SdCoverWriter.h"
@@ -206,6 +210,17 @@ knobify::input::InputRouter g_inputRouter(g_tabs, g_playback, g_brightness,
                                         g_screenManager);
 knobify::input::GestureRecognizer g_gestureRecognizer;
 
+bool sdFileExists(const std::string &path) { return SD_MMC.exists(path.c_str()); }
+
+// Where the device was before power went away (ADR 0012). Music restores
+// before navigation, which drops Now Playing if no queue came back.
+knobify::resume::MusicResumeSource g_musicResume(g_playback, g_libraryIndex,
+                                                 &sdFileExists);
+knobify::resume::NavigationResumeSource g_navigationResume(g_tabs, g_libraryIndex,
+                                                           g_playback);
+knobify::resume::ResumeScheduler g_resumeScheduler(
+    g_nvsStore, {&g_musicResume, &g_navigationResume});
+
 bool g_wasPlaying = false;
 // Last duty written to the backlight PWM; LvglGlue::begin() leaves it at
 // full (St77916Driver::initBacklight()).
@@ -308,6 +323,19 @@ void setup() {
     } else {
       Serial.println("No library cache yet -- use Settings > Rescan library to build one.");
     }
+  }
+
+  // After a crash the saved state may be what caused it: start on Home once,
+  // so a bad record can't trap the device in a reboot loop.
+  esp_reset_reason_t resetReason = esp_reset_reason();
+  if (resetReason == ESP_RST_PANIC || resetReason == ESP_RST_INT_WDT ||
+      resetReason == ESP_RST_TASK_WDT || resetReason == ESP_RST_WDT) {
+    Serial.printf("[resume] discarded: reset reason %d\n", resetReason);
+    g_resumeScheduler.discard(millis());
+  } else if (g_resumeScheduler.restore(millis())) {
+    Serial.println("[resume] restored");
+  } else {
+    Serial.println("[resume] nothing valid saved -- starting on Home");
   }
 
   if (displayOk) {
@@ -493,6 +521,7 @@ void loop() {
   }
 
   g_playback.tick(now);
+  g_resumeScheduler.tick(now);
   g_brightness.tick(now);
   // Cheap (no full re-render), a no-op on any screen other than Now
   // Playing -- see ScreenManager::updateElapsedTimeDisplay().

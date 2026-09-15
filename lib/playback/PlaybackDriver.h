@@ -24,6 +24,12 @@ class PlaybackDriver {
   virtual ~PlaybackDriver() = default;
 
   virtual bool playFile(const std::string &path) = 0;
+  // Starts `path` at a byte offset previously read from filePosition() --
+  // how a track resumes after a reboot (ADR 0012). 0 plays from the start.
+  virtual bool playFileAt(const std::string &path, uint32_t filePosition) = 0;
+  // Byte offset the decoder has read the current file up to; 0 if nothing
+  // is loaded. Only good for passing back to playFileAt().
+  virtual uint32_t filePosition() = 0;
   virtual void pause() = 0;
   virtual void resume() = 0;
   virtual void stop() = 0;

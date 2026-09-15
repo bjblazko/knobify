@@ -53,13 +53,32 @@ class PlaybackStateMachine {
   // Replaces the queue. `shuffle` plays the whole playlist in random order
   // (startIndex is then ignored); without it shuffle is switched off, so a
   // tapped track always plays its list in order.
+  // `scope` only records what the queue came from (messages, resume).
   void play(std::vector<std::string> playlist, size_t startIndex,
-            uint32_t nowMs, bool shuffle = false) {
+            uint32_t nowMs, bool shuffle = false,
+            PlayScope scope = PlayScope::File) {
     if (startIndex >= playlist.size()) return;
-    // A different permutation per shuffle, from one seed.
-    seed_ = seed_ * 1664525u + 1013904223u;
-    queue_.load(std::move(playlist), startIndex, shuffle, seed_);
+    loadQueue(std::move(playlist), startIndex, shuffle, scope);
     playCurrent(nowMs);
+  }
+
+  // Restores a queue after a reboot without playing it (ADR 0012): Paused
+  // at `elapsedSeconds`, with nothing loaded in the driver yet. The next
+  // play/pause starts the track at `filePosition`. The track is at
+  // `startIndex` in the original order; with `shuffle` the rest of the
+  // queue is shuffled after it (the old shuffled order isn't kept).
+  void cue(std::vector<std::string> playlist, size_t startIndex, bool shuffle,
+           PlayScope scope, uint32_t filePosition, uint32_t elapsedSeconds,
+           uint32_t nowMs) {
+    if (startIndex >= playlist.size()) return;
+    loadQueue(std::move(playlist), startIndex, false, scope);
+    queue_.setShuffled(shuffle);
+    state_ = PlaybackState::Paused;
+    cued_ = true;
+    cuedFilePosition_ = filePosition;
+    trackStartMs_ = nowMs - elapsedSeconds * 1000u;
+    pausedAccumMs_ = 0;
+    pauseStartMs_ = nowMs;
   }
 
   // Seeds shuffling; call once from setup() with a hardware random value,
@@ -77,6 +96,14 @@ class PlaybackStateMachine {
   }
 
   void togglePlayPause(uint32_t nowMs) {
+    if (cued_) {
+      if (driver_.playFileAt(queue_.current(), cuedFilePosition_)) {
+        cued_ = false;
+        state_ = PlaybackState::Playing;
+        pausedAccumMs_ += nowMs - pauseStartMs_;
+      }
+      return;
+    }
     if (state_ == PlaybackState::Playing) {
       driver_.pause();
       state_ = PlaybackState::Paused;
@@ -130,6 +157,16 @@ class PlaybackStateMachine {
   }
 
   PlaybackState state() const { return state_; }
+  bool hasQueue() const { return !queue_.empty(); }
+  PlayScope scope() const { return scope_; }
+  // The queue in original order; meaningless without hasQueue().
+  const std::vector<std::string> &playlist() const { return queue_.tracks(); }
+  // Where the current track would resume, for persisting (ADR 0012).
+  uint32_t filePosition() const {
+    if (cued_) return cuedFilePosition_;
+    if (state_ == PlaybackState::Stopped) return 0;
+    return driver_.filePosition();
+  }
   // Position in play order (shuffled order while shuffle is on).
   size_t currentIndex() const { return queue_.position(); }
   const std::string &currentPath() const { return queue_.current(); }
@@ -162,8 +199,25 @@ class PlaybackStateMachine {
   }
 
  private:
+  void loadQueue(std::vector<std::string> playlist, size_t startIndex,
+                 bool shuffle, PlayScope scope) {
+    // A different permutation per shuffle, from one seed.
+    seed_ = seed_ * 1664525u + 1013904223u;
+    queue_.load(std::move(playlist), startIndex, shuffle, seed_);
+    scope_ = scope;
+  }
+
   void playCurrent(uint32_t nowMs) {
+    // A skip while cued leaves the cued position behind: a failed start
+    // must not later resume the new track mid-way, or show the old time.
+    if (cued_) {
+      cuedFilePosition_ = 0;
+      trackStartMs_ = nowMs;
+      pausedAccumMs_ = 0;
+      pauseStartMs_ = nowMs;
+    }
     if (driver_.playFile(queue_.current())) {
+      cued_ = false;
       state_ = PlaybackState::Playing;
       trackStartMs_ = nowMs;
       pausedAccumMs_ = 0;
@@ -174,6 +228,10 @@ class PlaybackStateMachine {
   VolumePersistence &volumeStore_;
   PlayQueue queue_;
   RepeatMode repeat_ = RepeatMode::Off;
+  PlayScope scope_ = PlayScope::File;
+  // Restored but not yet loaded into the driver -- see cue().
+  bool cued_ = false;
+  uint32_t cuedFilePosition_ = 0;
   uint32_t seed_ = 1;
   PlaybackState state_ = PlaybackState::Stopped;
   uint8_t volume_ = 0;

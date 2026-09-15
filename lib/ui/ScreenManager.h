@@ -231,10 +231,6 @@ class ScreenManager : public input::ListMoveSink {
   // Last rendered screen: a screen message is dismissed when this changes.
   navigation::ScreenKind renderedKind_ = navigation::ScreenKind::Home;
 
-  // What the current queue was started from, so messages can name it.
-  enum class PlayScope { File, Album, Artist, Library };
-  PlayScope playScope_ = PlayScope::File;
-
   // Kind IDs stashed on each clickable object via lv_obj_set_user_data so
   // the static click callbacks know what was tapped without capturing
   // C++ closures (LVGL v8 callbacks are plain C function pointers).
