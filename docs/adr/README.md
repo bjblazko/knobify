@@ -19,3 +19,4 @@ supersedes the old one (and the old one is marked "Superseded by NNNN").
 | [0008](0008-braun-design-system-and-screen-redesign.md) | Braun design system and screen redesign | Accepted (Now Playing no-cover layout amended by 0009) |
 | [0009](0009-now-playing-spectrum-analyzer.md) | Now Playing spectrum analyzer | Accepted |
 | [0010](0010-main-menu-and-settings.md) | Main menu, settings, and display brightness | Accepted |
+| [0011](0011-shuffle-and-repeat.md) | Shuffle and repeat | Accepted |

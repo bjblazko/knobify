@@ -33,6 +33,10 @@ screens described below.
   [ADR 0009](docs/adr/0009-now-playing-spectrum-analyzer.md).
   No charging indicator: the board exposes no charge-status signal (no
   dedicated pin, no voltage change on plug/unplug, no status LED).
+- Shuffle and repeat: a Shuffle row at the top of the Artists, Albums and
+  Tracks lists shuffles the library, the artist or the album. Two toggles
+  on Now Playing switch shuffle and repeat (off / all / one) — see
+  [ADR 0011](docs/adr/0011-shuffle-and-repeat.md).
 
 ## Explicitly out of scope for now
 
@@ -55,9 +59,8 @@ screens described below.
   clearer
 - Charging state indicator (no signal available to detect it — see
   [ADR 0007](docs/adr/0007-battery-indicator.md))
-- Shuffle and repeat modes (per-album/all-library shuffle, repeat
-  single/all) — decision 5's "no auto-repeat in v1" was a deliberate v1
-  simplification, not a permanent rule
+- Shuffle for a Files-tab folder (library shuffle by album/artist/all
+  exists, see ADR 0011; tapping a file still plays it alone)
 - A sleep timer (auto-stop playback after a set time)
 - Volume normalization / ReplayGain-style loudness matching across
   tracks

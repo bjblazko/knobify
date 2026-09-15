@@ -6,8 +6,8 @@
 extern "C" {
 #endif
 
-// Custom 28px icon font holding just the two glyphs this project needs
-// so far (lock, lock_open) -- see IconFont.c's header comment for the
+// Custom 28px icon font holding just the glyphs this project needs
+// (lock, lock_open, shuffle, repeat, repeat_one) -- see IconFont.c's header comment for the
 // exact source/version/license, and ADR 0005 for why a custom font
 // rather than LV_SYMBOL_* (LVGL's built-in symbol subset has no lock
 // icon at all).
@@ -17,6 +17,10 @@ LV_FONT_DECLARE(knobify_icon_font_28);
 // matches how LV_SYMBOL_* constants are used elsewhere in this codebase.
 #define KNOBIFY_ICON_LOCK_OPEN "\xEE\xA2\x98"  // U+E898
 #define KNOBIFY_ICON_LOCK "\xEE\xA2\x99"       // U+E899
+// Now Playing's shuffle/repeat toggles (ADR 0011).
+#define KNOBIFY_ICON_SHUFFLE "\xEE\x81\x83"     // U+E043
+#define KNOBIFY_ICON_REPEAT "\xEE\x81\x80"      // U+E040
+#define KNOBIFY_ICON_REPEAT_ONE "\xEE\x81\x81"  // U+E041
 
 // 48px glyphs for the main menu tiles and the Brightness screen (ADR
 // 0010) -- IconFont48.c, same source font.

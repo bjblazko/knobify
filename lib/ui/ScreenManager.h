@@ -134,6 +134,13 @@ class ScreenManager : public input::ListMoveSink {
   static void onHomeTilePressed(lv_event_t *e);
   static void onHomeTileClicked(lv_event_t *e);
   static void onCoverSlotClicked(lv_event_t *e);
+  static void onShuffleClicked(lv_event_t *e);
+  static void onRepeatClicked(lv_event_t *e);
+  static bool hasShuffleRow(navigation::ScreenKind kind) {
+    return kind == navigation::ScreenKind::Artists ||
+           kind == navigation::ScreenKind::Albums ||
+           kind == navigation::ScreenKind::Tracks;
+  }
 
   navigation::TabController &tabs_;
   library::LibraryIndex &library_;
@@ -164,6 +171,11 @@ class ScreenManager : public input::ListMoveSink {
   static constexpr uint32_t kSpectrumFrameMs = 33;
   // Persisted cover-slot choice: 1 = spectrum, 0 = cover.
   static constexpr char kSpectrumSettingKey[] = "npSpectrum";
+  // Persisted repeat mode (playback::RepeatMode). Shuffle isn't persisted:
+  // it's set by how playback started (ADR 0011).
+  static constexpr char kRepeatSettingKey[] = "repeat";
+  // Item id of the Shuffle row -- real ids are unsigned indices.
+  static constexpr int kShuffleItemId = -1;
 
   lv_obj_t *screen_ = nullptr;
   lv_obj_t *list_ = nullptr;
@@ -214,6 +226,7 @@ class ScreenManager : public input::ListMoveSink {
     library::TrackId trackId;
     library::AlbumId albumId;
     bool isFolder;
+    bool isShuffle = false;
     std::string path;
   };
   // unique_ptr so addresses stay stable across vector growth -- LVGL

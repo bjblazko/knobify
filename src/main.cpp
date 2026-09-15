@@ -242,6 +242,9 @@ void setup() {
   // loaded volume into) -- see PlaybackStateMachine's constructor comment
   // for why this isn't done eagerly in the constructor itself.
   g_playback.begin();
+  // Otherwise every boot shuffles the same way (esp_random() is hardware
+  // RNG, seeded from RF/bootloader entropy).
+  g_playback.setRandomSeed(esp_random());
   g_brightness.begin();
 
   if (!g_touch.begin()) {

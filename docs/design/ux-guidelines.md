@@ -178,7 +178,9 @@ backlight. Every screen, the lock screen included, uses `surface`.
     Companions of the primary control — previous/next beside Play/Pause,
     like the grey keys beside the one colored key on a Braun tape deck.
   - *Quiet*: no fill, `structure` glyph, `surfaceAlt` background only while
-    pressed. Navigation and utility — back, lock, scan.
+    pressed. Navigation and utility — back, lock, scan. A quiet *toggle*
+    (shuffle, repeat) shows its on state as a `confirm` green glyph — a
+    state, like the mini-bar glyph, never an accent.
 - **Touch targets** are at least 44px in their smaller dimension, even when
   the visible glyph is smaller. Every button's hit area also extends 10px
   beyond its drawn bounds (`makeButton()` in `LvglButtonHelpers.h`), so
@@ -235,6 +237,13 @@ Full architecture: [ADR 0004](../adr/0004-navigation-library-and-index-architect
   it moves the tile selection; on Brightness it sets brightness. The
   mapping is unambiguous per screen since no mode button exists to switch
   it explicitly.
+- **Scope comes from where you start.** Artists, Albums and Tracks lists
+  begin with a Shuffle row that shuffles the whole library, the artist or
+  the album. Tapping a track plays its album in order and turns shuffle
+  off. There is no scope setting ([ADR 0011](../adr/0011-shuffle-and-repeat.md)).
+- **Shuffle and repeat are toggles on Now Playing**, beside the time:
+  quiet glyphs, `confirm` green while active. Repeat cycles off → all →
+  one; only repeat is remembered across reboots.
 - **The cover slot switches by tap.** Tapping the Now Playing cover
   swaps it for the dot-matrix spectrum and back; the choice persists.
   Without a cover the spectrum always shows and the slot isn't tappable.

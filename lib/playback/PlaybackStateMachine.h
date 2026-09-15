@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "PlayQueue.h"
 #include "PlaybackDriver.h"
 #include "VolumePersistence.h"
 
@@ -15,8 +16,9 @@ enum class PlaybackState { Stopped, Playing, Paused };
 // (clamped 0-21, debounced-persisted), and elapsed play time. Pure logic
 // over the PlaybackDriver interface -- see
 // docs/adr/0004-navigation-library-and-index-architecture.md and
-// docs/adr/0003-testing-strategy.md. Auto-advances within the current
-// playlist on TrackFinished; stops after the last track (no repeat in v1).
+// docs/adr/0003-testing-strategy.md. Auto-advances through the PlayQueue
+// on TrackFinished, honoring shuffle and repeat (ADR 0011); with repeat
+// off it stops after the last track.
 //
 // Callers pass explicit timestamps (millis()-style) rather than this
 // class reading a clock itself, so debounced volume persistence and
@@ -48,16 +50,30 @@ class PlaybackStateMachine {
     driver_.setVolume(volume_);
   }
 
+  // Replaces the queue. `shuffle` plays the whole playlist in random order
+  // (startIndex is then ignored); without it shuffle is switched off, so a
+  // tapped track always plays its list in order.
   void play(std::vector<std::string> playlist, size_t startIndex,
-            uint32_t nowMs) {
+            uint32_t nowMs, bool shuffle = false) {
     if (startIndex >= playlist.size()) return;
-    playlist_ = std::move(playlist);
-    index_ = startIndex;
-    if (driver_.playFile(playlist_[index_])) {
-      state_ = PlaybackState::Playing;
-      trackStartMs_ = nowMs;
-      pausedAccumMs_ = 0;
-    }
+    // A different permutation per shuffle, from one seed.
+    seed_ = seed_ * 1664525u + 1013904223u;
+    queue_.load(std::move(playlist), startIndex, shuffle, seed_);
+    playCurrent(nowMs);
+  }
+
+  // Seeds shuffling; call once from setup() with a hardware random value,
+  // or every boot shuffles the same way.
+  void setRandomSeed(uint32_t seed) { seed_ = seed; }
+
+  // Reorders the running queue without interrupting the current track.
+  void setShuffle(bool shuffle) { queue_.setShuffled(shuffle); }
+  bool shuffle() const { return queue_.shuffled(); }
+
+  void setRepeat(RepeatMode repeat) { repeat_ = repeat; }
+  RepeatMode repeat() const { return repeat_; }
+  void cycleRepeat() {
+    repeat_ = static_cast<RepeatMode>((static_cast<uint8_t>(repeat_) + 1) % 3);
   }
 
   void togglePlayPause(uint32_t nowMs) {
@@ -72,15 +88,19 @@ class PlaybackStateMachine {
     }
   }
 
-  void next(uint32_t nowMs) { advance(1, nowMs); }
-  void prev(uint32_t nowMs) { advance(-1, nowMs); }
+  void next(uint32_t nowMs) {
+    if (queue_.next(repeat_)) playCurrent(nowMs);
+  }
+  void prev(uint32_t nowMs) {
+    if (queue_.prev(repeat_)) playCurrent(nowMs);
+  }
 
   // Call when the driver reports the current file finished (e.g.
   // isRunning() transitioned true->false while we expected Playing).
   void onTrackFinished(uint32_t nowMs) {
     if (state_ != PlaybackState::Playing) return;
-    if (index_ + 1 < playlist_.size()) {
-      advance(1, nowMs);
+    if (queue_.onFinished(repeat_)) {
+      playCurrent(nowMs);
     } else {
       driver_.stop();
       state_ = PlaybackState::Stopped;
@@ -110,8 +130,9 @@ class PlaybackStateMachine {
   }
 
   PlaybackState state() const { return state_; }
-  size_t currentIndex() const { return index_; }
-  const std::string &currentPath() const { return playlist_[index_]; }
+  // Position in play order (shuffled order while shuffle is on).
+  size_t currentIndex() const { return queue_.position(); }
+  const std::string &currentPath() const { return queue_.current(); }
   uint8_t volume() const { return volume_; }
   bool hasPendingVolumeSave() const { return pendingVolumeSave_; }
 
@@ -141,14 +162,8 @@ class PlaybackStateMachine {
   }
 
  private:
-  void advance(int direction, uint32_t nowMs) {
-    if (playlist_.empty()) return;
-    long newIndex = static_cast<long>(index_) + direction;
-    if (newIndex < 0 || newIndex >= static_cast<long>(playlist_.size())) {
-      return;
-    }
-    index_ = static_cast<size_t>(newIndex);
-    if (driver_.playFile(playlist_[index_])) {
+  void playCurrent(uint32_t nowMs) {
+    if (driver_.playFile(queue_.current())) {
       state_ = PlaybackState::Playing;
       trackStartMs_ = nowMs;
       pausedAccumMs_ = 0;
@@ -157,8 +172,9 @@ class PlaybackStateMachine {
 
   PlaybackDriver &driver_;
   VolumePersistence &volumeStore_;
-  std::vector<std::string> playlist_;
-  size_t index_ = 0;
+  PlayQueue queue_;
+  RepeatMode repeat_ = RepeatMode::Off;
+  uint32_t seed_ = 1;
   PlaybackState state_ = PlaybackState::Stopped;
   uint8_t volume_ = 0;
   bool pendingVolumeSave_ = false;

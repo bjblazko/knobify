@@ -9,6 +9,7 @@ using knobify::playback::KeyValueStore;
 using knobify::playback::PlaybackDriver;
 using knobify::playback::PlaybackState;
 using knobify::playback::PlaybackStateMachine;
+using knobify::playback::RepeatMode;
 using knobify::playback::VolumePersistence;
 
 void setUp() {}
@@ -225,6 +226,82 @@ void test_loads_persisted_volume_on_begin() {
   TEST_ASSERT_EQUAL_UINT8(15, driver.lastVolume);
 }
 
+void test_repeat_all_wraps_to_first_track_when_last_finishes() {
+  FakeDriver driver;
+  FakeStore store;
+  VolumePersistence volume(store);
+  PlaybackStateMachine sm(driver, volume);
+  sm.begin();
+  sm.setRepeat(RepeatMode::All);
+
+  sm.play({"/a.mp3", "/b.mp3"}, 1, 0);
+  sm.onTrackFinished(1000);
+
+  TEST_ASSERT_TRUE(sm.state() == PlaybackState::Playing);
+  TEST_ASSERT_EQUAL_STRING("/a.mp3", driver.lastPlayed.c_str());
+}
+
+void test_repeat_one_restarts_the_finished_track() {
+  FakeDriver driver;
+  FakeStore store;
+  VolumePersistence volume(store);
+  PlaybackStateMachine sm(driver, volume);
+  sm.begin();
+  sm.setRepeat(RepeatMode::One);
+
+  sm.play({"/a.mp3", "/b.mp3"}, 0, 0);
+  sm.onTrackFinished(5000);
+
+  TEST_ASSERT_EQUAL_INT(2, driver.playCount);
+  TEST_ASSERT_EQUAL_STRING("/a.mp3", driver.lastPlayed.c_str());
+  TEST_ASSERT_EQUAL_UINT32(0, sm.elapsedMs(5000));  // Clock restarted.
+}
+
+void test_cycle_repeat_goes_off_all_one_off() {
+  FakeDriver driver;
+  FakeStore store;
+  VolumePersistence volume(store);
+  PlaybackStateMachine sm(driver, volume);
+
+  TEST_ASSERT_TRUE(sm.repeat() == RepeatMode::Off);
+  sm.cycleRepeat();
+  TEST_ASSERT_TRUE(sm.repeat() == RepeatMode::All);
+  sm.cycleRepeat();
+  TEST_ASSERT_TRUE(sm.repeat() == RepeatMode::One);
+  sm.cycleRepeat();
+  TEST_ASSERT_TRUE(sm.repeat() == RepeatMode::Off);
+}
+
+void test_shuffle_toggle_keeps_current_track_playing() {
+  FakeDriver driver;
+  FakeStore store;
+  VolumePersistence volume(store);
+  PlaybackStateMachine sm(driver, volume);
+  sm.begin();
+
+  sm.play({"/a.mp3", "/b.mp3", "/c.mp3"}, 1, 0);
+  sm.setShuffle(true);
+
+  TEST_ASSERT_TRUE(sm.shuffle());
+  TEST_ASSERT_EQUAL_INT(1, driver.playCount);  // No restart.
+  TEST_ASSERT_EQUAL_STRING("/b.mp3", sm.currentPath().c_str());
+}
+
+void test_play_without_shuffle_turns_shuffle_off() {
+  FakeDriver driver;
+  FakeStore store;
+  VolumePersistence volume(store);
+  PlaybackStateMachine sm(driver, volume);
+  sm.begin();
+
+  sm.play({"/a.mp3", "/b.mp3"}, 0, 0, true);
+  TEST_ASSERT_TRUE(sm.shuffle());
+  sm.play({"/a.mp3", "/b.mp3"}, 1, 0);
+
+  TEST_ASSERT_FALSE(sm.shuffle());
+  TEST_ASSERT_EQUAL_STRING("/b.mp3", driver.lastPlayed.c_str());
+}
+
 int main(int argc, char **argv) {
   UNITY_BEGIN();
   RUN_TEST(test_play_starts_playing_selected_track);
@@ -238,5 +315,10 @@ int main(int argc, char **argv) {
   RUN_TEST(test_elapsed_ms_excludes_paused_time);
   RUN_TEST(test_elapsed_ms_zero_when_stopped);
   RUN_TEST(test_loads_persisted_volume_on_begin);
+  RUN_TEST(test_repeat_all_wraps_to_first_track_when_last_finishes);
+  RUN_TEST(test_repeat_one_restarts_the_finished_track);
+  RUN_TEST(test_cycle_repeat_goes_off_all_one_off);
+  RUN_TEST(test_shuffle_toggle_keeps_current_track_playing);
+  RUN_TEST(test_play_without_shuffle_turns_shuffle_off);
   return UNITY_END();
 }

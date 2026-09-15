@@ -7,6 +7,7 @@
 
 #include "IconFont.h"
 #include "LvglButtonHelpers.h"
+#include "PlaylistBuilder.h"
 #include "ScreenHelpers.h"
 #include "St77916Driver.h"
 #include "Theme.h"
@@ -58,6 +59,9 @@ class ScanProgressLabelListener : public knobify::library::ScanProgressListener 
 void ScreenManager::begin() {
   uint8_t stored = 0;
   preferSpectrum_ = settings_.getU8(kSpectrumSettingKey, stored) && stored != 0;
+  if (settings_.getU8(kRepeatSettingKey, stored) && stored <= 2) {
+    playback_.setRepeat(static_cast<playback::RepeatMode>(stored));
+  }
   render();
 }
 
@@ -113,6 +117,12 @@ void ScreenManager::render() {
     renderBrightness();
   } else {
     std::vector<std::pair<std::string, int>> items;
+    // Library lists start with a Shuffle row whose scope is the list itself:
+    // the whole library, this artist, this album (ADR 0011). No scope
+    // setting -- where you start is the scope.
+    if (hasShuffleRow(current.kind)) {
+      items.emplace_back(LV_SYMBOL_SHUFFLE "  Shuffle", kShuffleItemId);
+    }
     switch (current.kind) {
       case ScreenKind::Artists:
         for (const auto &artist : library_.artists) {
@@ -260,9 +270,11 @@ void ScreenManager::renderList(
 
     auto ctx = std::make_unique<ItemContext>();
     ctx->self = this;
-    ctx->index = static_cast<int>(i);
+    ctx->isShuffle = hasShuffleRow(current.kind) && i == 0;
+    // Index into the screen's data (artists, albums, tracks), not the row.
+    ctx->index = static_cast<int>(i) - (hasShuffleRow(current.kind) ? 1 : 0);
     ctx->albumId = current.params.albumId;
-    if (current.kind == ScreenKind::Tracks) {
+    if (current.kind == ScreenKind::Tracks && !ctx->isShuffle) {
       ctx->trackId = static_cast<library::TrackId>(items[i].second);
     }
     if (current.kind == ScreenKind::Folder && i < folderEntries.size()) {
@@ -605,6 +617,32 @@ void ScreenManager::renderNowPlaying() {
   lv_obj_center(volumeHudLabel_);
   lv_obj_add_flag(volumeHudPill_, LV_OBJ_FLAG_HIDDEN);
 
+  // Shuffle and repeat toggles beside the time readout (ADR 0011): quiet
+  // buttons whose glyph turns confirm green while active -- state, not a
+  // second call to action, so Play/Pause stays the only accent. Created
+  // before the transport row so prev/next win where hit areas meet, and
+  // with no extended hit area: prev/next's own slop reaches down to them.
+  // x/y keep the 28px glyph inside the bezel at this height.
+  constexpr lv_coord_t kToggleX = 100;
+  const lv_coord_t toggleY = kTransportCenterY + 56 - 22;
+  auto makeToggle = [&](const char *glyph, bool active, lv_coord_t x,
+                        lv_event_cb_t cb) {
+    lv_obj_t *btn = makeIconButton(screen_, glyph, 44, 44, LV_ALIGN_TOP_MID, x,
+                                   toggleY, cb, this, ButtonRole::Quiet,
+                                   &knobify_icon_font_28);
+    lv_obj_set_ext_click_area(btn, 0);
+    if (active) {
+      lv_obj_set_style_text_color(lv_obj_get_child(btn, 0), theme::confirm(), 0);
+    }
+  };
+  makeToggle(KNOBIFY_ICON_SHUFFLE, playback_.shuffle(), -kToggleX,
+             &ScreenManager::onShuffleClicked);
+  playback::RepeatMode repeat = playback_.repeat();
+  makeToggle(repeat == playback::RepeatMode::One ? KNOBIFY_ICON_REPEAT_ONE
+                                                 : KNOBIFY_ICON_REPEAT,
+             repeat != playback::RepeatMode::Off, kToggleX,
+             &ScreenManager::onRepeatClicked);
+
   // Transport row: secondary (grey) prev/next either side of the one
   // primary control. Inset well within the round display's visible area at this
   // height -- see decision 6, ADR 0004.
@@ -835,6 +873,23 @@ void ScreenManager::onListItemClicked(lv_event_t *e) {
   ScreenManager *self = ctx->self;
   Screen current = self->tabs_.activeStack().current();
 
+  if (ctx->isShuffle) {
+    std::vector<std::string> playlist;
+    if (current.kind == ScreenKind::Artists) {
+      playlist = library::PlaylistBuilder::forLibrary(self->library_);
+    } else if (current.kind == ScreenKind::Albums) {
+      playlist = library::PlaylistBuilder::forArtist(self->library_,
+                                                     current.params.artistId);
+    } else {
+      playlist = library::PlaylistBuilder::forAlbum(self->library_,
+                                                    current.params.albumId);
+    }
+    if (playlist.empty()) return;
+    self->playback_.play(std::move(playlist), 0, millis(), /*shuffle=*/true);
+    self->goToNowPlaying();
+    return;
+  }
+
   switch (current.kind) {
     case ScreenKind::Artists:
       self->tabs_.activeStack().push(
@@ -850,18 +905,12 @@ void ScreenManager::onListItemClicked(lv_event_t *e) {
       self->render();
       break;
     case ScreenKind::Tracks: {
-      auto trackIds = self->library_.tracksFor(current.params.albumId);
-      std::vector<std::string> playlist;
-      size_t startIndex = 0;
-      for (size_t i = 0; i < trackIds.size(); ++i) {
-        for (const auto &track : self->library_.tracks) {
-          if (track.id == trackIds[i]) {
-            if (track.id == ctx->trackId) startIndex = playlist.size();
-            playlist.push_back(track.filePath);
-          }
-        }
-      }
-      self->playback_.play(playlist, startIndex, millis());
+      // Rows follow tracksFor() order, so the row index is the start index.
+      // In order, shuffle off: a tapped track always plays its album as listed.
+      self->playback_.play(
+          library::PlaylistBuilder::forAlbum(self->library_,
+                                             current.params.albumId),
+          static_cast<size_t>(ctx->index), millis());
       self->goToNowPlaying();
       break;
     }
@@ -922,6 +971,20 @@ void ScreenManager::onCoverSlotClicked(lv_event_t *e) {
   self->preferSpectrum_ = !self->preferSpectrum_;
   self->applyCoverSlotMode();
   self->settings_.setU8(kSpectrumSettingKey, self->preferSpectrum_ ? 1 : 0);
+}
+
+void ScreenManager::onShuffleClicked(lv_event_t *e) {
+  auto *self = static_cast<ScreenManager *>(lv_event_get_user_data(e));
+  self->playback_.setShuffle(!self->playback_.shuffle());
+  self->render();
+}
+
+void ScreenManager::onRepeatClicked(lv_event_t *e) {
+  auto *self = static_cast<ScreenManager *>(lv_event_get_user_data(e));
+  self->playback_.cycleRepeat();
+  self->settings_.setU8(kRepeatSettingKey,
+                        static_cast<uint8_t>(self->playback_.repeat()));
+  self->render();
 }
 
 void ScreenManager::onLockClicked(lv_event_t *e) {
