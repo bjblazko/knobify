@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <cstdlib>
-#include <string>
 
 #include "PlaybackStateMachine.h"
 
@@ -36,7 +35,7 @@ class Shuttle {
     held_ = true;
     step_ = 0;
     parked_ = false;
-    path_ = playback_.currentPath();
+    trackGeneration_ = playback_.trackGeneration();
     wasPaused_ = playback_.state() == PlaybackState::Paused;
     if (wasPaused_) playback_.togglePlayPause(nowMs);
     cycleStartMs_ = nowMs;
@@ -64,9 +63,12 @@ class Shuttle {
   void tick(uint32_t nowMs) {
     if (!held_) return;
     // Skipped or finished into another track: that's the buttons' job,
-    // and the old hold means nothing for the new track.
+    // and the old hold means nothing for the new track. Compared by
+    // trackGeneration(), not currentPath() -- a repeat-one restart (or a
+    // one-track queue on repeat-all) keeps the same path but is still a
+    // new track start.
     if (playback_.state() == PlaybackState::Stopped ||
-        playback_.currentPath() != path_) {
+        playback_.trackGeneration() != trackGeneration_) {
       drop();
       return;
     }
@@ -128,7 +130,7 @@ class Shuttle {
   bool parked_ = false;
   bool parkedAtEnd_ = false;
   uint32_t cycleStartMs_ = 0;
-  std::string path_;
+  uint32_t trackGeneration_ = 0;
 };
 
 }  // namespace knobify::playback

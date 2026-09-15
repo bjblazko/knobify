@@ -391,6 +391,51 @@ void test_can_seek_only_mp3_and_wav_with_a_track() {
   TEST_ASSERT_FALSE(sm.canSeek());
 }
 
+void test_track_generation_increments_on_play_next_and_restart() {
+  FakeDriver driver;
+  FakeStore store;
+  VolumePersistence volume(store);
+  PlaybackStateMachine sm(driver, volume);
+  sm.begin();
+
+  sm.play({"/a.mp3", "/b.mp3"}, 0, 0);
+  uint32_t afterPlay = sm.trackGeneration();
+  TEST_ASSERT_TRUE(afterPlay != 0);
+
+  sm.next(0);
+  uint32_t afterNext = sm.trackGeneration();
+  TEST_ASSERT_TRUE(afterNext != afterPlay);
+
+  sm.setRepeat(RepeatMode::One);
+  sm.onTrackFinished(0);  // Restarts the same track (/b.mp3).
+  uint32_t afterRestart = sm.trackGeneration();
+  TEST_ASSERT_TRUE(afterRestart != afterNext);
+}
+
+void test_track_generation_unchanged_by_pause_resume_and_cued_resume() {
+  FakeDriver driver;
+  FakeStore store;
+  VolumePersistence volume(store);
+  PlaybackStateMachine sm(driver, volume);
+  sm.begin();
+  sm.play({"/a.mp3"}, 0, 0);
+  uint32_t generation = sm.trackGeneration();
+
+  sm.togglePlayPause(0);  // Pause.
+  TEST_ASSERT_EQUAL_UINT32(generation, sm.trackGeneration());
+  sm.togglePlayPause(0);  // Resume.
+  TEST_ASSERT_EQUAL_UINT32(generation, sm.trackGeneration());
+
+  FakeDriver cuedDriver;
+  PlaybackStateMachine cuedSm(cuedDriver, volume);
+  cuedSm.begin();
+  cuedSm.cue({"/a.mp3"}, 0, false, knobify::playback::PlayScope::File, 1234, 5,
+             0);
+  uint32_t cuedGeneration = cuedSm.trackGeneration();
+  cuedSm.togglePlayPause(0);  // Resumes the cued track -- not a new track.
+  TEST_ASSERT_EQUAL_UINT32(cuedGeneration, cuedSm.trackGeneration());
+}
+
 int main(int argc, char **argv) {
   UNITY_BEGIN();
   RUN_TEST(test_play_starts_playing_selected_track);
@@ -414,5 +459,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_seek_by_keeps_elapsed_when_driver_refuses);
   RUN_TEST(test_seek_by_ignored_when_stopped);
   RUN_TEST(test_can_seek_only_mp3_and_wav_with_a_track);
+  RUN_TEST(test_track_generation_increments_on_play_next_and_restart);
+  RUN_TEST(test_track_generation_unchanged_by_pause_resume_and_cued_resume);
   return UNITY_END();
 }

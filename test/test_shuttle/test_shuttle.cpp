@@ -198,6 +198,35 @@ void test_track_change_drops_the_hold() {
   TEST_ASSERT_EQUAL_UINT(0, f.driver.seeks.size());
 }
 
+void test_repeat_one_restart_of_same_path_drops_the_hold() {
+  Fixture f;
+  f.playback.setRepeat(knobify::playback::RepeatMode::One);
+  f.shuttle.hold(0);
+  f.shuttle.turn(3, 0);
+
+  f.playback.onTrackFinished(100);  // Restarts /a.mp3 -- same path, new track.
+  f.shuttle.tick(400);
+
+  TEST_ASSERT_FALSE(f.shuttle.isHeld());
+  TEST_ASSERT_EQUAL_UINT(0, f.driver.seeks.size());
+}
+
+void test_hold_on_cued_track_then_tick_stays_held() {
+  FakeDriver cuedDriver;
+  FakeStore cuedStore;
+  VolumePersistence cuedVolume{cuedStore};
+  PlaybackStateMachine cuedSm{cuedDriver, cuedVolume};
+  Shuttle cuedShuttle{cuedSm};
+  cuedSm.begin();
+  cuedSm.cue({"/a.mp3"}, 0, false, knobify::playback::PlayScope::File, 1234, 5,
+             0);
+
+  TEST_ASSERT_TRUE(cuedShuttle.hold(2000));  // hold() resumes the cued track.
+  cuedShuttle.tick(2100);
+
+  TEST_ASSERT_TRUE(cuedShuttle.isHeld());
+}
+
 void test_no_jumps_while_duration_unknown() {
   Fixture f;
   f.driver.duration = 0;
@@ -224,5 +253,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_hold_from_pause_plays_cue_and_release_pauses_again);
   RUN_TEST(test_track_change_drops_the_hold);
   RUN_TEST(test_no_jumps_while_duration_unknown);
+  RUN_TEST(test_repeat_one_restart_of_same_path_drops_the_hold);
+  RUN_TEST(test_hold_on_cued_track_then_tick_stays_held);
   return UNITY_END();
 }

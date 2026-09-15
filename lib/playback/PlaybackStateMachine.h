@@ -200,6 +200,14 @@ class PlaybackStateMachine {
   // Position in play order (shuffled order while shuffle is on).
   size_t currentIndex() const { return queue_.position(); }
   const std::string &currentPath() const { return queue_.current(); }
+  // Bumped every time playCurrent() actually starts a file -- play(),
+  // next()/prev(), and an onTrackFinished() restart/advance -- so callers
+  // like Shuttle (ADR 0013) can tell a track restart (e.g. repeat-one, or
+  // a one-track queue on repeat-all) apart from merely resuming the same
+  // track, which currentPath() alone can't do. Resuming a cued track via
+  // togglePlayPause() does NOT bump this: it's the same track starting to
+  // actually play, not a change.
+  uint32_t trackGeneration() const { return trackGeneration_; }
   uint8_t volume() const { return volume_; }
   bool hasPendingVolumeSave() const { return pendingVolumeSave_; }
 
@@ -251,6 +259,7 @@ class PlaybackStateMachine {
       state_ = PlaybackState::Playing;
       trackStartMs_ = nowMs;
       pausedAccumMs_ = 0;
+      ++trackGeneration_;
     }
   }
 
@@ -270,6 +279,7 @@ class PlaybackStateMachine {
   uint32_t trackStartMs_ = 0;
   uint32_t pausedAccumMs_ = 0;
   uint32_t pauseStartMs_ = 0;
+  uint32_t trackGeneration_ = 0;
 };
 
 }  // namespace knobify::playback
