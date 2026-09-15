@@ -25,6 +25,11 @@ inline void setClampedText(lv_obj_t *label, const char *text, int maxLines) {
                          (maxLines - 1) * lineSpace;
   if (lv_obj_get_height(label) > maxHeight) {
     lv_obj_set_height(label, maxHeight);
+    // Without this, lv_obj_get_height() still returns the wrapped height
+    // until LVGL's next layout pass -- Now Playing placed the artist line
+    // below a long title's *second* line, under the transport buttons
+    // (found on the device 2026-09-15).
+    lv_obj_update_layout(label);
   }
 }
 
