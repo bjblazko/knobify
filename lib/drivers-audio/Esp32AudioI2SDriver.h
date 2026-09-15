@@ -7,7 +7,9 @@
 #include <freertos/semphr.h>
 #include <freertos/task.h>
 
+#include "Mp3Duration.h"
 #include "PlaybackDriver.h"
+#include "SdRawFile.h"
 
 namespace knobify::drivers {
 
@@ -58,6 +60,7 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
 
   // The library corrects the offset to a frame boundary per codec itself.
   bool playFileAt(const std::string &path, uint32_t filePosition) override {
+    exactDurationSeconds_ = readExactDuration(path);
     MutexGuard guard(mutex_);
     paused_ = false;
     bool ok = audio_.connecttoFS(SD_MMC, path.c_str(), filePosition);
@@ -147,7 +150,11 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
     return audio_.setFilePos(static_cast<uint32_t>(target));
   }
 
+  // The exact duration from the MP3's VBR header when it has one; otherwise
+  // the library's bitrate-based estimate (which for VBR files starts too
+  // long and corrects itself over the first seconds -- see Mp3Duration.h).
   uint32_t durationSeconds() override {
+    if (exactDurationSeconds_ != 0) return exactDurationSeconds_;
     MutexGuard guard(mutex_);
     return audio_.getAudioFileDuration();
   }
@@ -177,6 +184,21 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
     SemaphoreHandle_t m_;
   };
 
+  // One extra open per track start, before the decoder opens the file; not
+  // under mutex_: it's a separate handle, and SD_MMC serializes card access
+  // itself. Only MP3s carry the header.
+  static uint32_t readExactDuration(const std::string &path) {
+    auto dot = path.find_last_of('.');
+    if (dot == std::string::npos) return 0;
+    std::string ext = path.substr(dot + 1);
+    for (char &c : ext) c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+    if (ext != "mp3") return 0;
+    fs::File file = SD_MMC.open(path.c_str());
+    if (!file) return 0;
+    SdRawFile raw(std::move(file));
+    return library::Mp3Duration::readSeconds(raw);
+  }
+
   static void audioTaskTrampoline(void *self) {
     static_cast<Esp32AudioI2SDriver *>(self)->audioTaskLoop();
   }
@@ -196,6 +218,9 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
 
   Audio audio_;
   bool paused_ = false;
+  // From the current MP3's VBR header, 0 when unknown (set in playFileAt(),
+  // read by durationSeconds() -- both on the main task).
+  uint32_t exactDurationSeconds_ = 0;
   // Mirrors the last setVolume() so readRecentSamples() can report the
   // gain without taking mutex_ at spectrum frame rate.
   std::atomic<uint8_t> volume_{0};
