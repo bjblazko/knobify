@@ -34,8 +34,10 @@ struct LibraryIndex {
     return result;
   }
 
-  // Sorted by track number (ascending), unknown-number (0) tracks last,
-  // title as a stable tie-break -- so an album's tracks read in order.
+  // Sorted by disc, then track number (ascending) -- unknown disc (0)
+  // counts as disc 1, unknown-number (0) tracks go last within their disc,
+  // title as a stable tie-break -- so an album's tracks read in order,
+  // including multi-disc sets whose track numbers restart per disc.
   std::vector<TrackId> tracksFor(AlbumId albumId) const {
     std::vector<TrackId> result;
     for (const auto &track : tracks) {
@@ -44,6 +46,9 @@ struct LibraryIndex {
     std::sort(result.begin(), result.end(), [this](TrackId a, TrackId b) {
       const Track &left = tracks[a];
       const Track &right = tracks[b];
+      uint32_t leftDisc = left.discNumber == 0 ? 1 : left.discNumber;
+      uint32_t rightDisc = right.discNumber == 0 ? 1 : right.discNumber;
+      if (leftDisc != rightDisc) return leftDisc < rightDisc;
       uint32_t leftNum = left.trackNumber == 0 ? UINT32_MAX : left.trackNumber;
       uint32_t rightNum = right.trackNumber == 0 ? UINT32_MAX : right.trackNumber;
       if (leftNum != rightNum) return leftNum < rightNum;

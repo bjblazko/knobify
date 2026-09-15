@@ -80,6 +80,24 @@ std::vector<uint8_t> buildTaggedMp3WithTrackAndYear(
   return file;
 }
 
+std::vector<uint8_t> buildTaggedMp3WithDisc(
+    const std::string &artist, const std::string &album,
+    const std::string &title, const std::string &track,
+    const std::string &disc) {
+  std::vector<uint8_t> frames;
+  appendFrame(frames, "TIT2", title);
+  appendFrame(frames, "TPE1", artist);
+  appendFrame(frames, "TALB", album);
+  appendFrame(frames, "TRCK", track);
+  appendFrame(frames, "TPOS", disc);
+
+  std::vector<uint8_t> file;
+  file.insert(file.end(), {'I', 'D', '3', 3, 0, 0});
+  appendSynchsafe(file, static_cast<uint32_t>(frames.size()));
+  file.insert(file.end(), frames.begin(), frames.end());
+  return file;
+}
+
 }  // namespace
 
 void test_scanner_groups_tagged_files_by_artist_and_album() {
@@ -150,6 +168,44 @@ void test_tracks_for_sorted_by_track_number() {
   TEST_ASSERT_EQUAL_STRING("First", index.tracks[trackIds[0]].title.c_str());
   TEST_ASSERT_EQUAL_STRING("Second", index.tracks[trackIds[1]].title.c_str());
   TEST_ASSERT_EQUAL_STRING("Third", index.tracks[trackIds[2]].title.c_str());
+}
+
+void test_tracks_for_sorted_by_disc_then_track() {
+  FakeFileLister lister({
+      {"/a.mp3", 100, 1},
+      {"/b.mp3", 200, 2},
+      {"/c.mp3", 300, 3},
+      {"/d.mp3", 400, 4},
+  });
+  FakeFileOpener opener;
+  // A two-disc album listed interleaved -- track numbers restart per disc,
+  // so sorting by track number alone would mix the discs.
+  opener.put("/a.mp3", buildTaggedMp3WithDisc("Artist", "Box", "D2T1", "1/2", "2/2"));
+  opener.put("/b.mp3", buildTaggedMp3WithDisc("Artist", "Box", "D1T2", "2/2", "1/2"));
+  opener.put("/c.mp3", buildTaggedMp3WithDisc("Artist", "Box", "D2T2", "2/2", "2/2"));
+  opener.put("/d.mp3", buildTaggedMp3WithDisc("Artist", "Box", "D1T1", "1/2", "1/2"));
+
+  LibraryIndex index = LibraryScanner::scan(lister, opener);
+  auto trackIds = index.tracksFor(0);
+
+  TEST_ASSERT_EQUAL_UINT32(4, trackIds.size());
+  TEST_ASSERT_EQUAL_STRING("D1T1", index.tracks[trackIds[0]].title.c_str());
+  TEST_ASSERT_EQUAL_STRING("D1T2", index.tracks[trackIds[1]].title.c_str());
+  TEST_ASSERT_EQUAL_STRING("D2T1", index.tracks[trackIds[2]].title.c_str());
+  TEST_ASSERT_EQUAL_STRING("D2T2", index.tracks[trackIds[3]].title.c_str());
+  TEST_ASSERT_EQUAL_UINT16(2, index.tracks[trackIds[2]].discNumber);
+}
+
+void test_tag_reader_falls_back_to_filename_disc_and_track() {
+  FakeFileLister lister({{"/Music/Box/3-04 A Song.mp3", 10, 1}});
+  FakeFileOpener opener;
+  opener.put("/Music/Box/3-04 A Song.mp3", std::vector<uint8_t>(16, 0x00));
+
+  LibraryIndex index = LibraryScanner::scan(lister, opener);
+
+  TEST_ASSERT_EQUAL_UINT32(1, index.tracks.size());
+  TEST_ASSERT_EQUAL_UINT16(3, index.tracks[0].discNumber);
+  TEST_ASSERT_EQUAL_UINT16(4, index.tracks[0].trackNumber);
 }
 
 void test_albums_for_sorted_by_year() {
@@ -274,7 +330,7 @@ void test_index_cache_round_trips() {
   index.artists.push_back(Artist{0, "Artist One"});
   index.albums.push_back(Album{0, 0, "Album One"});
   index.tracks.push_back(Track{0, 0, "Track A", 1, "/a.mp3"});
-  index.tracks.push_back(Track{1, 0, "Track B", 2, "/b.mp3"});
+  index.tracks.push_back(Track{1, 0, "Track B", 2, "/b.mp3", 3});
   LibrarySignature sig{2, 12345};
 
   auto bytes = IndexCache::encode(index, sig);
@@ -290,6 +346,7 @@ void test_index_cache_round_trips() {
   TEST_ASSERT_EQUAL_UINT32(2, decoded.tracks.size());
   TEST_ASSERT_EQUAL_STRING("/b.mp3", decoded.tracks[1].filePath.c_str());
   TEST_ASSERT_EQUAL_UINT16(2, decoded.tracks[1].trackNumber);
+  TEST_ASSERT_EQUAL_UINT16(3, decoded.tracks[1].discNumber);
 }
 
 void test_index_cache_rejects_corrupt_buffer() {
@@ -321,6 +378,8 @@ int main(int argc, char **argv) {
   RUN_TEST(test_scanner_falls_back_to_unknown_for_untagged_files);
   RUN_TEST(test_scanner_skips_unopenable_files);
   RUN_TEST(test_tracks_for_sorted_by_track_number);
+  RUN_TEST(test_tracks_for_sorted_by_disc_then_track);
+  RUN_TEST(test_tag_reader_falls_back_to_filename_disc_and_track);
   RUN_TEST(test_albums_for_sorted_by_year);
   RUN_TEST(test_tag_reader_falls_back_to_filename_track_and_folder_year);
   RUN_TEST(test_scanner_notifies_new_album_once_per_album_with_folder_path);

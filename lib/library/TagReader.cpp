@@ -56,10 +56,15 @@ uint16_t parseLeadingYear(const std::string &text) {
   return (year >= 1000 && year <= 2999) ? static_cast<uint16_t>(year) : 0;
 }
 
-// A leading track number from a filename like "07 Song.mp3" (-> 7) or a
-// disc-qualified "2-01 Song.mp3" (-> 1, the track-within-disc number, not
-// the disc number) -- used when no tag provides a track number.
-uint16_t parseLeadingTrackNumberFromFilename(const std::string &path) {
+struct FilenameNumbers {
+  uint16_t disc = 0;
+  uint16_t track = 0;
+};
+
+// Leading numbers from a filename like "07 Song.mp3" (-> track 7) or a
+// disc-qualified "2-01 Song.mp3" (-> disc 2, track 1) -- used when no tag
+// provides them.
+FilenameNumbers parseLeadingNumbersFromFilename(const std::string &path) {
   std::string name = filenameWithoutExtension(path);
 
   auto readDigits = [&](size_t &i) -> long {
@@ -71,14 +76,20 @@ uint16_t parseLeadingTrackNumberFromFilename(const std::string &path) {
   };
 
   size_t i = 0;
+  FilenameNumbers numbers;
   long first = readDigits(i);
-  if (first < 0) return 0;
+  if (first < 0) return numbers;
   if (i < name.size() && name[i] == '-') {
     size_t afterDash = i + 1;
     long second = readDigits(afterDash);
-    if (second >= 0) return static_cast<uint16_t>(second);
+    if (second >= 0) {
+      numbers.disc = static_cast<uint16_t>(first);
+      numbers.track = static_cast<uint16_t>(second);
+      return numbers;
+    }
   }
-  return static_cast<uint16_t>(first);
+  numbers.track = static_cast<uint16_t>(first);
+  return numbers;
 }
 
 }  // namespace
@@ -104,8 +115,10 @@ TagResult TagReader::read(RawFile &file, const std::string &filePath) {
   if (result.title.empty()) {
     result.title = filenameWithoutExtension(filePath);
   }
-  if (result.trackNumber == 0) {
-    result.trackNumber = parseLeadingTrackNumberFromFilename(filePath);
+  if (result.trackNumber == 0 || result.discNumber == 0) {
+    FilenameNumbers numbers = parseLeadingNumbersFromFilename(filePath);
+    if (result.trackNumber == 0) result.trackNumber = numbers.track;
+    if (result.discNumber == 0) result.discNumber = numbers.disc;
   }
   if (result.year == 0) {
     result.year = parseLeadingYear(parentFolderName(filePath));

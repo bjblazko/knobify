@@ -65,7 +65,8 @@ LibraryIndex LibraryScanner::scan(FileLister &lister, FileOpener &opener,
 
       TrackId trackId = static_cast<TrackId>(index.tracks.size());
       index.tracks.push_back(
-          Track{trackId, albumId, tags.title, tags.trackNumber, entry.path});
+          Track{trackId, albumId, tags.title, tags.trackNumber, entry.path,
+                tags.discNumber});
 
       if (isNewAlbum && progress) {
         progress->onNewAlbum(parentDirectoryPath(entry.path), *file, tags);

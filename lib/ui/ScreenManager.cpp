@@ -234,6 +234,23 @@ void ScreenManager::renderList(
         library::FolderBrowser::list(directoryReader_, current.params.folderPath);
   }
 
+  // A multi-disc album's rows show "disc-track" (tracks restart per disc);
+  // a single-disc album's just the track number.
+  bool multiDisc = false;
+  if (current.kind == ScreenKind::Tracks) {
+    uint16_t firstDisc = 0;
+    for (const auto &track : library_.tracks) {
+      if (track.albumId != current.params.albumId) continue;
+      uint16_t disc = track.discNumber == 0 ? 1 : track.discNumber;
+      if (firstDisc == 0) {
+        firstDisc = disc;
+      } else if (disc != firstDisc) {
+        multiDisc = true;
+        break;
+      }
+    }
+  }
+
   for (size_t i = 0; i < items.size(); ++i) {
     lv_obj_t *btn = lv_list_add_btn(list_, nullptr, items[i].first.c_str());
     // Checkable + the theme's own checked style (rather than a manual
@@ -275,6 +292,32 @@ void ScreenManager::renderList(
       }
     }
 
+    // Track rows end in their track number, styled like the album year --
+    // tracks are sorted by it (LibraryIndex::tracksFor()). Nothing when
+    // the number is unknown.
+    if (current.kind == ScreenKind::Tracks &&
+        !(hasShuffleRow(current.kind) && i == 0)) {
+      const auto trackId = static_cast<library::TrackId>(items[i].second);
+      if (trackId < library_.tracks.size() &&
+          library_.tracks[trackId].trackNumber != 0) {
+        const library::Track &track = library_.tracks[trackId];
+        char numberText[12];
+        if (multiDisc) {
+          snprintf(numberText, sizeof(numberText), "%u-%02u",
+                   static_cast<unsigned>(
+                       track.discNumber == 0 ? 1 : track.discNumber),
+                   static_cast<unsigned>(track.trackNumber));
+        } else {
+          snprintf(numberText, sizeof(numberText), "%u",
+                   static_cast<unsigned>(track.trackNumber));
+        }
+        lv_obj_t *numberLabel = lv_label_create(btn);
+        lv_obj_set_style_text_font(numberLabel, &lv_font_montserrat_14, 0);
+        lv_label_set_text(numberLabel, numberText);
+        lv_obj_set_style_pad_column(btn, 10, 0);
+      }
+    }
+
     // The Brightness row ends in its current value, styled like the album
     // year: a plain secondary fact, not a badge.
     if (current.kind == ScreenKind::Settings && items[i].second == 0) {
@@ -287,7 +330,7 @@ void ScreenManager::renderList(
       lv_obj_set_style_pad_column(btn, 10, 0);
     }
 
-    // After the year label exists: the title label flex-grows into
+    // After the year/number label exists: the title label flex-grows into
     // whatever width the year leaves, and truncates within that.
     if (label) setClampedText(label, items[i].first.c_str(), 1);
 

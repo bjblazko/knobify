@@ -27,6 +27,7 @@ struct Track {
   std::string title;
   uint16_t trackNumber;  // 0 if unknown.
   std::string filePath;
+  uint16_t discNumber = 0;  // 0 if unknown (sorts as disc 1).
 };
 
 }  // namespace knobify::library

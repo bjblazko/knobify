@@ -221,7 +221,7 @@ TagResult Id3v2Parser::parse(RawFile &file) {
         result.picture.length = frameSize - imageOffset;
       }
     } else if (frameId == "TIT2" || frameId == "TPE1" || frameId == "TALB" ||
-        frameId == "TRCK" || frameId == "TYER" || frameId == "TDRC") {
+        frameId == "TRCK" || frameId == "TPOS" || frameId == "TYER" || frameId == "TDRC") {
       std::vector<uint8_t> data(frameSize);
       if (!file.seek(dataStart) ||
           file.read(data.data(), data.size()) != data.size()) {
@@ -241,6 +241,9 @@ TagResult Id3v2Parser::parse(RawFile &file) {
             result.album = text;
           } else if (frameId == "TRCK") {
             result.trackNumber = parseLeadingNumber(text);
+          } else if (frameId == "TPOS") {
+            // "disc" or "disc/total", like TRCK.
+            result.discNumber = parseLeadingNumber(text);
           } else if (frameId == "TYER" || frameId == "TDRC") {
             // TYER (v2.3) is just "YYYY"; TDRC (v2.4) is an ISO 8601
             // timestamp ("YYYY" or "YYYY-MM-DD..."), so take the leading

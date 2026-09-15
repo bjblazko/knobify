@@ -84,7 +84,8 @@ void test_id3v2_parses_title_artist_album_track() {
   auto file = buildId3v2Mp3({{"TIT2", "Song Title"},
                               {"TPE1", "The Artist"},
                               {"TALB", "The Album"},
-                              {"TRCK", "3/12"}});
+                              {"TRCK", "3/12"},
+                              {"TPOS", "2/5"}});
   FakeRawFile raw(file);
 
   TagResult result = Id3v2Parser::parse(raw);
@@ -94,6 +95,7 @@ void test_id3v2_parses_title_artist_album_track() {
   TEST_ASSERT_EQUAL_STRING("The Artist", result.artist.c_str());
   TEST_ASSERT_EQUAL_STRING("The Album", result.album.c_str());
   TEST_ASSERT_EQUAL_UINT16(3, result.trackNumber);
+  TEST_ASSERT_EQUAL_UINT16(2, result.discNumber);
 }
 
 void test_id3v2_missing_tag_returns_not_found() {
@@ -273,11 +275,12 @@ void test_vorbis_comment_parses_fields() {
   appendU32LE(static_cast<uint32_t>(vendor.size()));
   buf.insert(buf.end(), vendor.begin(), vendor.end());
 
-  appendU32LE(4);  // comment count
+  appendU32LE(5);  // comment count
   appendComment("ARTIST=Vorbis Artist");
   appendComment("ALBUM=Vorbis Album");
   appendComment("TITLE=Vorbis Title");
   appendComment("TRACKNUMBER=7");
+  appendComment("DISCNUMBER=2/3");
 
   FakeRawFile raw(buf);
   TagResult result = VorbisCommentParser::parse(raw);
@@ -287,6 +290,7 @@ void test_vorbis_comment_parses_fields() {
   TEST_ASSERT_EQUAL_STRING("Vorbis Album", result.album.c_str());
   TEST_ASSERT_EQUAL_STRING("Vorbis Title", result.title.c_str());
   TEST_ASSERT_EQUAL_UINT16(7, result.trackNumber);
+  TEST_ASSERT_EQUAL_UINT16(2, result.discNumber);
 }
 
 void test_vorbis_comment_missing_magic_returns_not_found() {

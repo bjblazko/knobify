@@ -59,14 +59,22 @@
 #define LV_MEM_CUSTOM 0
 #if LV_MEM_CUSTOM == 0
     /*Size of the memory available for `lv_mem_alloc()` in bytes (>= 2kB)*/
-    #define LV_MEM_SIZE (96U * 1024U)          /*[bytes]*/
+    /*knobify: 2 MB in PSRAM (see LV_MEM_POOL_ALLOC). Every list row is a
+     *real LVGL object, so the former 96 KB internal-RAM pool capped a
+     *library screen (artists, a big album or folder) at a few hundred rows.*/
+    #define LV_MEM_SIZE (2048U * 1024U)          /*[bytes]*/
 
     /*Set an address for the memory pool instead of allocating it as a normal array. Can be in external SRAM too.*/
     #define LV_MEM_ADR 0     /*0: unused*/
     /*Instead of an address give a memory allocator that will be called to get a memory pool for LVGL. E.g. my_malloc*/
     #if LV_MEM_ADR == 0
-        #undef LV_MEM_POOL_INCLUDE
-        #undef LV_MEM_POOL_ALLOC
+        #ifdef ARDUINO
+            #define LV_MEM_POOL_INCLUDE <esp32-hal-psram.h>
+            #define LV_MEM_POOL_ALLOC   ps_malloc
+        #else
+            #undef LV_MEM_POOL_INCLUDE
+            #undef LV_MEM_POOL_ALLOC
+        #endif
     #endif
 
 #else       /*LV_MEM_CUSTOM*/
