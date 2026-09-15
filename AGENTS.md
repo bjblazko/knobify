@@ -19,9 +19,11 @@ duplicating it.
 ## Hardware gotchas (quick index — see linked sections for detail)
 
 - **Touch X is miscalibrated in the raw CST816 data** (raw ~= 1.18 *
-  visual - 66), corrected by `lib/input/TouchCalibration.h`. "Buttons
-  miss taps" → build with `-DKNOBIFY_TOUCH_DEBUG`, send `CALIB` over
-  serial and re-fit before touching sizes/timing. See ADR 0004.
+  visual - 66), corrected by `lib/input/TouchCalibration.h` (defaults)
+  or a re-fit saved from Settings > Touch calibration (NVS `touchcal`,
+  ADR 0010). "Buttons miss taps" → run that calibration first (its fit
+  is logged as `[touchcal]` on serial), and use `-DKNOBIFY_TOUCH_DEBUG`
+  logging before touching sizes/timing. See ADR 0004.
 
 - **Spectrum frame cost**: build with `-DKNOBIFY_SPECTRUM_DEBUG` to log
   samples/rate/gain and the worst per-frame analyzer time every 90 frames

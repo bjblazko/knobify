@@ -8,6 +8,7 @@
 #include "ScreenId.h"
 #include "Shuttle.h"
 #include "TabController.h"
+#include "TouchCalibrator.h"
 
 namespace knobify::input {
 
@@ -22,9 +23,9 @@ class ListMoveSink {
 };
 
 // The context-sensitive piece (decision 3, ADR 0004): routes encoder
-// deltas to list/tile selection, volume, the shuttle (while held, ADR 0013) or
-// brightness depending on the current screen, and routes the one recognized
-// gesture (left-to-right swipe) to TabController's pop-or-switch-tab logic.
+// deltas to list/tile selection, volume, the shuttle (while held, ADR 0013),
+// brightness or cancelling touch calibration depending on the current
+// screen, and routes the one recognized gesture (left-to-right swipe) to TabController's pop-or-switch-tab logic.
 // Pure logic over TabController/PlaybackStateMachine/Shuttle/ListMoveSink --
 // host-testable, no hardware or LVGL involved.
 class InputRouter {
@@ -32,11 +33,13 @@ class InputRouter {
   InputRouter(navigation::TabController &tabs,
               playback::PlaybackStateMachine &playback,
               playback::Shuttle &shuttle,
-              power::BrightnessSetting &brightness, ListMoveSink &listSink)
+              power::BrightnessSetting &brightness,
+              TouchCalibrationFlow &calibration, ListMoveSink &listSink)
       : tabs_(tabs),
         playback_(playback),
         shuttle_(shuttle),
         brightness_(brightness),
+        calibration_(calibration),
         listSink_(listSink) {}
 
   void onEncoderDelta(int16_t delta, uint32_t nowMs) {
@@ -52,6 +55,12 @@ class InputRouter {
         break;
       case navigation::ScreenKind::Brightness:
         brightness_.adjust(delta, nowMs);
+        break;
+      case navigation::ScreenKind::TouchCalibration:
+        // The way out that never depends on touch: restores the previous
+        // calibration and leaves (TouchCalibrator.h).
+        calibration_.cancel();
+        tabs_.back();
         break;
       default:
         // Browse lists and the Home tiles alike.
@@ -73,6 +82,7 @@ class InputRouter {
   playback::PlaybackStateMachine &playback_;
   playback::Shuttle &shuttle_;
   power::BrightnessSetting &brightness_;
+  TouchCalibrationFlow &calibration_;
   ListMoveSink &listSink_;
 };
 

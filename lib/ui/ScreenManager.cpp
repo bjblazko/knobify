@@ -96,6 +96,7 @@ void ScreenManager::render() {
   tiles_ = nullptr;
   brightnessArcHost_ = nullptr;
   brightnessLabel_ = nullptr;
+  calibrationArcHost_ = nullptr;
   miniBar_ = nullptr;
   elapsedLabel_ = nullptr;
   coverImg_ = nullptr;
@@ -127,6 +128,11 @@ void ScreenManager::render() {
     renderHome();
   } else if (current.kind == ScreenKind::Brightness) {
     renderBrightness();
+  } else if (current.kind == ScreenKind::TouchCalibration) {
+    // No back button or caption: the top target sits where they would,
+    // and the knob is the way out (renderTouchCalibration()).
+    renderTouchCalibration();
+    return;
   } else {
     std::vector<std::pair<std::string, int>> items;
     // Library lists start with a Shuffle row whose scope is the list itself:
@@ -167,7 +173,8 @@ void ScreenManager::render() {
       }
       case ScreenKind::Settings:
         items.emplace_back("Brightness", 0);
-        items.emplace_back("Rescan library", 1);
+        items.emplace_back("Touch calibration", 1);
+        items.emplace_back("Rescan library", 2);
         break;
       default:
         break;
@@ -1151,6 +1158,10 @@ void ScreenManager::onListItemClicked(lv_event_t *e) {
     case ScreenKind::Settings:
       if (ctx->index == 0) {
         self->tabs_.activeStack().push(Screen{ScreenKind::Brightness, {}});
+        self->render();
+      } else if (ctx->index == 1) {
+        self->touchCalibration_.start(millis());
+        self->tabs_.activeStack().push(Screen{ScreenKind::TouchCalibration, {}});
         self->render();
       } else {
         self->runRescan();

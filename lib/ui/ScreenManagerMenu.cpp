@@ -1,10 +1,13 @@
 // The main menu and settings screens (ADR 0010) -- ScreenManager methods
 // kept apart from the music screens in ScreenManager.cpp. Settings itself
 // is a plain list and renders through ScreenManager::renderList().
+#include <Arduino.h>
+
 #include <algorithm>
 #include <cstdio>
 
 #include "IconFont.h"
+#include "LvglButtonHelpers.h"
 #include "ScreenHelpers.h"
 #include "ScreenManager.h"
 #include "St77916Driver.h"
@@ -36,6 +39,21 @@ constexpr MenuEntry kMenuEntries[] = {
 };
 constexpr int kMenuEntryCount =
     static_cast<int>(sizeof(kMenuEntries) / sizeof(kMenuEntries[0]));
+
+// A solid mark the calibration screen draws at (cx, cy): a cross bar or a
+// dot, centered there.
+lv_obj_t *makeMark(lv_obj_t *parent, lv_coord_t cx, lv_coord_t cy,
+                   lv_coord_t w, lv_coord_t h, lv_color_t color) {
+  lv_obj_t *mark = lv_obj_create(parent);
+  lv_obj_set_size(mark, w, h);
+  lv_obj_set_pos(mark, cx - w / 2, cy - h / 2);
+  lv_obj_set_style_bg_color(mark, color, 0);
+  lv_obj_set_style_border_width(mark, 0, 0);
+  lv_obj_set_style_radius(mark, LV_RADIUS_CIRCLE, 0);
+  lv_obj_clear_flag(mark, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_clear_flag(mark, LV_OBJ_FLAG_SCROLLABLE);
+  return mark;
+}
 
 // Tile geometry. Two columns whose circles sit 28px apart -- more than the
 // 20px two touch-slop margins need (ux-guidelines §3a). The first row's
@@ -187,6 +205,115 @@ void ScreenManager::updateBrightnessDisplay() {
   snprintf(text, sizeof(text), "%u%%",
            static_cast<unsigned>(brightness_.percent()));
   lv_label_set_text(brightnessLabel_, text);
+}
+
+void ScreenManager::renderTouchCalibration() {
+  using input::CalibrationPhase;
+  using input::TouchCalibrator;
+  shownCalibrationPhase_ = touchCalibration_.phase();
+  shownCalibrationTargets_ = touchCalibration_.targetsDone();
+  shownCalibrationRejected_ = touchCalibration_.lastFitRejected();
+  auto addLabel = [this](const char *text, const lv_font_t *font,
+                         lv_color_t color, lv_coord_t dy) {
+    lv_obj_t *label = lv_label_create(screen_);
+    lv_obj_set_style_text_font(label, font, 0);
+    lv_obj_set_style_text_color(label, color, 0);
+    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(label, text);
+    lv_obj_align(label, LV_ALIGN_CENTER, 0, dy);
+    return label;
+  };
+
+  if (shownCalibrationPhase_ == CalibrationPhase::Verifying) {
+    // The new calibration is already live: tapping Keep proves it works.
+    // If it doesn't, Keep can't be hit and the ring runs out.
+    addLabel("Touch calibrated", &lv_font_montserrat_20, theme::ink(), -84);
+    makeIconButton(screen_, "Keep", 96, 96, LV_ALIGN_CENTER, 0, 0,
+                   &ScreenManager::onCalibrationKeepClicked, this,
+                   ButtonRole::Primary, &lv_font_montserrat_20);
+    addLabel("Reverts unless kept", &lv_font_montserrat_14, theme::structure(),
+             84);
+    ui_widgets::EdgeArcConfig arcConfig;
+    arcConfig.startAngle = 135;
+    arcConfig.endAngle = 45;
+    arcConfig.widthPx = 12;
+    arcConfig.color = theme::accent();
+    arcConfig.hasBackgroundColor = true;
+    arcConfig.backgroundColor = theme::surfaceAlt();
+    calibrationArcHost_ = makeEdgeArcHost(screen_);
+    calibrationArc_.create(calibrationArcHost_, arcConfig, 0,
+                           input::TouchCalibrationFlow::kVerifyTimeoutMs);
+    calibrationArc_.setValue(static_cast<int32_t>(
+        touchCalibration_.verifyRemainingMs(millis())));
+    return;
+  }
+
+  // Capturing: one accent cross at a time, taken targets as quiet dots.
+  for (size_t i = 0; i < TouchCalibrator::kTargetCount; ++i) {
+    const auto &t = TouchCalibrator::kTargets[i];
+    if (i < shownCalibrationTargets_) {
+      makeMark(screen_, t.x, t.y, 10, 10, theme::structure());
+    } else if (i == shownCalibrationTargets_) {
+      makeMark(screen_, t.x, t.y, 36, 4, theme::accent());
+      makeMark(screen_, t.x, t.y, 4, 36, theme::accent());
+    }
+  }
+  addLabel(shownCalibrationRejected_ ? "Didn't fit.\nTry again" : "Tap the cross",
+           &lv_font_montserrat_20, theme::ink(),
+           shownCalibrationRejected_ ? -24 : -16);
+  char progress[16];
+  snprintf(progress, sizeof(progress), "%u of %u",
+           static_cast<unsigned>(shownCalibrationTargets_ + 1),
+           static_cast<unsigned>(TouchCalibrator::kTargetCount));
+  addLabel(progress, &lv_font_montserrat_14, theme::structure(), 18);
+  // The one exit, and it never depends on touch.
+  addLabel("Turn knob to cancel", &lv_font_montserrat_14, theme::structure(),
+           52);
+}
+
+void ScreenManager::onCalibrationKeepClicked(lv_event_t *e) {
+  auto *self = static_cast<ScreenManager *>(lv_event_get_user_data(e));
+  // Leaving the screen happens in tickTouchCalibration(), outside this
+  // event.
+  self->touchCalibration_.keep();
+}
+
+void ScreenManager::tickTouchCalibration(uint32_t nowMs) {
+  using input::CalibrationOutcome;
+  touchCalibration_.tick(nowMs);
+  bool onScreen = tabs_.activeStack().current().kind == ScreenKind::TouchCalibration;
+  // Left without finishing (a swipe back during Keep): don't keep it.
+  if (!onScreen) touchCalibration_.cancel();
+
+  CalibrationOutcome outcome = touchCalibration_.takeOutcome();
+  if (outcome != CalibrationOutcome::None) {
+    const input::TouchCalibration &cal = touchCalibration_.active();
+    Serial.printf("[touchcal] %s: x scale=%d offset=%d, y scale=%d offset=%d\n",
+                  outcome == CalibrationOutcome::Saved      ? "saved"
+                  : outcome == CalibrationOutcome::Reverted ? "reverted"
+                                                            : "cancelled",
+                  cal.xScaleMilli, cal.xOffset, cal.yScaleMilli, cal.yOffset);
+    if (onScreen) tabs_.back();
+    render();
+    constexpr ui_widgets::MessageAnchor kAnchor{drivers::kLcdHorRes / 2,
+                                                drivers::kLcdVerRes / 2};
+    if (outcome == CalibrationOutcome::Saved) {
+      messages_.show("Touch calibration saved", kAnchor, nowMs);
+    } else if (outcome == CalibrationOutcome::Reverted) {
+      messages_.show("Not saved", kAnchor, nowMs);
+    }
+    return;
+  }
+
+  if (!onScreen || renderedKind_ != ScreenKind::TouchCalibration) return;
+  if (touchCalibration_.phase() != shownCalibrationPhase_ ||
+      touchCalibration_.targetsDone() != shownCalibrationTargets_ ||
+      touchCalibration_.lastFitRejected() != shownCalibrationRejected_) {
+    render();
+  } else if (calibrationArcHost_) {
+    calibrationArc_.setValue(
+        static_cast<int32_t>(touchCalibration_.verifyRemainingMs(nowMs)));
+  }
 }
 
 }  // namespace knobify::ui

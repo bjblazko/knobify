@@ -123,7 +123,8 @@ init/driver code ported from that demo.
 - **CST816 touch X doesn't match the display's X.** Raw X ≈ 1.18 ×
   visual X − 66 (measured 2026-09-13 with crosshair targets; Y matches).
   Uncorrected, taps land 20–50px left of the finger. Corrected in
-  `lib/input/TouchCalibration.h`; see ADR 0004 for how to re-measure.
+  `lib/input/TouchCalibration.h`; re-measure on the device with
+  Settings > Touch calibration (ADR 0010).
   The chip also NACKs every I2C read while nothing is touching it, so a
   failed read means "not pressed".
 

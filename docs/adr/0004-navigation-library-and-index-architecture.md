@@ -305,8 +305,10 @@ each one only visible by actually tapping through the UI on hardware:
   10px extended click area (`LvglButtonHelpers.h`). Note: the CST816
   NACKs every I2C read while untouched, so a failed read genuinely means
   "not pressed" -- don't "fix" it by holding the previous state. The
-  diagnostics stay in the code behind `-DKNOBIFY_TOUCH_DEBUG` (plus a
-  `CALIB` serial command that draws the crosshairs).
+  diagnostics stay in the code behind `-DKNOBIFY_TOUCH_DEBUG`. The
+  `CALIB` serial crosshair command used for the fit was later replaced by
+  Settings > Touch calibration, which fits and saves on the device
+  (ADR 0010).
 
 ## Consequences
 

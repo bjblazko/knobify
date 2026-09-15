@@ -24,6 +24,7 @@
 #include "SpectrumAnalyzer.h"
 #include "St77916Driver.h"
 #include "TabController.h"
+#include "TouchCalibrator.h"
 
 namespace knobify::ui {
 
@@ -53,6 +54,7 @@ class ScreenManager : public input::ListMoveSink {
                 library::CoverWriter &coverWriter,
                 playback::KeyValueStore &settings,
                 power::BrightnessSetting &brightness,
+                input::TouchCalibrationFlow &touchCalibration,
                 ui_widgets::MessageArea &messages)
       : tabs_(tabs),
         library_(library),
@@ -67,6 +69,7 @@ class ScreenManager : public input::ListMoveSink {
         coverWriter_(coverWriter),
         settings_(settings),
         brightness_(brightness),
+        touchCalibration_(touchCalibration),
         messages_(messages) {}
 
   void begin();
@@ -106,6 +109,12 @@ class ScreenManager : public input::ListMoveSink {
   // call after any encoder tick. A no-op on every other screen.
   void updateBrightnessDisplay();
 
+  // Drives the Touch calibration screen: re-renders as targets are taken
+  // or the phase changes, runs the Keep countdown, and leaves the screen
+  // (with a message) once the flow ends -- however it ended. Also cancels
+  // a flow whose screen was left some other way. Call every loop().
+  void tickTouchCalibration(uint32_t nowMs);
+
  private:
   void renderList(const std::vector<std::pair<std::string, int>> &items,
                    bool showMiniBar);
@@ -114,6 +123,8 @@ class ScreenManager : public input::ListMoveSink {
   // Main menu and settings -- ScreenManagerMenu.cpp (ADR 0010).
   void renderHome();
   void renderBrightness();
+  void renderTouchCalibration();
+  static void onCalibrationKeepClicked(lv_event_t *e);
   void runRescan();
   void renderBackButtonIfNeeded();
   void renderContextCaption();
@@ -173,6 +184,7 @@ class ScreenManager : public input::ListMoveSink {
   library::CoverWriter &coverWriter_;
   playback::KeyValueStore &settings_;
   power::BrightnessSetting &brightness_;
+  input::TouchCalibrationFlow &touchCalibration_;
   ui_widgets::MessageArea &messages_;
 
   static constexpr uint32_t kVolumeHudTimeoutMs = 3000;
@@ -230,6 +242,13 @@ class ScreenManager : public input::ListMoveSink {
   lv_obj_t *brightnessArcHost_ = nullptr;
   lv_obj_t *brightnessLabel_ = nullptr;
   ui_widgets::EdgeArc brightnessArc_;
+  // What the Touch calibration screen currently shows, to re-render only
+  // on change.
+  input::CalibrationPhase shownCalibrationPhase_ = input::CalibrationPhase::Idle;
+  size_t shownCalibrationTargets_ = 0;
+  bool shownCalibrationRejected_ = false;
+  lv_obj_t *calibrationArcHost_ = nullptr;
+  ui_widgets::EdgeArc calibrationArc_;
   lv_obj_t *miniBar_ = nullptr;
   lv_obj_t *elapsedLabel_ = nullptr;
   lv_obj_t *coverImg_ = nullptr;

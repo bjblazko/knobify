@@ -40,7 +40,7 @@
 #include "Shuttle.h"
 #include "St77916Driver.h"
 #include "TabController.h"
-#include "TouchCalibration.h"
+#include "TouchCalibrator.h"
 #include "TJpgDecoderAdapter.h"
 #include "Theme.h"
 #include "Version.h"
@@ -192,6 +192,7 @@ knobify::playback::PlaybackStateMachine g_playback(g_audioDriver, g_volume);
 knobify::playback::Shuttle g_shuttle(g_playback);
 knobify::navigation::TabController g_tabs;
 knobify::power::BrightnessSetting g_brightness(g_nvsStore);
+knobify::input::TouchCalibrationFlow g_touchCalibration(g_nvsStore);
 
 knobify::drivers::St77916Driver g_display;
 knobify::drivers::Cst816Driver g_touch;
@@ -203,13 +204,14 @@ knobify::ui_widgets::MessageArea g_messageArea;
 knobify::ui::ScreenManager g_screenManager(
     g_tabs, g_libraryIndex, g_directoryReader, g_playback, g_shuttle,
     g_lockController, g_libraryRescanner, g_coverReader, g_fileOpener,
-    g_jpegDecoder, g_coverWriter, g_nvsStore, g_brightness, g_messageArea);
+    g_jpegDecoder, g_coverWriter, g_nvsStore, g_brightness, g_touchCalibration, g_messageArea);
 knobify::ui::LockOverlay g_lockOverlay(g_lockController);
 knobify::drivers::BatteryAdcDriver g_batteryAdc;
 knobify::power::BatteryMonitor g_batteryMonitor;
 knobify::ui::BatteryIndicator g_batteryIndicator(g_batteryMonitor);
 knobify::input::InputRouter g_inputRouter(g_tabs, g_playback, g_shuttle,
-                                          g_brightness, g_screenManager);
+                                          g_brightness, g_touchCalibration,
+                                          g_screenManager);
 knobify::input::GestureRecognizer g_gestureRecognizer;
 
 bool sdFileExists(const std::string &path) { return SD_MMC.exists(path.c_str()); }
@@ -265,6 +267,7 @@ void setup() {
   // RNG, seeded from RF/bootloader entropy).
   g_playback.setRandomSeed(esp_random());
   g_brightness.begin();
+  g_touchCalibration.begin();
 
   if (!g_touch.begin()) {
     Serial.println("Touch init FAILED -- check wiring/pinout in device.md");
@@ -372,28 +375,6 @@ void pollSerialCommands() {
         if (strcmp(buf, "SCREENSHOT") == 0) {
           g_lvglGlue.writeScreenshotToSerial();
         }
-#ifdef KNOBIFY_TOUCH_DEBUG
-        if (strcmp(buf, "CALIB") == 0) {
-          static const int kTargets[][2] = {
-              {180, 180}, {90, 180}, {270, 180}, {180, 90}, {180, 270}};
-          lv_obj_t *layer = lv_layer_top();
-          for (const auto &t : kTargets) {
-            lv_obj_t *h = lv_obj_create(layer);
-            lv_obj_set_size(h, 30, 3);
-            lv_obj_set_pos(h, t[0] - 15, t[1] - 1);
-            lv_obj_set_style_bg_color(h, lv_color_hex(0xFF0000), 0);
-            lv_obj_set_style_border_width(h, 0, 0);
-            lv_obj_set_style_radius(h, 0, 0);
-            lv_obj_t *v = lv_obj_create(layer);
-            lv_obj_set_size(v, 3, 30);
-            lv_obj_set_pos(v, t[0] - 1, t[1] - 15);
-            lv_obj_set_style_bg_color(v, lv_color_hex(0xFF0000), 0);
-            lv_obj_set_style_border_width(v, 0, 0);
-            lv_obj_set_style_radius(v, 0, 0);
-          }
-          Serial.println("CALIB targets drawn");
-        }
-#endif
         len = 0;
       }
     } else if (len < sizeof(buf) - 1) {
@@ -421,7 +402,9 @@ void loop() {
   // as a swipe -- see LvglGlue.h.
   knobify::input::TouchSample touchSample{};
   g_touch.poll(touchSample);
-  touchSample = knobify::input::TouchCalibration::apply(touchSample);
+  // Kept raw for Settings > Touch calibration, which fits from raw points.
+  const knobify::input::TouchSample rawTouchSample = touchSample;
+  touchSample = g_touchCalibration.active().apply(rawTouchSample);
 
 #ifdef KNOBIFY_TOUCH_DEBUG
   {
@@ -478,6 +461,11 @@ void loop() {
 
   if (g_swallowingWakeTouch) {
     if (!touchSample.pressed) g_swallowingWakeTouch = false;
+  } else if (g_touchCalibration.isCapturing()) {
+    // Calibration taps go to the calibrator only: LVGL sees no touch (so
+    // nothing underneath clicks) and no gesture can pop the screen.
+    g_touchCalibration.feedRaw(rawTouchSample, now);
+    g_lvglGlue.feedTouch(knobify::input::TouchSample{});
   } else {
     g_lvglGlue.feedTouch(touchSample);
     // Sideways drift while turning the knob during a shuttle hold
@@ -513,6 +501,11 @@ void loop() {
     }
   }
   g_screenManager.tickVolumeHud(now);
+
+  // A calibration never survives the display going dark or the lock
+  // screen: nobody is there to confirm it (TouchCalibrator.h).
+  if (!displayOn || g_lockController.isLocked()) g_touchCalibration.cancel();
+  g_screenManager.tickTouchCalibration(now);
 
   // A shuttle hold ends with the finger (the pill's RELEASED/PRESS_LOST
   // normally does it; this also covers the pill being deleted by a

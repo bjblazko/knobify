@@ -1,14 +1,23 @@
 #include <unity.h>
 
+#include <functional>
 #include <map>
+#include <vector>
 
+#include "BlobStore.h"
 #include "BrightnessSetting.h"
 #include "GestureRecognizer.h"
 #include "InputRouter.h"
 #include "Shuttle.h"
 #include "TouchCalibration.h"
+#include "TouchCalibrator.h"
 #include "TouchLatch.h"
 
+using knobify::input::CalibrationOutcome;
+using knobify::input::CalibrationPhase;
+using knobify::input::TouchCalibrationFlow;
+using knobify::input::TouchCalibrator;
+using knobify::resume::BlobStore;
 using knobify::input::GestureRecognizer;
 using knobify::input::GestureType;
 using knobify::input::InputRouter;
@@ -66,6 +75,50 @@ class RecordingListSink : public ListMoveSink {
   int16_t lastDelta = 0;
 };
 
+class FakeBlobStore : public BlobStore {
+ public:
+  bool getBlob(const std::string &key, std::vector<uint8_t> &out) override {
+    auto it = data.find(key);
+    if (it == data.end()) return false;
+    out = it->second;
+    return true;
+  }
+  bool setBlob(const std::string &key, const std::vector<uint8_t> &value) override {
+    data[key] = value;
+    return true;
+  }
+  void removeBlob(const std::string &key) override { data.erase(key); }
+  std::map<std::string, std::vector<uint8_t>> data;
+};
+
+// Taps each raw point in turn, well apart in time; returns the time after.
+uint32_t feedTaps(const std::function<void(const TouchSample &, uint32_t)> &feed,
+                  std::initializer_list<TouchCalibrator::Point> taps) {
+  uint32_t now = 1000;
+  for (const auto &p : taps) {
+    feed({p.x, p.y, true}, now);
+    now += 40;
+    feed({p.x, p.y, true}, now);
+    now += 80;
+    feed({p.x, p.y, false}, now);
+    now += 500;
+  }
+  return now;
+}
+
+uint32_t feedTaps(TouchCalibrator &calibrator,
+                  std::initializer_list<TouchCalibrator::Point> taps) {
+  calibrator.reset(0);
+  return feedTaps(
+      [&](const TouchSample &s, uint32_t now) { calibrator.feed(s, now); }, taps);
+}
+
+uint32_t feedTaps(TouchCalibrationFlow &flow,
+                  std::initializer_list<TouchCalibrator::Point> taps) {
+  return feedTaps(
+      [&](const TouchSample &s, uint32_t now) { flow.feedRaw(s, now); }, taps);
+}
+
 }  // namespace
 
 void test_encoder_scrolls_list_on_browse_screen() {
@@ -78,7 +131,9 @@ void test_encoder_scrolls_list_on_browse_screen() {
   RecordingListSink sink;
   BrightnessSetting brightness(store);
   Shuttle shuttle(playback);
-  InputRouter router(tabs, playback, shuttle, brightness, sink);
+  FakeBlobStore blobs;
+  TouchCalibrationFlow calibration(blobs);
+  InputRouter router(tabs, playback, shuttle, brightness, calibration, sink);
 
   router.onEncoderDelta(3, 0);
 
@@ -96,7 +151,9 @@ void test_encoder_adjusts_volume_on_now_playing_screen() {
   RecordingListSink sink;
   BrightnessSetting brightness(store);
   Shuttle shuttle(playback);
-  InputRouter router(tabs, playback, shuttle, brightness, sink);
+  FakeBlobStore blobs;
+  TouchCalibrationFlow calibration(blobs);
+  InputRouter router(tabs, playback, shuttle, brightness, calibration, sink);
 
   uint8_t before = playback.volume();
   router.onEncoderDelta(2, 0);
@@ -116,7 +173,9 @@ void test_encoder_shuttles_instead_of_volume_while_held() {
   RecordingListSink sink;
   BrightnessSetting brightness(store);
   Shuttle shuttle(playback);
-  InputRouter router(tabs, playback, shuttle, brightness, sink);
+  FakeBlobStore blobs;
+  TouchCalibrationFlow calibration(blobs);
+  InputRouter router(tabs, playback, shuttle, brightness, calibration, sink);
 
   uint8_t before = playback.volume();
   TEST_ASSERT_TRUE(shuttle.hold(0));
@@ -143,7 +202,9 @@ void test_encoder_adjusts_brightness_on_brightness_screen() {
   BrightnessSetting brightness(store);
   brightness.begin();
   Shuttle shuttle(playback);
-  InputRouter router(tabs, playback, shuttle, brightness, sink);
+  FakeBlobStore blobs;
+  TouchCalibrationFlow calibration(blobs);
+  InputRouter router(tabs, playback, shuttle, brightness, calibration, sink);
 
   uint8_t volumeBefore = playback.volume();
   router.onEncoderDelta(-3, 0);
@@ -162,7 +223,9 @@ void test_encoder_moves_tile_selection_on_home() {
   RecordingListSink sink;
   BrightnessSetting brightness(store);
   Shuttle shuttle(playback);
-  InputRouter router(tabs, playback, shuttle, brightness, sink);
+  FakeBlobStore blobs;
+  TouchCalibrationFlow calibration(blobs);
+  InputRouter router(tabs, playback, shuttle, brightness, calibration, sink);
 
   router.onEncoderDelta(1, 0);
 
@@ -180,7 +243,9 @@ void test_swipe_pops_when_possible() {
   RecordingListSink sink;
   BrightnessSetting brightness(store);
   Shuttle shuttle(playback);
-  InputRouter router(tabs, playback, shuttle, brightness, sink);
+  FakeBlobStore blobs;
+  TouchCalibrationFlow calibration(blobs);
+  InputRouter router(tabs, playback, shuttle, brightness, calibration, sink);
 
   router.onGesture({GestureType::SwipeLeftToRight, 0, 0});
 
@@ -197,7 +262,9 @@ void test_swipe_switches_tab_at_root() {
   RecordingListSink sink;
   BrightnessSetting brightness(store);
   Shuttle shuttle(playback);
-  InputRouter router(tabs, playback, shuttle, brightness, sink);
+  FakeBlobStore blobs;
+  TouchCalibrationFlow calibration(blobs);
+  InputRouter router(tabs, playback, shuttle, brightness, calibration, sink);
 
   router.onGesture({GestureType::SwipeLeftToRight, 0, 0});
 
@@ -214,7 +281,9 @@ void test_tap_is_not_routed_by_input_router() {
   RecordingListSink sink;
   BrightnessSetting brightness(store);
   Shuttle shuttle(playback);
-  InputRouter router(tabs, playback, shuttle, brightness, sink);
+  FakeBlobStore blobs;
+  TouchCalibrationFlow calibration(blobs);
+  InputRouter router(tabs, playback, shuttle, brightness, calibration, sink);
 
   router.onGesture({GestureType::Tap, 10, 10});
 
@@ -260,9 +329,10 @@ void test_gesture_recognizer_ignores_vertical_drag() {
 
 void test_touch_calibration_maps_measured_raw_x_back_to_visual_x() {
   // Raw readings captured on real hardware for crosshairs at x=90/180/270.
-  TouchSample left = TouchCalibration::apply({40, 180, true});
-  TouchSample center = TouchCalibration::apply({148, 180, true});
-  TouchSample right = TouchCalibration::apply({252, 180, true});
+  const TouchCalibration cal = TouchCalibration::defaults();
+  TouchSample left = cal.apply({40, 180, true});
+  TouchSample center = cal.apply({148, 180, true});
+  TouchSample right = cal.apply({252, 180, true});
   TEST_ASSERT_INT_WITHIN(12, 90, left.x);
   TEST_ASSERT_INT_WITHIN(12, 180, center.x);
   TEST_ASSERT_INT_WITHIN(12, 270, right.x);
@@ -271,8 +341,133 @@ void test_touch_calibration_maps_measured_raw_x_back_to_visual_x() {
 }
 
 void test_touch_calibration_clamps_to_screen() {
-  TEST_ASSERT_EQUAL_INT16(359, TouchCalibration::apply({4000, 0, true}).x);
-  TEST_ASSERT_GREATER_OR_EQUAL(0, TouchCalibration::apply({0, 0, true}).x);
+  const TouchCalibration cal = TouchCalibration::defaults();
+  TEST_ASSERT_EQUAL_INT16(359, cal.apply({4000, 0, true}).x);
+  TEST_ASSERT_GREATER_OR_EQUAL(0, cal.apply({0, 0, true}).x);
+}
+
+void test_touch_calibration_blob_round_trips() {
+  TouchCalibration cal{1120, -40, 980, 7};
+  auto decoded = TouchCalibration::decode(cal.encode());
+  TEST_ASSERT_TRUE(decoded.has_value());
+  TEST_ASSERT_TRUE(*decoded == cal);
+}
+
+void test_touch_calibration_rejects_corrupt_blob() {
+  auto blob = TouchCalibration::defaults().encode();
+  auto wrongVersion = blob;
+  wrongVersion[0] = 99;
+  TEST_ASSERT_FALSE(TouchCalibration::decode(wrongVersion).has_value());
+  TEST_ASSERT_FALSE(
+      TouchCalibration::decode({blob.begin(), blob.end() - 1}).has_value());
+  TouchCalibration absurd{100, 0, 1000, 0};  // Scale 0.1.
+  TEST_ASSERT_FALSE(TouchCalibration::decode(absurd.encode()).has_value());
+}
+
+void test_calibrator_fits_measured_skew() {
+  TouchCalibrator calibrator;
+  // Raw points the 2026-09-13 skew (raw x ~= 1.183 * visual - 66, y as is)
+  // gives for the four targets, with a few px of finger scatter.
+  feedTaps(calibrator, {{147, 72}, {280, 178}, {150, 293}, {16, 181}});
+  auto fit = calibrator.fit();
+  TEST_ASSERT_TRUE(fit.has_value());
+  TEST_ASSERT_INT_WITHIN(30, 1183, fit->xScaleMilli);
+  TEST_ASSERT_INT_WITHIN(8, -66, fit->xOffset);
+  TEST_ASSERT_INT_WITHIN(30, 1000, fit->yScaleMilli);
+  TEST_ASSERT_INT_WITHIN(8, 0, fit->yOffset);
+}
+
+void test_calibrator_rejects_taps_on_one_spot() {
+  TouchCalibrator calibrator;
+  feedTaps(calibrator, {{180, 180}, {180, 180}, {180, 180}, {180, 180}});
+  TEST_ASSERT_FALSE(calibrator.fit().has_value());
+}
+
+void test_calibrator_rejects_swapped_targets() {
+  TouchCalibrator calibrator;
+  // Top and bottom crosses tapped the wrong way round.
+  feedTaps(calibrator, {{147, 290}, {280, 180}, {150, 70}, {16, 180}});
+  TEST_ASSERT_FALSE(calibrator.fit().has_value());
+}
+
+void test_calibrator_ignores_press_right_after_start() {
+  TouchCalibrator calibrator;
+  calibrator.reset(0);
+  calibrator.feed({180, 180, true}, 50);
+  calibrator.feed({180, 180, false}, 80);
+  TEST_ASSERT_EQUAL_UINT(0, calibrator.targetsDone());
+}
+
+void test_calibration_flow_keeps_confirmed_fit_and_persists_it() {
+  FakeBlobStore blobs;
+  TouchCalibrationFlow flow(blobs);
+  flow.begin();
+  flow.start(0);
+  feedTaps(flow, {{147, 72}, {280, 178}, {150, 293}, {16, 181}});
+  TEST_ASSERT_TRUE(flow.phase() == CalibrationPhase::Verifying);
+  TouchCalibration fitted = flow.active();
+  flow.keep();
+  TEST_ASSERT_TRUE(flow.phase() == CalibrationPhase::Idle);
+  TEST_ASSERT_TRUE(flow.takeOutcome() == CalibrationOutcome::Saved);
+
+  TouchCalibrationFlow reloaded(blobs);
+  reloaded.begin();
+  TEST_ASSERT_TRUE(reloaded.active() == fitted);
+}
+
+void test_calibration_flow_reverts_unconfirmed_fit() {
+  FakeBlobStore blobs;
+  TouchCalibrationFlow flow(blobs);
+  flow.begin();
+  flow.start(0);
+  // A plausible but different mapping.
+  uint32_t now = feedTaps(flow, {{170, 60}, {300, 170}, {170, 280}, {40, 170}});
+  TEST_ASSERT_TRUE(flow.phase() == CalibrationPhase::Verifying);
+  TEST_ASSERT_FALSE(flow.active() == TouchCalibration::defaults());
+  uint32_t deadline = now + flow.verifyRemainingMs(now);
+  flow.tick(deadline - 1);
+  TEST_ASSERT_TRUE(flow.phase() == CalibrationPhase::Verifying);
+  flow.tick(deadline);
+  TEST_ASSERT_TRUE(flow.active() == TouchCalibration::defaults());
+  TEST_ASSERT_TRUE(flow.takeOutcome() == CalibrationOutcome::Reverted);
+  TEST_ASSERT_TRUE(blobs.data.empty());
+}
+
+void test_calibration_flow_restarts_capture_after_rejected_fit() {
+  FakeBlobStore blobs;
+  TouchCalibrationFlow flow(blobs);
+  flow.begin();
+  flow.start(0);
+  feedTaps(flow, {{180, 180}, {180, 180}, {180, 180}, {180, 180}});
+  TEST_ASSERT_TRUE(flow.isCapturing());
+  TEST_ASSERT_TRUE(flow.lastFitRejected());
+  TEST_ASSERT_EQUAL_UINT(0, flow.targetsDone());
+}
+
+void test_encoder_cancels_touch_calibration() {
+  FakeDriver driver;
+  FakeStore store;
+  VolumePersistence volume(store);
+  PlaybackStateMachine playback(driver, volume);
+  TabController tabs;
+  tabs.activeStack().push(Screen{ScreenKind::Settings, {}});
+  tabs.activeStack().push(Screen{ScreenKind::TouchCalibration, {}});
+  RecordingListSink sink;
+  BrightnessSetting brightness(store);
+  Shuttle shuttle(playback);
+  FakeBlobStore blobs;
+  TouchCalibrationFlow calibration(blobs);
+  calibration.begin();
+  calibration.start(0);
+  feedTaps(calibration, {{170, 60}, {300, 170}, {170, 280}, {40, 170}});
+  InputRouter router(tabs, playback, shuttle, brightness, calibration, sink);
+
+  router.onEncoderDelta(1, 0);
+
+  TEST_ASSERT_TRUE(calibration.phase() == CalibrationPhase::Idle);
+  TEST_ASSERT_TRUE(calibration.active() == TouchCalibration::defaults());
+  TEST_ASSERT_TRUE(tabs.activeStack().current().kind == ScreenKind::Settings);
+  TEST_ASSERT_EQUAL_INT(0, sink.calls);
 }
 
 void test_touch_latch_reports_press_that_ended_between_reads() {
@@ -314,6 +509,16 @@ int main(int argc, char **argv) {
   RUN_TEST(test_gesture_recognizer_ignores_vertical_drag);
   RUN_TEST(test_touch_calibration_maps_measured_raw_x_back_to_visual_x);
   RUN_TEST(test_touch_calibration_clamps_to_screen);
+  RUN_TEST(test_touch_calibration_blob_round_trips);
+  RUN_TEST(test_touch_calibration_rejects_corrupt_blob);
+  RUN_TEST(test_calibrator_fits_measured_skew);
+  RUN_TEST(test_calibrator_rejects_taps_on_one_spot);
+  RUN_TEST(test_calibrator_rejects_swapped_targets);
+  RUN_TEST(test_calibrator_ignores_press_right_after_start);
+  RUN_TEST(test_calibration_flow_keeps_confirmed_fit_and_persists_it);
+  RUN_TEST(test_calibration_flow_reverts_unconfirmed_fit);
+  RUN_TEST(test_calibration_flow_restarts_capture_after_rejected_fit);
+  RUN_TEST(test_encoder_cancels_touch_calibration);
   RUN_TEST(test_touch_latch_reports_press_that_ended_between_reads);
   RUN_TEST(test_touch_latch_passes_through_held_press);
   return UNITY_END();

@@ -67,6 +67,36 @@ screen would be mistaken for the display being off (Rams #6). Default is
 full brightness, matching the previous fixed value. The idle timeout still
 switches the backlight fully off and restores the chosen level on wake.
 
+### Touch calibration
+
+Added 2026-09-15. The CST816's skew (ADR 0004) was fitted by hand over
+serial; Settings > Touch calibration now re-fits it on the device. Rows:
+Brightness, Touch calibration, Rescan library.
+
+- **Capture.** Four accent crosses, one at a time, at top (180,70), right
+  (290,180), bottom (180,290) and left (70,180) — never corners, which the
+  bezel hides — giving three distinct values per axis. Taken targets turn
+  into quiet dots. Raw samples go only to `TouchCalibrator`
+  (`lib/input/TouchCalibrator.h`); LVGL and gestures see no touch, so taps
+  can't click through or swipe back. The finger's average position while
+  down counts, on release; a press within 300 ms of the last one is
+  ignored.
+- **Fit.** Least squares per axis, `raw = scale · visual + offset`.
+  Refused (capture restarts, "Didn't fit") if a scale leaves 0.7–1.5, an
+  offset exceeds ±200 px, or any tap lands more than 25 px from its
+  target — e.g. the wrong cross.
+- **No lockout.** A broken mapping can't be fixed by touch, so nothing is
+  kept unproven: the fit applies live and must be confirmed by tapping
+  Keep within 10 s (an accent ring counts down); Keep is only reachable if
+  the mapping works. Otherwise the previous calibration comes back ("Not
+  saved"). Turning the knob cancels at any point, as does the display
+  going off, the lock screen, or leaving the screen. No back button or
+  caption: the top cross sits there, and the knob is the exit.
+- **Storage.** NVS blob `touchcal` (version byte + four int16); missing or
+  implausible → the hand-fitted defaults. Never resumed after a reboot:
+  `ScreenKind::TouchCalibration` is appended past `NowPlaying`, which
+  navigation restore drops.
+
 ## Consequences
 
 - Music is one tap further away after boot.

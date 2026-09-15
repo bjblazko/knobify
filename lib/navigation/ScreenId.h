@@ -18,6 +18,10 @@ enum class ScreenKind {
   Tracks,
   Folder,
   NowPlaying,
+  // Appended, not next to Brightness: resume records store kinds by value
+  // (NavigationResumeSource), and a calibration in progress is never
+  // resumed -- anything past NowPlaying is dropped on restore.
+  TouchCalibration,
 };
 
 // Parameters a screen needs to render itself. Only the fields relevant
