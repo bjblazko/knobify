@@ -144,7 +144,11 @@ class ScreenManager : public input::ListMoveSink {
   static void onLockClicked(lv_event_t *e);
   static void onHomeTilePressed(lv_event_t *e);
   static void onHomeTileClicked(lv_event_t *e);
-  static void onCoverSlotClicked(lv_event_t *e);
+  // Options panel on Now Playing (ADR 0014).
+  void renderOptionsPanel(bool animate);
+  static void onCoverSwitchClicked(lv_event_t *e);
+  static void onOptionsHandleClicked(lv_event_t *e);
+  static void onOptionsPanelCloseClicked(lv_event_t *e);
   // Feedback in the message area for what a toggle now does (ADR 0011).
   void showShuffleMessage();
   void showRepeatMessage();
@@ -182,12 +186,26 @@ class ScreenManager : public input::ListMoveSink {
   static constexpr lv_coord_t kCaptionY = kHeaderButtonY + kHeaderButtonH + 2;
   static constexpr lv_coord_t kListTopY = kCaptionY + 22;
   static constexpr lv_coord_t kMiniBarZoneHeight = 88;
-  static constexpr lv_coord_t kCoverY = 56;
-  static constexpr lv_coord_t kTransportCenterY = 246;
-  // Time pill (ADR 0013): between the shuffle/repeat toggles (x = ±100,
-  // 44 px wide -> inner edges at ±78), leaving 12 px either side.
+  static constexpr lv_coord_t kCoverY = 44;
+  static constexpr lv_coord_t kTransportCenterY = 236;
+  // Time pill (ADR 0013), alone on its row since ADR 0014: 14 px below
+  // Play/Pause (bottom edge kTransportCenterY + 36). Cover, titles and
+  // transport moved up (kCoverY 56 -> 44, kTransportCenterY 246 -> 236) to
+  // give the pill and the options handle room -- taps kept landing on the
+  // wrong control (user feedback 2026-09-15).
   static constexpr lv_coord_t kTimePillW = 132;
   static constexpr lv_coord_t kTimePillH = 28;
+  static constexpr lv_coord_t kTimePillY = kTransportCenterY + 36 + 14;
+  // Options handle (ADR 0014): a short target whose chevron sits about as
+  // far from the bottom edge as the back chevron from the top.
+  static constexpr lv_coord_t kOptionsHandleH = 24;
+  static constexpr lv_coord_t kOptionsHandleBottom = 12;
+  // Top edge of the options sheet: just below the cover slot, so messages
+  // and the volume readout (centered on the slot) stay visible above it.
+  static constexpr lv_coord_t kOptionsPanelY = 146;
+  static constexpr uint32_t kOptionsPanelAnimMs = 200;
+  // How long the shuttle hint may stay while the pill is held unturned.
+  static constexpr uint32_t kShuttleHintMs = 10000;
   static constexpr uint32_t kSpectrumFrameMs = 33;
   // Persisted cover-slot choice: 1 = spectrum, 0 = cover.
   static constexpr char kSpectrumSettingKey[] = "npSpectrum";
@@ -235,6 +253,10 @@ class ScreenManager : public input::ListMoveSink {
   ui_widgets::EdgeArc progressArc_;
   // Null for tracks that can't shuttle -- then elapsedLabel_ is a plain label.
   lv_obj_t *timePill_ = nullptr;
+  // Options panel state survives render() (its toggles re-render the
+  // screen); closed when the screen changes.
+  bool optionsPanelOpen_ = false;
+  bool animateOptionsPanel_ = false;
   lv_obj_t *shuttleArcHost_ = nullptr;
   ui_widgets::EdgeArc shuttleArc_;
   lv_obj_t *shuttleMarker_ = nullptr;

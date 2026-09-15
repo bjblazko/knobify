@@ -36,6 +36,12 @@
  * line_height/base_line here is what makes the shared label size
  * correctly for both. Keep in sync with lv_font_montserrat_14.c's own
  * .line_height/.base_line if this font (or LVGL) is ever regenerated.
+ *
+ * Also hand-edited: both glyphs' .ofs_y changed from 4 to 1. With the
+ * Montserrat metrics above the icons' vertical center sat at 5px while
+ * the digits' sits at 8px ("0": box_h 10, ofs_y 0) -- the marks looked
+ * top-aligned next to the time (user feedback 2026-09-15). ofs_y 1 puts
+ * the 8px-tall icon's center at 8px too.
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE
@@ -82,8 +88,8 @@ static LV_ATTRIBUTE_LARGE_CONST const uint8_t glyph_bitmap[] = {
 
 static const lv_font_fmt_txt_glyph_dsc_t glyph_dsc[] = {
     {.bitmap_index = 0, .adv_w = 0, .box_w = 0, .box_h = 0, .ofs_x = 0, .ofs_y = 0} /* id = 0 reserved */,
-    {.bitmap_index = 0, .adv_w = 256, .box_w = 14, .box_h = 8, .ofs_x = 1, .ofs_y = 4},
-    {.bitmap_index = 56, .adv_w = 256, .box_w = 14, .box_h = 8, .ofs_x = 1, .ofs_y = 4}
+    {.bitmap_index = 0, .adv_w = 256, .box_w = 14, .box_h = 8, .ofs_x = 1, .ofs_y = 1},
+    {.bitmap_index = 56, .adv_w = 256, .box_w = 14, .box_h = 8, .ofs_x = 1, .ofs_y = 1}
 };
 
 /*---------------------

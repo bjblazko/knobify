@@ -17,10 +17,15 @@ LV_FONT_DECLARE(knobify_icon_font_28);
 // matches how LV_SYMBOL_* constants are used elsewhere in this codebase.
 #define KNOBIFY_ICON_LOCK_OPEN "\xEE\xA2\x98"  // U+E898
 #define KNOBIFY_ICON_LOCK "\xEE\xA2\x99"       // U+E899
-// Now Playing's shuffle/repeat toggles (ADR 0011).
+// Now Playing's shuffle/repeat toggles (ADR 0011), in the options panel
+// since ADR 0014.
 #define KNOBIFY_ICON_SHUFFLE "\xEE\x81\x83"     // U+E043
 #define KNOBIFY_ICON_REPEAT "\xEE\x81\x80"      // U+E040
 #define KNOBIFY_ICON_REPEAT_ONE "\xEE\x81\x81"  // U+E041
+// The options panel's cover/spectrum switch (ADR 0014): the icon shows
+// what a tap switches to.
+#define KNOBIFY_ICON_IMAGE "\xEE\x8F\xB4"       // U+E3F4
+#define KNOBIFY_ICON_EQUALIZER "\xEE\x80\x9D"   // U+E01D
 
 // 48px glyphs for the main menu tiles and the Brightness screen (ADR
 // 0010) -- IconFont48.c, same source font.
