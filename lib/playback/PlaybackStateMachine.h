@@ -140,6 +140,15 @@ class PlaybackStateMachine {
     }
   }
 
+  // Stops and closes the current file, keeping the queue -- for handing the
+  // SD card to a computer (ADR 0016).
+  void stop() {
+    if (state_ == PlaybackState::Stopped && !cued_) return;
+    driver_.stop();
+    state_ = PlaybackState::Stopped;
+    cued_ = false;
+  }
+
   // Moves within the current track (jog/shuttle, ADR 0013) and shifts the
   // wall-clock elapsed time by the same amount, so the readout and ring
   // follow. Clamped at the track start; the end is the caller's job (it
@@ -157,7 +166,7 @@ class PlaybackStateMachine {
   }
 
   // Whether the current track can be shuttled: ESP32-audioI2S only seeks
-  // within MP3 and WAV of the formats knobify plays (not Ogg). By
+  // within MP3, M4A and WAV of the formats knobify plays (not Ogg). By
   // extension, so it's known before a cued track is loaded.
   bool canSeek() const {
     if (state_ == PlaybackState::Stopped || queue_.empty()) return false;
@@ -166,7 +175,7 @@ class PlaybackStateMachine {
     if (dot == std::string::npos) return false;
     std::string ext = path.substr(dot + 1);
     for (char &c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    return ext == "mp3" || ext == "wav";
+    return ext == "mp3" || ext == "m4a" || ext == "wav";
   }
 
   // `delta` is signed knob ticks; positive = louder.

@@ -27,6 +27,7 @@
 #include "St77916Driver.h"
 #include "TabController.h"
 #include "TouchCalibrator.h"
+#include "UsbDriveSession.h"
 
 namespace knobify::ui {
 
@@ -58,6 +59,7 @@ class ScreenManager : public input::ListMoveSink {
                 power::BrightnessSetting &brightness,
                 power::SleepTimer &sleepTimer,
                 input::TouchCalibrationFlow &touchCalibration,
+                usbdrive::UsbDriveSession &usbDrive,
                 ui_widgets::MessageArea &messages)
       : tabs_(tabs),
         library_(library),
@@ -74,6 +76,7 @@ class ScreenManager : public input::ListMoveSink {
         brightness_(brightness),
         sleepTimer_(sleepTimer),
         touchCalibration_(touchCalibration),
+        usbDrive_(usbDrive),
         messages_(messages) {}
 
   void begin();
@@ -124,6 +127,12 @@ class ScreenManager : public input::ListMoveSink {
   // a flow whose screen was left some other way. Call every loop().
   void tickTouchCalibration(uint32_t nowMs);
 
+  // Drives the USB drive screen (ADR 0016): follows the session's phase,
+  // ends a session whose screen was left, and once a session ended -- by
+  // eject, unplug or Done -- leaves the screen and rescans the library.
+  // Call every loop().
+  void tickUsbDrive(uint32_t nowMs);
+
  private:
   void renderList(const std::vector<std::pair<std::string, int>> &items,
                    bool showMiniBar);
@@ -135,6 +144,9 @@ class ScreenManager : public input::ListMoveSink {
   void renderSleepTimer();
   void renderTouchCalibration();
   static void onCalibrationKeepClicked(lv_event_t *e);
+  void startUsbDrive();
+  void renderUsbDrive();
+  static void onUsbDriveDoneClicked(lv_event_t *e);
   void runRescan();
   void renderBackButtonIfNeeded();
   void renderContextCaption();
@@ -196,6 +208,7 @@ class ScreenManager : public input::ListMoveSink {
   power::BrightnessSetting &brightness_;
   power::SleepTimer &sleepTimer_;
   input::TouchCalibrationFlow &touchCalibration_;
+  usbdrive::UsbDriveSession &usbDrive_;
   ui_widgets::MessageArea &messages_;
 
   static constexpr uint32_t kVolumeHudTimeoutMs = 3000;
@@ -266,6 +279,8 @@ class ScreenManager : public input::ListMoveSink {
   input::CalibrationPhase shownCalibrationPhase_ = input::CalibrationPhase::Idle;
   size_t shownCalibrationTargets_ = 0;
   bool shownCalibrationRejected_ = false;
+  // What the USB drive screen shows, to redraw only on change.
+  usbdrive::UsbDrivePhase shownUsbDrivePhase_ = usbdrive::UsbDrivePhase::Off;
   lv_obj_t *calibrationArcHost_ = nullptr;
   ui_widgets::EdgeArc calibrationArc_;
   lv_obj_t *miniBar_ = nullptr;

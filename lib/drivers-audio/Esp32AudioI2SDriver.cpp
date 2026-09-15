@@ -119,3 +119,17 @@ void audio_process_i2s(uint32_t *sample, bool *continueI2S) {
             static_cast<uint16_t>(right);
   *continueI2S = true;
 }
+
+// ESP32-audioI2S 2.3.0 calls this weak hook without checking that it exists
+// when it prints AAC codec parameters (Audio::showCodecParams()), so without
+// a definition the first decoded M4A frame jumped to address 0 and panicked
+// (core dump, 2026-09-16). MP3 only ever calls it through a null check.
+// Defined here, next to begin(), so it's always linked (see the
+// audio_process_i2s note above).
+void audio_info(const char *info) {
+#ifdef AUDIO_LOG
+  Serial.printf("[audio] %s\n", info);
+#else
+  (void)info;
+#endif
+}

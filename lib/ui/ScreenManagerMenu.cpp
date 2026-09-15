@@ -399,4 +399,84 @@ void ScreenManager::tickTouchCalibration(uint32_t nowMs) {
   }
 }
 
+void ScreenManager::startUsbDrive() {
+  // The card is the computer's until the session ends: nothing here may
+  // read or write it, so close the playing file and keep the sleep timer
+  // from powering down mid-copy.
+  playback_.stop();
+  sleepTimer_.cancel();
+  constexpr ui_widgets::MessageAnchor kAnchor{drivers::kLcdHorRes / 2,
+                                              drivers::kLcdVerRes / 2};
+  if (!usbDrive_.start(millis())) {
+    messages_.show("No SD card", kAnchor, millis());
+    return;
+  }
+  tabs_.activeStack().push(Screen{ScreenKind::UsbDrive, {}});
+  render();
+}
+
+void ScreenManager::renderUsbDrive() {
+  shownUsbDrivePhase_ = usbDrive_.phase();
+  const bool connected = shownUsbDrivePhase_ == usbdrive::UsbDrivePhase::Connected;
+  auto addLabel = [this](const char *text, const lv_font_t *font,
+                         lv_color_t color, lv_coord_t dy) {
+    lv_obj_t *label = lv_label_create(screen_);
+    lv_obj_set_style_text_font(label, font, 0);
+    lv_obj_set_style_text_color(label, color, 0);
+    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(label, text);
+    lv_obj_align(label, LV_ALIGN_CENTER, 0, dy);
+    return label;
+  };
+  addLabel("USB drive", &lv_font_montserrat_20, theme::ink(), -96);
+  addLabel(connected ? "Connected" : "Connect to a computer",
+           &lv_font_montserrat_14, connected ? theme::accent() : theme::structure(),
+           -66);
+  makeIconButton(screen_, "Done", 96, 96, LV_ALIGN_CENTER, 0, 10,
+                 &ScreenManager::onUsbDriveDoneClicked, this,
+                 ButtonRole::Primary, &lv_font_montserrat_20);
+  // Done doesn't wait for the computer: leaving before its writes are
+  // flushed corrupts the card.
+  if (connected) {
+    addLabel("Eject on the computer\nbefore tapping Done",
+             &lv_font_montserrat_14, theme::structure(), 96);
+  }
+}
+
+void ScreenManager::onUsbDriveDoneClicked(lv_event_t *e) {
+  auto *self = static_cast<ScreenManager *>(lv_event_get_user_data(e));
+  // Leaving the screen and the rescan happen in tickUsbDrive(), outside
+  // this event (runRescan() blocks).
+  self->usbDrive_.finish();
+}
+
+void ScreenManager::tickUsbDrive(uint32_t nowMs) {
+  const usbdrive::UsbDrivePhase before = usbDrive_.phase();
+  usbDrive_.tick(nowMs);
+  if (usbDrive_.phase() != before && usbDrive_.active()) {
+    Serial.printf("[usbdrive] phase %d\n", static_cast<int>(usbDrive_.phase()));
+  }
+  const bool onScreen =
+      tabs_.activeStack().current().kind == ScreenKind::UsbDrive;
+  // Left some other way (a swipe back): the card comes back too.
+  if (!onScreen) usbDrive_.finish();
+
+  if (usbDrive_.takeFinished()) {
+    constexpr const char *kEndNames[] = {"none", "ejected", "host gone", "done"};
+    const char *reason = kEndNames[static_cast<int>(usbDrive_.lastEnd())];
+    if (onScreen) tabs_.back();
+    render();
+    runRescan();
+    // After the rescan: the USB serial port drops with the drive, so a line
+    // printed right away never reaches a monitor.
+    Serial.printf("[usbdrive] session ended (%s, %s)\n", reason,
+                  onScreen ? "on screen" : "screen left");
+    return;
+  }
+  if (onScreen && renderedKind_ == ScreenKind::UsbDrive &&
+      usbDrive_.phase() != shownUsbDrivePhase_) {
+    render();
+  }
+}
+
 }  // namespace knobify::ui

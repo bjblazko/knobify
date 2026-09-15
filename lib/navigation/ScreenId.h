@@ -25,6 +25,8 @@ enum class ScreenKind {
   // Past NowPlaying too: a sleep timer is never set after a reboot, so its
   // screen isn't restored either (ADR 0015).
   SleepTimer,
+  // Past NowPlaying: a USB drive session ends with the power (ADR 0016).
+  UsbDrive,
 };
 
 // Parameters a screen needs to render itself. Only the fields relevant

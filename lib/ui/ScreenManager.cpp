@@ -135,6 +135,10 @@ void ScreenManager::render() {
     renderBrightness();
   } else if (current.kind == ScreenKind::SleepTimer) {
     renderSleepTimer();
+  } else if (current.kind == ScreenKind::UsbDrive) {
+    // Modal: no back button or caption. Done, eject or unplug end it.
+    renderUsbDrive();
+    return;
   } else if (current.kind == ScreenKind::TouchCalibration) {
     // No back button or caption: the top target sits where they would,
     // and the knob is the way out (renderTouchCalibration()).
@@ -182,6 +186,7 @@ void ScreenManager::render() {
         items.emplace_back("Brightness", 0);
         items.emplace_back("Touch calibration", 1);
         items.emplace_back("Rescan library", 2);
+        items.emplace_back("USB drive", 3);
         break;
       default:
         break;
@@ -1216,8 +1221,10 @@ void ScreenManager::onListItemClicked(lv_event_t *e) {
         self->touchCalibration_.start(millis());
         self->tabs_.activeStack().push(Screen{ScreenKind::TouchCalibration, {}});
         self->render();
-      } else {
+      } else if (ctx->index == 2) {
         self->runRescan();
+      } else {
+        self->startUsbDrive();
       }
       break;
     default:

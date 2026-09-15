@@ -45,6 +45,8 @@
 #include "TabController.h"
 #include "TouchCalibrator.h"
 #include "Theme.h"
+#include "UsbDriveSession.h"
+#include "UsbMscStorage.h"
 #include "Version.h"
 #include "VolumePersistence.h"
 
@@ -196,6 +198,8 @@ knobify::navigation::TabController g_tabs;
 knobify::power::BrightnessSetting g_brightness(g_nvsStore);
 knobify::power::SleepTimer g_sleepTimer;
 knobify::input::TouchCalibrationFlow g_touchCalibration(g_nvsStore);
+knobify::drivers::UsbMscStorage g_usbStorage;
+knobify::usbdrive::UsbDriveSession g_usbDrive(g_usbStorage);
 
 knobify::drivers::St77916Driver g_display;
 knobify::drivers::Cst816Driver g_touch;
@@ -208,7 +212,7 @@ knobify::ui::ScreenManager g_screenManager(
     g_tabs, g_libraryIndex, g_directoryReader, g_playback, g_shuttle,
     g_lockController, g_libraryRescanner, g_coverReader, g_fileOpener,
     g_jpegDecoder, g_coverWriter, g_nvsStore, g_brightness, g_sleepTimer,
-    g_touchCalibration, g_messageArea);
+    g_touchCalibration, g_usbDrive, g_messageArea);
 knobify::ui::LockOverlay g_lockOverlay(g_lockController);
 knobify::drivers::BatteryAdcDriver g_batteryAdc;
 knobify::power::BatteryMonitor g_batteryMonitor;
@@ -277,6 +281,9 @@ void setup() {
   // device 2026-09-15: 38.9 KB internal free before, 1.7 KB after. Anything
   // needing internal/DMA memory asks for it explicitly via heap_caps.
   heap_caps_malloc_extmem_enable(32);
+  // Before USB traffic can reach the drive (ADR 0016); asks for its DMA
+  // buffer explicitly, so it isn't affected by the line above.
+  g_usbStorage.begin();
   Serial.begin(115200);
   Serial.printf("knobify %s starting\n", knobify::kVersion);
   if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0) {
@@ -387,20 +394,48 @@ void setup() {
   }
 }
 
+// A tap injected over Serial ("TAP x y", screen coordinates): held for
+// kInjectedTapMs of loop() iterations in place of the real touch sample.
+constexpr uint32_t kInjectedTapMs = 120;
+uint32_t g_injectedTapUntilMs = 0;
+int16_t g_injectedTapX = 0;
+int16_t g_injectedTapY = 0;
+// Knob detents injected over Serial ("KNOB n"), added to the next read.
+int g_injectedDetents = 0;
+
 // Diagnostic-only: a "SCREENSHOT\n" line over Serial dumps the current
 // display contents (see LvglGlue::writeScreenshotToSerial(), decoded by
 // scripts/screenshot.py into a BMP) -- lets a UI bug be diagnosed from an
-// actual capture instead of a description or a phone photo.
+// actual capture instead of a description or a phone photo. "TAP x y"
+// taps the screen and "KNOB n" turns the knob n detents, so a flow can be
+// driven without a hand on the device. "INFO" prints the reset reason:
+// after a crash the TinyUSB serial port comes back too late to show the
+// panic itself.
 void pollSerialCommands() {
-  static char buf[16];
+  static char buf[24];
   static size_t len = 0;
   while (Serial.available()) {
     char c = static_cast<char>(Serial.read());
     if (c == '\n' || c == '\r') {
       if (len > 0) {
         buf[len] = '\0';
+        int x = 0;
+        int y = 0;
         if (strcmp(buf, "SCREENSHOT") == 0) {
           g_lvglGlue.writeScreenshotToSerial();
+        } else if (sscanf(buf, "TAP %d %d", &x, &y) == 2) {
+          g_injectedTapX = static_cast<int16_t>(x);
+          g_injectedTapY = static_cast<int16_t>(y);
+          g_injectedTapUntilMs = millis() + kInjectedTapMs;
+        } else if (strcmp(buf, "INFO") == 0) {
+          // A reset reason of 4 is a panic: read the core dump (AGENTS.md).
+          Serial.printf("[info] up %lus, reset reason %d, internal free %u, "
+                        "loop stack left %u\n",
+                        millis() / 1000, static_cast<int>(esp_reset_reason()),
+                        heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                        uxTaskGetStackHighWaterMark(nullptr));
+        } else if (sscanf(buf, "KNOB %d", &x) == 1) {
+          g_injectedDetents += x;
         }
         len = 0;
       }
@@ -421,6 +456,8 @@ void loop() {
 
   uint32_t now = millis();
   int16_t encoderDelta = g_encoder.readDelta();
+  encoderDelta += static_cast<int16_t>(g_injectedDetents);
+  g_injectedDetents = 0;
 
   // Touch is polled exactly once here and fanned out from this one
   // sample -- polling twice independently used to feed different
@@ -432,6 +469,15 @@ void loop() {
   // Kept raw for Settings > Touch calibration, which fits from raw points.
   const knobify::input::TouchSample rawTouchSample = touchSample;
   touchSample = g_touchCalibration.active().apply(rawTouchSample);
+  if (g_injectedTapUntilMs != 0) {
+    if (millis() < g_injectedTapUntilMs) {
+      touchSample.pressed = true;
+      touchSample.x = g_injectedTapX;
+      touchSample.y = g_injectedTapY;
+    } else {
+      g_injectedTapUntilMs = 0;
+    }
+  }
 
 #ifdef KNOBIFY_TOUCH_DEBUG
   {
@@ -568,6 +614,8 @@ void loop() {
   // screen: nobody is there to confirm it (TouchCalibrator.h).
   if (!displayOn || g_lockController.isLocked()) g_touchCalibration.cancel();
   g_screenManager.tickTouchCalibration(now);
+  g_screenManager.tickUsbDrive(now);
+  g_usbStorage.printEvents();
 
   // A shuttle hold ends with the finger (the pill's RELEASED/PRESS_LOST
   // normally does it; this also covers the pill being deleted by a

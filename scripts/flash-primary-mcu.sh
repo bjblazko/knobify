@@ -64,6 +64,50 @@ for d in devices:
   echo "Auto-detected board on $PORT"
 fi
 
+# Firmware built with TinyUSB (ARDUINO_USB_MODE=0, ADR 0016) presents its
+# own CDC port under the same Espressif VID:PID, and esptool's DTR/RTS reset
+# can't reach the ROM bootloader through it ("No serial data received").
+# Opening it at 1200 baud makes the firmware reboot into the bootloader,
+# which then enumerates as "USB JTAG/serial debug unit" -- often under a
+# different device name, so detect the port again.
+native_description() {
+  pio device list --json-output 2>/dev/null | python3 -c '
+import json, sys
+for d in json.load(sys.stdin):
+    if d["port"] == sys.argv[1]:
+        print(d.get("description", ""))
+' "$1"
+}
+if pio device list --json-output 2>/dev/null | grep -q "$PORT" &&
+   [[ "$(native_description "$PORT")" != *JTAG* ]] &&
+   pio device list --json-output 2>/dev/null | python3 -c '
+import json, sys
+sys.exit(0 if any(d["port"] == sys.argv[1] and "303A:1001" in d.get("hwid", "").upper()
+                  for d in json.load(sys.stdin)) else 1)
+' "$PORT"; then
+  echo "TinyUSB firmware on $PORT -- 1200-baud touch into the bootloader"
+  python3 -c 'import sys, termios, os
+fd = os.open(sys.argv[1], os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+attrs = termios.tcgetattr(fd)
+attrs[4] = attrs[5] = termios.B1200
+termios.tcsetattr(fd, termios.TCSANOW, attrs)
+os.close(fd)' "$PORT" || true
+  for _ in $(seq 1 20); do
+    sleep 0.5
+    NEW_PORT="$(pio device list --json-output 2>/dev/null | python3 -c '
+import json, sys
+for d in json.load(sys.stdin):
+    if "303A:1001" in d.get("hwid", "").upper() and "JTAG" in d.get("description", ""):
+        print(d["port"])
+        break
+')"
+    if [[ -n "$NEW_PORT" ]]; then
+      PORT="$NEW_PORT"
+      break
+    fi
+  done
+fi
+
 echo "== Flashing esp32-s3 (primary ESP32-S3R8) via $PORT =="
 OUTPUT_FILE="$(mktemp)"
 trap 'rm -f "$OUTPUT_FILE"' EXIT

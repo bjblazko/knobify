@@ -168,6 +168,23 @@ void test_track_finished_stops_after_last_track() {
   TEST_ASSERT_TRUE(sm.state() == PlaybackState::Stopped);
 }
 
+void test_stop_releases_the_file_and_keeps_the_queue() {
+  FakeDriver driver;
+  FakeStore store;
+  VolumePersistence volume(store);
+  PlaybackStateMachine sm(driver, volume);
+  sm.begin();
+  sm.play({"/a.mp3", "/b.mp3"}, 1, 0);
+
+  sm.stop();
+
+  TEST_ASSERT_TRUE(sm.state() == PlaybackState::Stopped);
+  TEST_ASSERT_FALSE(driver.running);
+  TEST_ASSERT_TRUE(sm.hasQueue());
+  sm.stop();  // Already stopped: harmless.
+  TEST_ASSERT_TRUE(sm.state() == PlaybackState::Stopped);
+}
+
 void test_volume_clamps_to_bounds() {
   FakeDriver driver;
   FakeStore store;
@@ -391,7 +408,7 @@ void test_seek_by_ignored_when_stopped() {
   TEST_ASSERT_EQUAL_UINT(0, driver.seeks.size());
 }
 
-void test_can_seek_only_mp3_and_wav_with_a_track() {
+void test_can_seek_only_mp3_m4a_and_wav_with_a_track() {
   FakeDriver driver;
   FakeStore store;
   VolumePersistence volume(store);
@@ -402,6 +419,8 @@ void test_can_seek_only_mp3_and_wav_with_a_track() {
   sm.play({"/a.MP3"}, 0, 0);
   TEST_ASSERT_TRUE(sm.canSeek());
   sm.play({"/a.wav"}, 0, 0);
+  TEST_ASSERT_TRUE(sm.canSeek());
+  sm.play({"/a.m4a"}, 0, 0);
   TEST_ASSERT_TRUE(sm.canSeek());
   sm.play({"/a.ogg"}, 0, 0);
   TEST_ASSERT_FALSE(sm.canSeek());
@@ -477,7 +496,8 @@ int main(int argc, char **argv) {
   RUN_TEST(test_seek_by_clamps_at_track_start);
   RUN_TEST(test_seek_by_keeps_elapsed_when_driver_refuses);
   RUN_TEST(test_seek_by_ignored_when_stopped);
-  RUN_TEST(test_can_seek_only_mp3_and_wav_with_a_track);
+  RUN_TEST(test_can_seek_only_mp3_m4a_and_wav_with_a_track);
+  RUN_TEST(test_stop_releases_the_file_and_keeps_the_queue);
   RUN_TEST(test_track_generation_increments_on_play_next_and_restart);
   RUN_TEST(test_track_generation_unchanged_by_pause_resume_and_cued_resume);
   return UNITY_END();
