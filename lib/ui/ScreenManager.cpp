@@ -108,6 +108,10 @@ void ScreenManager::render() {
   durationSeconds_ = 0;
 
   Screen current = tabs_.activeStack().current();
+  if (current.kind != renderedKind_) {
+    renderedKind_ = current.kind;
+    messages_.dismissScreenMessage();
+  }
 
   if (current.kind == ScreenKind::NowPlaying) {
     renderNowPlaying();
@@ -787,6 +791,8 @@ void ScreenManager::updateVolumeDisplay(uint32_t nowMs) {
     lv_obj_clear_flag(volumeHudPill_, LV_OBJ_FLAG_HIDDEN);
   }
   volumeHudHideAtMs_ = nowMs + kVolumeHudTimeoutMs;
+  // Same spot as a message; the value being set wins.
+  messages_.hide();
 }
 
 void ScreenManager::tickVolumeHud(uint32_t nowMs) {
@@ -875,18 +881,26 @@ void ScreenManager::onListItemClicked(lv_event_t *e) {
 
   if (ctx->isShuffle) {
     std::vector<std::string> playlist;
+    std::string name = "library";
     if (current.kind == ScreenKind::Artists) {
       playlist = library::PlaylistBuilder::forLibrary(self->library_);
+      self->playScope_ = PlayScope::Library;
     } else if (current.kind == ScreenKind::Albums) {
       playlist = library::PlaylistBuilder::forArtist(self->library_,
                                                      current.params.artistId);
+      self->playScope_ = PlayScope::Artist;
+      name = self->library_.artists[current.params.artistId].name;
     } else {
       playlist = library::PlaylistBuilder::forAlbum(self->library_,
                                                     current.params.albumId);
+      self->playScope_ = PlayScope::Album;
+      name = self->library_.albums[current.params.albumId].title;
     }
     if (playlist.empty()) return;
     self->playback_.play(std::move(playlist), 0, millis(), /*shuffle=*/true);
     self->goToNowPlaying();
+    self->messages_.show(("Shuffling " + name).c_str(), kNowPlayingMessageAnchor,
+                         millis());
     return;
   }
 
@@ -907,6 +921,7 @@ void ScreenManager::onListItemClicked(lv_event_t *e) {
     case ScreenKind::Tracks: {
       // Rows follow tracksFor() order, so the row index is the start index.
       // In order, shuffle off: a tapped track always plays its album as listed.
+      self->playScope_ = PlayScope::Album;
       self->playback_.play(
           library::PlaylistBuilder::forAlbum(self->library_,
                                              current.params.albumId),
@@ -920,6 +935,7 @@ void ScreenManager::onListItemClicked(lv_event_t *e) {
             Screen{ScreenKind::Folder, ScreenParams{.folderPath = ctx->path}});
         self->render();
       } else {
+        self->playScope_ = PlayScope::File;
         self->playback_.play({ctx->path}, 0, millis());
         self->goToNowPlaying();
       }
@@ -977,6 +993,7 @@ void ScreenManager::onShuffleClicked(lv_event_t *e) {
   auto *self = static_cast<ScreenManager *>(lv_event_get_user_data(e));
   self->playback_.setShuffle(!self->playback_.shuffle());
   self->render();
+  self->showShuffleMessage();
 }
 
 void ScreenManager::onRepeatClicked(lv_event_t *e) {
@@ -985,6 +1002,37 @@ void ScreenManager::onRepeatClicked(lv_event_t *e) {
   self->settings_.setU8(kRepeatSettingKey,
                         static_cast<uint8_t>(self->playback_.repeat()));
   self->render();
+  self->showRepeatMessage();
+}
+
+// The icon alone didn't say which mode was active (user feedback
+// 2026-09-15) -- the message says what the toggle now does, naming the scope.
+void ScreenManager::showShuffleMessage() {
+  const char *text = "Shuffle off - in order";
+  if (playback_.shuffle()) {
+    switch (playScope_) {
+      case PlayScope::Album:
+        text = "Shuffle on - album";
+        break;
+      case PlayScope::Artist:
+        text = "Shuffle on - artist";
+        break;
+      case PlayScope::Library:
+        text = "Shuffle on - library";
+        break;
+      case PlayScope::File:
+        text = "Shuffle on";
+        break;
+    }
+  }
+  messages_.show(text, kNowPlayingMessageAnchor, millis());
+}
+
+void ScreenManager::showRepeatMessage() {
+  const char *text = "Repeat off";
+  if (playback_.repeat() == playback::RepeatMode::All) text = "Repeat all";
+  if (playback_.repeat() == playback::RepeatMode::One) text = "Repeat this track";
+  messages_.show(text, kNowPlayingMessageAnchor, millis());
 }
 
 void ScreenManager::onLockClicked(lv_event_t *e) {

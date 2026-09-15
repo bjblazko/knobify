@@ -37,6 +37,7 @@
 #include "TabController.h"
 #include "TouchCalibration.h"
 #include "TJpgDecoderAdapter.h"
+#include "Theme.h"
 #include "Version.h"
 #include "VolumePersistence.h"
 
@@ -192,10 +193,11 @@ knobify::ui::LvglGlue g_lvglGlue;
 knobify::library::LibraryIndex g_libraryIndex;
 knobify::power::IdleTimer g_idleTimer;
 knobify::power::LockController g_lockController;
+knobify::ui_widgets::MessageArea g_messageArea;
 knobify::ui::ScreenManager g_screenManager(
     g_tabs, g_libraryIndex, g_directoryReader, g_playback, g_lockController,
     g_libraryRescanner, g_coverReader, g_fileOpener, g_jpegDecoder,
-    g_coverWriter, g_nvsStore, g_brightness);
+    g_coverWriter, g_nvsStore, g_brightness, g_messageArea);
 knobify::ui::LockOverlay g_lockOverlay(g_lockController);
 knobify::drivers::BatteryAdcDriver g_batteryAdc;
 knobify::power::BatteryMonitor g_batteryMonitor;
@@ -318,6 +320,9 @@ void setup() {
     // BatteryIndicator.h.
     g_batteryIndicator.begin();
     g_batteryIndicator.update(g_batteryAdc.readMilliVolts());
+    // Last on the top layer: messages show above everything (MessageArea.h).
+    g_messageArea.begin(knobify::ui::theme::ink(), knobify::ui::theme::surface(),
+                        knobify::drivers::kLcdHorRes);
     if (bootScreen) lv_obj_del(bootScreen);
   }
 }
@@ -475,6 +480,9 @@ void loop() {
   g_screenManager.tickVolumeHud(now);
 
   g_lockOverlay.tick();
+  // A toggle's message means nothing on the lock screen.
+  if (g_lockController.isLocked()) g_messageArea.dismissScreenMessage();
+  g_messageArea.tick(now);
   g_batteryIndicator.setLocked(g_lockController.isLocked());
 
   if (now - g_lastBatteryUpdateMs >= kBatteryUpdateIntervalMs) {

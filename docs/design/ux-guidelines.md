@@ -243,7 +243,9 @@ Full architecture: [ADR 0004](../adr/0004-navigation-library-and-index-architect
   off. There is no scope setting ([ADR 0011](../adr/0011-shuffle-and-repeat.md)).
 - **Shuffle and repeat are toggles on Now Playing**, beside the time:
   quiet glyphs, `confirm` green while active. Repeat cycles off → all →
-  one; only repeat is remembered across reboots.
+  one; only repeat is remembered across reboots. A glyph alone didn't say
+  which mode was active, so every tap also shows a message naming what now
+  happens ("Shuffle on - album", "Repeat this track").
 - **The cover slot switches by tap.** Tapping the Now Playing cover
   swaps it for the dot-matrix spectrum and back; the choice persists.
   Without a cover the spectrum always shows and the slot isn't tappable.
@@ -386,6 +388,17 @@ Full architecture: [ADR 0005](../adr/0005-power-lock-and-round-edge-indicators.m
   the remaining content moves up to fill the space instead. The Now
   Playing cover slot is the exception: without a cover it shows the live
   spectrum, which is real data rather than a placeholder.
+- **Messages appear briefly, one at a time, in plain words.** The message
+  area (`ui_widgets::MessageArea`) is an `ink` pill with 16px `surface`
+  text, like the volume readout: no icon, no signal color. It stays ~2 s,
+  a new message replaces the current one, and it never takes a tap. Each
+  screen anchors it by center point clear of the bezel and near what caused
+  it (Now Playing: the cover slot's center). Its width is capped to the
+  round screen's width at that height, with an ellipsis instead of clipping.
+  It lives on the top layer, so it survives re-renders. *Screen* messages
+  go away when the screen changes or the device locks; *system* messages
+  (future: e.g. a lost connection) stay, and belong in the top-center
+  caption zone. The volume readout takes the spot over a message.
 - **The spectrum is a neutral dot matrix.** 12×12 round dots, `ink` lit
   and `surfaceAlt` unlit, filling the cover's 96px square; no signal
   colors, gradients or peak markers. Paused audio decays to zero rather

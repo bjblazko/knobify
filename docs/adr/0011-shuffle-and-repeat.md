@@ -57,6 +57,20 @@ row, so prev/next win wherever their slop reaches down.
 Rejected: modes only in lists/Settings (Now Playing wouldn't show what's
 active, Rams #6), and hold-gestures on prev/next (undiscoverable).
 
+### Messages say what a tap did
+
+On the device the green glyph alone didn't tell which mode was active.
+Every toggle tap now also shows a message in the new reusable message area
+(ux-guidelines §7):
+
+- Shuffle: "Shuffle on - album/artist/library" or "Shuffle off - in order"
+- Repeat: "Repeat all", "Repeat this track" or "Repeat off"
+- Starting from a Shuffle row: "Shuffling <artist or album>" or
+  "Shuffling library"
+
+`ScreenManager` remembers which scope started the queue so the message can
+name it.
+
 ### What persists
 
 Repeat is a listening preference and is saved in NVS (`repeat`). Shuffle

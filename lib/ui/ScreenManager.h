@@ -18,8 +18,10 @@
 #include "LibraryScanner.h"
 #include "KeyValueStore.h"
 #include "LockController.h"
+#include "MessageArea.h"
 #include "PlaybackStateMachine.h"
 #include "SpectrumAnalyzer.h"
+#include "St77916Driver.h"
 #include "TabController.h"
 
 namespace knobify::ui {
@@ -48,7 +50,8 @@ class ScreenManager : public input::ListMoveSink {
                 library::JpegDecoder &jpegDecoder,
                 library::CoverWriter &coverWriter,
                 playback::KeyValueStore &settings,
-                power::BrightnessSetting &brightness)
+                power::BrightnessSetting &brightness,
+                ui_widgets::MessageArea &messages)
       : tabs_(tabs),
         library_(library),
         directoryReader_(directoryReader),
@@ -60,7 +63,8 @@ class ScreenManager : public input::ListMoveSink {
         jpegDecoder_(jpegDecoder),
         coverWriter_(coverWriter),
         settings_(settings),
-        brightness_(brightness) {}
+        brightness_(brightness),
+        messages_(messages) {}
 
   void begin();
 
@@ -134,6 +138,9 @@ class ScreenManager : public input::ListMoveSink {
   static void onHomeTilePressed(lv_event_t *e);
   static void onHomeTileClicked(lv_event_t *e);
   static void onCoverSlotClicked(lv_event_t *e);
+  // Feedback in the message area for what a toggle now does (ADR 0011).
+  void showShuffleMessage();
+  void showRepeatMessage();
   static void onShuffleClicked(lv_event_t *e);
   static void onRepeatClicked(lv_event_t *e);
   static bool hasShuffleRow(navigation::ScreenKind kind) {
@@ -154,6 +161,7 @@ class ScreenManager : public input::ListMoveSink {
   library::CoverWriter &coverWriter_;
   playback::KeyValueStore &settings_;
   power::BrightnessSetting &brightness_;
+  ui_widgets::MessageArea &messages_;
 
   static constexpr uint32_t kVolumeHudTimeoutMs = 3000;
 
@@ -174,6 +182,10 @@ class ScreenManager : public input::ListMoveSink {
   // Persisted repeat mode (playback::RepeatMode). Shuffle isn't persisted:
   // it's set by how playback started (ADR 0011).
   static constexpr char kRepeatSettingKey[] = "repeat";
+  // Now Playing's messages sit where the volume readout does: the center of
+  // the cover slot, the calmest wide spot on the screen.
+  static constexpr ui_widgets::MessageAnchor kNowPlayingMessageAnchor{
+      drivers::kLcdHorRes / 2, kCoverY + 48};
   // Item id of the Shuffle row -- real ids are unsigned indices.
   static constexpr int kShuffleItemId = -1;
 
@@ -216,6 +228,12 @@ class ScreenManager : public input::ListMoveSink {
   bool volumeHudVisible_ = false;
   uint32_t volumeHudHideAtMs_ = 0;
   int highlightedIndex_ = 0;
+  // Last rendered screen: a screen message is dismissed when this changes.
+  navigation::ScreenKind renderedKind_ = navigation::ScreenKind::Home;
+
+  // What the current queue was started from, so messages can name it.
+  enum class PlayScope { File, Album, Artist, Library };
+  PlayScope playScope_ = PlayScope::File;
 
   // Kind IDs stashed on each clickable object via lv_obj_set_user_data so
   // the static click callbacks know what was tapped without capturing
