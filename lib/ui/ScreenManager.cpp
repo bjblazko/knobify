@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 
 #include "IconFont.h"
 #include "LvglButtonHelpers.h"
@@ -104,6 +105,11 @@ void ScreenManager::render() {
   volumeHudLabel_ = nullptr;
   volumeHudVisible_ = false;
   progressArcHost_ = nullptr;
+  timePill_ = nullptr;
+  shuttleArcHost_ = nullptr;
+  shuttleMarker_ = nullptr;
+  shownShuttleHeld_ = false;
+  shownShuttleStep_ = 0;
   lastShownSecond_ = -1;
   durationSeconds_ = 0;
 
@@ -574,6 +580,43 @@ void ScreenManager::renderNowPlaying() {
   progressArc_.setValue(0.0f);
   lv_obj_add_flag(progressArcHost_, LV_OBJ_FLAG_HIDDEN);
 
+  // Shuttle indicator (ADR 0013), only while the time pill is held: an ink
+  // tick at the top marks normal speed, and a thin ink arc just inside the
+  // progress ring grows from it -- clockwise forward, counterclockwise
+  // back, 24° per step. The one deliberate exception to "one edge ring at
+  // a time": speed and position are both needed while scrubbing. Ink, not
+  // a signal color: it sits on the surface, not against the housing, and
+  // yellow/orange/green already mean something.
+  constexpr lv_coord_t kShuttleArcWidth = 5;
+  constexpr lv_coord_t kShuttleArcGap = 3;
+  ui_widgets::EdgeArcConfig shuttleArcConfig;
+  shuttleArcConfig.startAngle = 150;
+  shuttleArcConfig.endAngle = 30;
+  shuttleArcConfig.widthPx = kShuttleArcWidth;
+  shuttleArcConfig.color = theme::ink();
+  shuttleArcConfig.mode = LV_ARC_MODE_SYMMETRICAL;
+  shuttleArcHost_ = makeEdgeArcHost(screen_, progressArcConfig.widthPx + kShuttleArcGap);
+  shuttleArc_.create(shuttleArcHost_, shuttleArcConfig, -playback::Shuttle::kMaxStep,
+                     playback::Shuttle::kMaxStep);
+  shuttleArc_.setValue(static_cast<int32_t>(0));
+  // No track behind the arc: only the speed is drawn.
+  lv_obj_set_style_arc_opa(shuttleArc_.raw(), LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_add_flag(shuttleArcHost_, LV_OBJ_FLAG_HIDDEN);
+
+  // Same host as the progress ring, so it lines up with it wherever that
+  // ring actually lands on the bezel.
+  shuttleMarker_ = lv_obj_create(progressArcHost_);
+  lv_obj_set_size(shuttleMarker_, 4,
+                  progressArcConfig.widthPx + kShuttleArcGap + kShuttleArcWidth);
+  lv_obj_align(shuttleMarker_, LV_ALIGN_TOP_MID, 0, 0);
+  lv_obj_set_style_bg_color(shuttleMarker_, theme::ink(), 0);
+  lv_obj_set_style_border_width(shuttleMarker_, 0, 0);
+  lv_obj_set_style_radius(shuttleMarker_, 0, 0);
+  lv_obj_set_style_pad_all(shuttleMarker_, 0, 0);
+  lv_obj_clear_flag(shuttleMarker_, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_clear_flag(shuttleMarker_, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(shuttleMarker_, LV_OBJ_FLAG_HIDDEN);
+
   // Round-edge volume HUD: a ring flush against the physical bezel plus a
   // numeric readout, hidden until the first adjustment;
   // updateVolumeDisplay()/tickVolumeHud() show it and auto-hide it after
@@ -671,11 +714,26 @@ void ScreenManager::renderNowPlaying() {
   // playback was actually progressing. Wall-clock time since the track
   // started minus paused time (see PlaybackStateMachine::elapsedMs()),
   // not the decoder's own position -- close enough for a simple readout.
-  elapsedLabel_ = lv_label_create(screen_);
-  lv_obj_set_style_text_font(elapsedLabel_, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_color(elapsedLabel_, theme::structure(), 0);
-  lv_obj_align(elapsedLabel_, LV_ALIGN_TOP_MID, 0, kTransportCenterY + 44);
-  lv_label_set_text(elapsedLabel_, "0:00");
+  const lv_coord_t timeY = kTransportCenterY + 44;
+  if (playback_.canSeek()) {
+    // Hold-and-turn shuttle (ADR 0013): the readout of the song position
+    // is the control that changes it. ◀◀ ▶▶ marks say it can be held;
+    // no marks (Ogg) means it can't. No extended hit area -- the
+    // shuffle/repeat toggles sit 12 px away.
+    timePill_ = makeHoldButton(screen_, "0:00", kTimePillW, kTimePillH,
+                               LV_ALIGN_TOP_MID, 0, timeY - 6,
+                               &ScreenManager::onTimePillPressed,
+                               &ScreenManager::onTimePillReleased, this,
+                               ButtonRole::Secondary, &lv_font_montserrat_14);
+    lv_obj_set_ext_click_area(timePill_, 0);
+    elapsedLabel_ = lv_obj_get_child(timePill_, 0);
+  } else {
+    elapsedLabel_ = lv_label_create(screen_);
+    lv_obj_set_style_text_font(elapsedLabel_, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(elapsedLabel_, theme::structure(), 0);
+    lv_obj_align(elapsedLabel_, LV_ALIGN_TOP_MID, 0, timeY);
+    lv_label_set_text(elapsedLabel_, "0:00");
+  }
   updateElapsedTimeDisplay();
 
   // Lock button -- bottom-center, inset from the edge like the back
@@ -777,6 +835,31 @@ void ScreenManager::setProgressRingVisible(bool visible) {
   }
 }
 
+void ScreenManager::onTimePillPressed(lv_event_t *e) {
+  auto *self = static_cast<ScreenManager *>(lv_event_get_user_data(e));
+  self->shuttle_.hold(millis());
+}
+
+void ScreenManager::onTimePillReleased(lv_event_t *e) {
+  auto *self = static_cast<ScreenManager *>(lv_event_get_user_data(e));
+  self->shuttle_.release(millis());
+}
+
+void ScreenManager::applyShuttleIndicator() {
+  if (!shuttleArcHost_ || !shuttleMarker_) return;
+  if (shownShuttleHeld_) {
+    shuttleArc_.setValue(static_cast<int32_t>(shownShuttleStep_));
+    lv_obj_clear_flag(shuttleArcHost_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(shuttleMarker_, LV_OBJ_FLAG_HIDDEN);
+    // A volume HUD still fading out from before the hold would hide the
+    // progress ring; the knob isn't setting volume now, so end it.
+    if (volumeHudVisible_) volumeHudHideAtMs_ = 0;
+  } else {
+    lv_obj_add_flag(shuttleArcHost_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(shuttleMarker_, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
 void ScreenManager::updateVolumeDisplay(uint32_t nowMs) {
   if (!volumeArcHost_ || !volumeHudLabel_) return;
   volumeArc_.setValue(static_cast<int32_t>(playback_.volume()));
@@ -808,20 +891,37 @@ void ScreenManager::updateElapsedTimeDisplay() {
   if (!elapsedLabel_) return;
   uint32_t elapsedMs = playback_.elapsedMs(millis());
   uint32_t totalSeconds = elapsedMs / 1000;
-  if (static_cast<int32_t>(totalSeconds) != lastShownSecond_) {
+  bool held = shuttle_.isHeld();
+  int8_t step = shuttle_.step();
+  bool shuttleChanged = held != shownShuttleHeld_ || step != shownShuttleStep_;
+  if (shuttleChanged) {
+    shownShuttleHeld_ = held;
+    shownShuttleStep_ = step;
+    applyShuttleIndicator();
+  }
+  if (static_cast<int32_t>(totalSeconds) != lastShownSecond_ || shuttleChanged) {
     lastShownSecond_ = static_cast<int32_t>(totalSeconds);
     durationSeconds_ = playback_.durationSeconds();
-    char text[24];
-    if (durationSeconds_ != 0) {
-      snprintf(text, sizeof(text), "%u:%02u / %u:%02u",
-               static_cast<unsigned>(totalSeconds / 60),
-               static_cast<unsigned>(totalSeconds % 60),
-               static_cast<unsigned>(durationSeconds_ / 60),
-               static_cast<unsigned>(durationSeconds_ % 60));
+    unsigned em = static_cast<unsigned>(totalSeconds / 60);
+    unsigned es = static_cast<unsigned>(totalSeconds % 60);
+    unsigned dm = static_cast<unsigned>(durationSeconds_ / 60);
+    unsigned ds = static_cast<unsigned>(durationSeconds_ % 60);
+    char text[40];
+    if (held && step != 0) {
+      // Speed instead of the total, so the pill doesn't grow. ASCII "x":
+      // the built-in font has no "×".
+      snprintf(text, sizeof(text), "%u:%02u %s %ux", em, es,
+               step > 0 ? LV_SYMBOL_NEXT : LV_SYMBOL_PREV,
+               1u << std::abs(step));
+    } else if (timePill_ && durationSeconds_ != 0) {
+      snprintf(text, sizeof(text), LV_SYMBOL_PREV " %u:%02u / %u:%02u " LV_SYMBOL_NEXT,
+               em, es, dm, ds);
+    } else if (timePill_) {
+      snprintf(text, sizeof(text), LV_SYMBOL_PREV " %u:%02u " LV_SYMBOL_NEXT, em, es);
+    } else if (durationSeconds_ != 0) {
+      snprintf(text, sizeof(text), "%u:%02u / %u:%02u", em, es, dm, ds);
     } else {
-      snprintf(text, sizeof(text), "%u:%02u",
-               static_cast<unsigned>(totalSeconds / 60),
-               static_cast<unsigned>(totalSeconds % 60));
+      snprintf(text, sizeof(text), "%u:%02u", em, es);
     }
     lv_label_set_text(elapsedLabel_, text);
     // Honest: no duration known -> no progress ring at all, rather than

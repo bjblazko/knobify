@@ -37,6 +37,7 @@
 #include "SdFileLister.h"
 #include "SdFileOpener.h"
 #include "SdInit.h"
+#include "Shuttle.h"
 #include "St77916Driver.h"
 #include "TabController.h"
 #include "TouchCalibration.h"
@@ -188,6 +189,7 @@ knobify::drivers::NvsKeyValueStore g_nvsStore;
 knobify::playback::VolumePersistence g_volume(g_nvsStore);
 knobify::drivers::Esp32AudioI2SDriver g_audioDriver;
 knobify::playback::PlaybackStateMachine g_playback(g_audioDriver, g_volume);
+knobify::playback::Shuttle g_shuttle(g_playback);
 knobify::navigation::TabController g_tabs;
 knobify::power::BrightnessSetting g_brightness(g_nvsStore);
 
@@ -199,15 +201,15 @@ knobify::power::IdleTimer g_idleTimer;
 knobify::power::LockController g_lockController;
 knobify::ui_widgets::MessageArea g_messageArea;
 knobify::ui::ScreenManager g_screenManager(
-    g_tabs, g_libraryIndex, g_directoryReader, g_playback, g_lockController,
-    g_libraryRescanner, g_coverReader, g_fileOpener, g_jpegDecoder,
-    g_coverWriter, g_nvsStore, g_brightness, g_messageArea);
+    g_tabs, g_libraryIndex, g_directoryReader, g_playback, g_shuttle,
+    g_lockController, g_libraryRescanner, g_coverReader, g_fileOpener,
+    g_jpegDecoder, g_coverWriter, g_nvsStore, g_brightness, g_messageArea);
 knobify::ui::LockOverlay g_lockOverlay(g_lockController);
 knobify::drivers::BatteryAdcDriver g_batteryAdc;
 knobify::power::BatteryMonitor g_batteryMonitor;
 knobify::ui::BatteryIndicator g_batteryIndicator(g_batteryMonitor);
-knobify::input::InputRouter g_inputRouter(g_tabs, g_playback, g_brightness,
-                                        g_screenManager);
+knobify::input::InputRouter g_inputRouter(g_tabs, g_playback, g_shuttle,
+                                          g_brightness, g_screenManager);
 knobify::input::GestureRecognizer g_gestureRecognizer;
 
 bool sdFileExists(const std::string &path) { return SD_MMC.exists(path.c_str()); }
@@ -500,12 +502,23 @@ void loop() {
       g_inputRouter.onEncoderDelta(encoderDelta, now);
       // Cheap (no full re-render) so it can run on every tick -- see
       // ScreenManager::updateVolumeDisplay(). A no-op on any screen
-      // other than Now Playing.
-      g_screenManager.updateVolumeDisplay(now);
+      // other than Now Playing, and skipped while the knob shuttles.
+      if (!g_shuttle.isHeld()) g_screenManager.updateVolumeDisplay(now);
       g_screenManager.updateBrightnessDisplay();
     }
   }
   g_screenManager.tickVolumeHud(now);
+
+  // A shuttle hold ends with the finger (the pill's RELEASED/PRESS_LOST
+  // normally does it; this also covers the pill being deleted by a
+  // re-render mid-hold), or when its screen goes away (ADR 0013).
+  if (g_shuttle.isHeld() &&
+      (!touchSample.pressed || !displayOn || g_lockController.isLocked() ||
+       g_tabs.activeStack().current().kind !=
+           knobify::navigation::ScreenKind::NowPlaying)) {
+    g_shuttle.release(now);
+  }
+  g_shuttle.tick(now);
 
   g_lockOverlay.tick();
   // A toggle's message means nothing on the lock screen.

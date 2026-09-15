@@ -20,6 +20,7 @@
 #include "LockController.h"
 #include "MessageArea.h"
 #include "PlaybackStateMachine.h"
+#include "Shuttle.h"
 #include "SpectrumAnalyzer.h"
 #include "St77916Driver.h"
 #include "TabController.h"
@@ -43,6 +44,7 @@ class ScreenManager : public input::ListMoveSink {
                 library::LibraryIndex &library,
                 library::DirectoryReader &directoryReader,
                 playback::PlaybackStateMachine &playback,
+                playback::Shuttle &shuttle,
                 power::LockController &lockController,
                 library::LibraryRescanner &rescanner,
                 library::CoverArtReader &coverReader,
@@ -56,6 +58,7 @@ class ScreenManager : public input::ListMoveSink {
         library_(library),
         directoryReader_(directoryReader),
         playback_(playback),
+        shuttle_(shuttle),
         lockController_(lockController),
         rescanner_(rescanner),
         coverReader_(coverReader),
@@ -115,6 +118,10 @@ class ScreenManager : public input::ListMoveSink {
   void renderBackButtonIfNeeded();
   void renderContextCaption();
   void setProgressRingVisible(bool visible);
+  // Shows/hides the top marker and shuttle arc for shownShuttle* (ADR 0013).
+  void applyShuttleIndicator();
+  static void onTimePillPressed(lv_event_t *e);
+  static void onTimePillReleased(lv_event_t *e);
   void applyCoverSlotMode();
   // Tag metadata for a playing file, falling back to friendlyName() for
   // the title and empty strings otherwise (e.g. untagged Files-tab files).
@@ -153,6 +160,7 @@ class ScreenManager : public input::ListMoveSink {
   library::LibraryIndex &library_;
   library::DirectoryReader &directoryReader_;
   playback::PlaybackStateMachine &playback_;
+  playback::Shuttle &shuttle_;
   power::LockController &lockController_;
   library::LibraryRescanner &rescanner_;
   library::CoverArtReader &coverReader_;
@@ -176,6 +184,10 @@ class ScreenManager : public input::ListMoveSink {
   static constexpr lv_coord_t kMiniBarZoneHeight = 88;
   static constexpr lv_coord_t kCoverY = 56;
   static constexpr lv_coord_t kTransportCenterY = 246;
+  // Time pill (ADR 0013): between the shuffle/repeat toggles (x = ±100,
+  // 44 px wide -> inner edges at ±78), leaving 12 px either side.
+  static constexpr lv_coord_t kTimePillW = 132;
+  static constexpr lv_coord_t kTimePillH = 28;
   static constexpr uint32_t kSpectrumFrameMs = 33;
   // Persisted cover-slot choice: 1 = spectrum, 0 = cover.
   static constexpr char kSpectrumSettingKey[] = "npSpectrum";
@@ -221,6 +233,14 @@ class ScreenManager : public input::ListMoveSink {
   ui_widgets::EdgeArc volumeArc_;
   lv_obj_t *progressArcHost_ = nullptr;
   ui_widgets::EdgeArc progressArc_;
+  // Null for tracks that can't shuttle -- then elapsedLabel_ is a plain label.
+  lv_obj_t *timePill_ = nullptr;
+  lv_obj_t *shuttleArcHost_ = nullptr;
+  ui_widgets::EdgeArc shuttleArc_;
+  lv_obj_t *shuttleMarker_ = nullptr;
+  // What the pill text and arc currently show, to redraw only on change.
+  bool shownShuttleHeld_ = false;
+  int8_t shownShuttleStep_ = 0;
   // Decoder duration is fetched under the audio task's mutex, so it's
   // only re-queried when the displayed second changes, not every loop().
   int32_t lastShownSecond_ = -1;

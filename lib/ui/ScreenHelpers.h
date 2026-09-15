@@ -40,9 +40,12 @@ inline void setClampedText(lv_obj_t *label, const char *text, int maxLines) {
 // kLcdHorRes/VerRes still left a visible gap from the true edge on real
 // hardware (some further LVGL-internal margin), and overshooting is
 // harmless here since nothing else occupies that space.
-inline lv_obj_t *makeEdgeArcHost(lv_obj_t *parent) {
+// `insetPx` shrinks the host on every side, for a ring drawn just inside
+// another one (the shuttle arc inside the progress ring, ADR 0013).
+inline lv_obj_t *makeEdgeArcHost(lv_obj_t *parent, lv_coord_t insetPx = 0) {
   lv_obj_t *host = lv_obj_create(parent);
-  lv_obj_set_size(host, drivers::kLcdHorRes + 40, drivers::kLcdVerRes + 40);
+  lv_obj_set_size(host, drivers::kLcdHorRes + 40 - 2 * insetPx,
+                  drivers::kLcdVerRes + 40 - 2 * insetPx);
   lv_obj_center(host);
   lv_obj_set_style_bg_opa(host, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(host, 0, 0);
