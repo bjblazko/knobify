@@ -101,9 +101,19 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
     return audio_.isRunning();
   }
 
+  // Where the listener actually is, for resume (ADR 0012): getFilePos() is
+  // the reader, a whole input buffer ahead of the audio, so resuming there
+  // skipped up to that buffer's worth (~4 s of a 128 kbps MP3 at 64 KB, ~17 s
+  // with the library's old 300 KB default). Subtracting what's still
+  // buffered is how the library itself reports the position in stopSong(),
+  // and matches seekByMs() below.
   uint32_t filePosition() override {
     MutexGuard guard(mutex_);
-    return audio_.getFilePos();
+    uint32_t reader = audio_.getFilePos();
+    if (reader == 0) return 0;  // Nothing loaded.
+    int64_t heard = static_cast<int64_t>(reader) - audio_.inBufferFilled();
+    int64_t start = audio_.getAudioDataStartPos();
+    return static_cast<uint32_t>(heard < start ? start : heard);
   }
 
   // setTimeOffset() only takes whole seconds -- too coarse for 2× cue
