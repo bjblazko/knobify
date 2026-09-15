@@ -22,3 +22,4 @@ supersedes the old one (and the old one is marked "Superseded by NNNN").
 | [0011](0011-shuffle-and-repeat.md) | Shuffle and repeat | Accepted |
 | [0012](0012-resume-session.md) | Resume where you left off | Accepted |
 | [0013](0013-jog-shuttle.md) | Jog/shuttle on Now Playing | Accepted (amends 0008's one-edge-ring rule) |
+| [0014](0014-now-playing-options-panel.md) | Now Playing options panel | Accepted (amends 0005, 0009, 0011) |

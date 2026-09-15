@@ -6,6 +6,7 @@
 #include "GestureRecognizer.h"
 #include "PlaybackStateMachine.h"
 #include "ScreenId.h"
+#include "Shuttle.h"
 #include "TabController.h"
 
 namespace knobify::input {
@@ -21,25 +22,33 @@ class ListMoveSink {
 };
 
 // The context-sensitive piece (decision 3, ADR 0004): routes encoder
-// deltas to list/tile selection, volume or brightness depending on the
-// current screen, and routes the one recognized gesture (left-to-right swipe) to
-// TabController's pop-or-switch-tab logic. Pure logic over
-// TabController/PlaybackStateMachine/ListMoveSink -- host-testable, no
-// hardware or LVGL involved.
+// deltas to list/tile selection, volume, the shuttle (while held, ADR 0013) or
+// brightness depending on the current screen, and routes the one recognized
+// gesture (left-to-right swipe) to TabController's pop-or-switch-tab logic.
+// Pure logic over TabController/PlaybackStateMachine/Shuttle/ListMoveSink --
+// host-testable, no hardware or LVGL involved.
 class InputRouter {
  public:
   InputRouter(navigation::TabController &tabs,
               playback::PlaybackStateMachine &playback,
+              playback::Shuttle &shuttle,
               power::BrightnessSetting &brightness, ListMoveSink &listSink)
       : tabs_(tabs),
         playback_(playback),
+        shuttle_(shuttle),
         brightness_(brightness),
         listSink_(listSink) {}
 
   void onEncoderDelta(int16_t delta, uint32_t nowMs) {
     switch (tabs_.activeStack().current().kind) {
       case navigation::ScreenKind::NowPlaying:
-        playback_.adjustVolume(delta, nowMs);
+        // Holding the time pill turns the knob into a shuttle (ADR 0013);
+        // the volume never changes during a hold.
+        if (shuttle_.isHeld()) {
+          shuttle_.turn(delta, nowMs);
+        } else {
+          playback_.adjustVolume(delta, nowMs);
+        }
         break;
       case navigation::ScreenKind::Brightness:
         brightness_.adjust(delta, nowMs);
@@ -62,6 +71,7 @@ class InputRouter {
  private:
   navigation::TabController &tabs_;
   playback::PlaybackStateMachine &playback_;
+  playback::Shuttle &shuttle_;
   power::BrightnessSetting &brightness_;
   ListMoveSink &listSink_;
 };

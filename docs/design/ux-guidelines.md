@@ -233,22 +233,26 @@ Full architecture: [ADR 0004](../adr/0004-navigation-library-and-index-architect
   dedicated picker UI and mirrors the same context-sensitivity principle
   applied to the encoder.
 - **Context-sensitive encoder.** On browse screens, rotating scrolls the
-  highlighted list item; on Now Playing, rotating adjusts volume; on Home
-  it moves the tile selection; on Brightness it sets brightness. The
+  highlighted list item; on Now Playing, rotating adjusts volume (or
+  shuttles through the track while the time pill is held, ADR 0013); on
+  Home it moves the tile selection; on Brightness it sets brightness. The
   mapping is unambiguous per screen since no mode button exists to switch
   it explicitly.
 - **Scope comes from where you start.** Artists, Albums and Tracks lists
   begin with a Shuffle row that shuffles the whole library, the artist or
   the album. Tapping a track plays its album in order and turns shuffle
   off. There is no scope setting ([ADR 0011](../adr/0011-shuffle-and-repeat.md)).
-- **Shuffle and repeat are toggles on Now Playing**, beside the time:
-  quiet glyphs, `confirm` green while active. Repeat cycles off → all →
+- **Shuffle and repeat are toggles in Now Playing's options panel**
+  (the `︿` handle at the bottom, [ADR 0014](../adr/0014-now-playing-options-panel.md)):
+  glyphs `confirm` green while active. Repeat cycles off → all →
   one; only repeat is remembered across reboots. A glyph alone didn't say
   which mode was active, so every tap also shows a message naming what now
   happens ("Shuffle on - album", "Repeat this track").
-- **The cover slot switches by tap.** Tapping the Now Playing cover
-  swaps it for the dot-matrix spectrum and back; the choice persists.
-  Without a cover the spectrum always shows and the slot isn't tappable.
+- **The cover slot switches from the options panel.** Its Cover /
+  Spectrum button swaps the cover for the dot-matrix spectrum and back; the
+  choice persists. Without a cover the spectrum always shows and the button
+  is greyed out. The slot itself isn't tappable — nothing said it was
+  (ADR 0014).
   No separate visualizer screen — it would need an undiscoverable gesture
   ([ADR 0009](../adr/0009-now-playing-spectrum-analyzer.md)).
 - **Always-visible back button, in addition to swipe.** Swipe-to-back
@@ -312,6 +316,10 @@ Full architecture: [ADR 0005](../adr/0005-power-lock-and-round-edge-indicators.m
   progress ring is the resting state; while volume is being adjusted the
   volume ring temporarily replaces it, then hands back. Two concentric
   rings at once would be noise.
+  One exception (ADR 0013): while the time pill is held, a thin `ink`
+  shuttle arc sits just inside the progress ring with a marker at the top
+  — speed and position are both needed while scrubbing, and both vanish
+  with the finger.
 - **Song progress is shown only when known.** The progress ring is hidden
   if the decoder reports no duration — no fabricated progress.
 - **Volume feedback follows a phone's volume-HUD shape.** Volume shows as
@@ -353,8 +361,10 @@ Full architecture: [ADR 0005](../adr/0005-power-lock-and-round-edge-indicators.m
   control names the current context (artist, album, folder), since the
   top of a round screen is too narrow to be useful for rows anyway.
 - **Secondary facts are plain text, never badges.** Album rows end in the
-  release year (14px, the row's text color at reduced opacity) — it
-  explains the chronological sort. No pills or overlays: they cost width
+  release year, the Brightness row in its percentage (14px, `structure`;
+  `surfaceAlt` on the `ink` selected row). The year explains the
+  chronological sort. The row's own text color at reduced opacity was
+  tried first and came out barely readable on the selected row. No pills or overlays: they cost width
   on a narrow round screen and compete with the selected row. Nothing is
   shown when the year is unknown, and no release type (album/EP/single)
   is shown at all, since no reliable tag exists and guessing from track

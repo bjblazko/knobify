@@ -23,6 +23,9 @@ struct EdgeArcConfig {
   lv_color_t color = lv_color_white();
   lv_color_t backgroundColor;
   bool hasBackgroundColor = false;
+  // LV_ARC_MODE_SYMMETRICAL fills from the middle of the range outwards --
+  // the shuttle arc growing either way from the top (ADR 0013).
+  lv_arc_mode_t mode = LV_ARC_MODE_NORMAL;
 };
 
 class EdgeArc {
@@ -43,6 +46,7 @@ class EdgeArc {
     lv_obj_set_size(arc_, LV_PCT(100), LV_PCT(100));
     lv_obj_center(arc_);
     lv_arc_set_bg_angles(arc_, config.startAngle, config.endAngle);
+    lv_arc_set_mode(arc_, config.mode);
     lv_arc_set_range(arc_, min, max);
     lv_arc_set_rotation(arc_, 0);
     // Not an interactive control -- LVGL's default arc has a draggable

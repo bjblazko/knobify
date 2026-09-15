@@ -5,6 +5,7 @@
 #include "BrightnessSetting.h"
 #include "GestureRecognizer.h"
 #include "InputRouter.h"
+#include "Shuttle.h"
 #include "TouchCalibration.h"
 #include "TouchLatch.h"
 
@@ -22,6 +23,7 @@ using knobify::power::BrightnessSetting;
 using knobify::playback::KeyValueStore;
 using knobify::playback::PlaybackDriver;
 using knobify::playback::PlaybackStateMachine;
+using knobify::playback::Shuttle;
 using knobify::playback::VolumePersistence;
 
 void setUp() {}
@@ -34,6 +36,7 @@ class FakeDriver : public PlaybackDriver {
   bool playFile(const std::string &) override { return true; }
   bool playFileAt(const std::string &, uint32_t) override { return true; }
   uint32_t filePosition() override { return 0; }
+  bool seekByMs(int32_t) override { return true; }
   void pause() override {}
   void resume() override {}
   void stop() override {}
@@ -74,7 +77,8 @@ void test_encoder_scrolls_list_on_browse_screen() {
   tabs.openMusic();  // Library/Artists.
   RecordingListSink sink;
   BrightnessSetting brightness(store);
-  InputRouter router(tabs, playback, brightness, sink);
+  Shuttle shuttle(playback);
+  InputRouter router(tabs, playback, shuttle, brightness, sink);
 
   router.onEncoderDelta(3, 0);
 
@@ -91,13 +95,40 @@ void test_encoder_adjusts_volume_on_now_playing_screen() {
   tabs.activeStack().push(Screen{ScreenKind::NowPlaying, {}});
   RecordingListSink sink;
   BrightnessSetting brightness(store);
-  InputRouter router(tabs, playback, brightness, sink);
+  Shuttle shuttle(playback);
+  InputRouter router(tabs, playback, shuttle, brightness, sink);
 
   uint8_t before = playback.volume();
   router.onEncoderDelta(2, 0);
 
   TEST_ASSERT_EQUAL_INT(0, sink.calls);  // Not routed to the list.
   TEST_ASSERT_TRUE(playback.volume() == before + 2);
+}
+
+void test_encoder_shuttles_instead_of_volume_while_held() {
+  FakeDriver driver;
+  FakeStore store;
+  VolumePersistence volume(store);
+  PlaybackStateMachine playback(driver, volume);
+  playback.play({"/a.mp3"}, 0, 0);
+  TabController tabs;
+  tabs.activeStack().push(Screen{ScreenKind::NowPlaying, {}});
+  RecordingListSink sink;
+  BrightnessSetting brightness(store);
+  Shuttle shuttle(playback);
+  InputRouter router(tabs, playback, shuttle, brightness, sink);
+
+  uint8_t before = playback.volume();
+  TEST_ASSERT_TRUE(shuttle.hold(0));
+  router.onEncoderDelta(2, 0);
+
+  TEST_ASSERT_EQUAL_INT8(2, shuttle.step());
+  TEST_ASSERT_TRUE(playback.volume() == before);
+  TEST_ASSERT_EQUAL_INT(0, sink.calls);
+
+  shuttle.release(0);
+  router.onEncoderDelta(1, 0);
+  TEST_ASSERT_TRUE(playback.volume() == before + 1);
 }
 
 void test_encoder_adjusts_brightness_on_brightness_screen() {
@@ -111,7 +142,8 @@ void test_encoder_adjusts_brightness_on_brightness_screen() {
   RecordingListSink sink;
   BrightnessSetting brightness(store);
   brightness.begin();
-  InputRouter router(tabs, playback, brightness, sink);
+  Shuttle shuttle(playback);
+  InputRouter router(tabs, playback, shuttle, brightness, sink);
 
   uint8_t volumeBefore = playback.volume();
   router.onEncoderDelta(-3, 0);
@@ -129,7 +161,8 @@ void test_encoder_moves_tile_selection_on_home() {
   TabController tabs;  // Starts on Home.
   RecordingListSink sink;
   BrightnessSetting brightness(store);
-  InputRouter router(tabs, playback, brightness, sink);
+  Shuttle shuttle(playback);
+  InputRouter router(tabs, playback, shuttle, brightness, sink);
 
   router.onEncoderDelta(1, 0);
 
@@ -146,7 +179,8 @@ void test_swipe_pops_when_possible() {
   tabs.activeStack().push(Screen{ScreenKind::Albums, {}});
   RecordingListSink sink;
   BrightnessSetting brightness(store);
-  InputRouter router(tabs, playback, brightness, sink);
+  Shuttle shuttle(playback);
+  InputRouter router(tabs, playback, shuttle, brightness, sink);
 
   router.onGesture({GestureType::SwipeLeftToRight, 0, 0});
 
@@ -162,7 +196,8 @@ void test_swipe_switches_tab_at_root() {
   tabs.openMusic();
   RecordingListSink sink;
   BrightnessSetting brightness(store);
-  InputRouter router(tabs, playback, brightness, sink);
+  Shuttle shuttle(playback);
+  InputRouter router(tabs, playback, shuttle, brightness, sink);
 
   router.onGesture({GestureType::SwipeLeftToRight, 0, 0});
 
@@ -178,7 +213,8 @@ void test_tap_is_not_routed_by_input_router() {
   tabs.openMusic();
   RecordingListSink sink;
   BrightnessSetting brightness(store);
-  InputRouter router(tabs, playback, brightness, sink);
+  Shuttle shuttle(playback);
+  InputRouter router(tabs, playback, shuttle, brightness, sink);
 
   router.onGesture({GestureType::Tap, 10, 10});
 
@@ -266,6 +302,7 @@ int main(int argc, char **argv) {
   UNITY_BEGIN();
   RUN_TEST(test_encoder_scrolls_list_on_browse_screen);
   RUN_TEST(test_encoder_adjusts_volume_on_now_playing_screen);
+  RUN_TEST(test_encoder_shuttles_instead_of_volume_while_held);
   RUN_TEST(test_encoder_adjusts_brightness_on_brightness_screen);
   RUN_TEST(test_encoder_moves_tile_selection_on_home);
   RUN_TEST(test_swipe_pops_when_possible);

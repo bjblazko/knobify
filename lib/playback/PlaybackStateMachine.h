@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cctype>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -134,6 +135,35 @@ class PlaybackStateMachine {
     }
   }
 
+  // Moves within the current track (jog/shuttle, ADR 0013) and shifts the
+  // wall-clock elapsed time by the same amount, so the readout and ring
+  // follow. Clamped at the track start; the end is the caller's job (it
+  // knows its safety margin). Nothing loaded (stopped, or cued after a
+  // reboot) -> no-op.
+  void seekBy(int32_t deltaMs, uint32_t nowMs) {
+    if (state_ == PlaybackState::Stopped || cued_) return;
+    int64_t elapsed = elapsedMs(nowMs);
+    if (elapsed + deltaMs < 0) deltaMs = static_cast<int32_t>(-elapsed);
+    if (deltaMs == 0) return;
+    if (!driver_.seekByMs(deltaMs)) return;
+    // Modular arithmetic: subtracting a negative delta moves the start
+    // later, i.e. less elapsed.
+    trackStartMs_ -= static_cast<uint32_t>(deltaMs);
+  }
+
+  // Whether the current track can be shuttled: ESP32-audioI2S only seeks
+  // within MP3 and WAV of the formats knobify plays (not Ogg). By
+  // extension, so it's known before a cued track is loaded.
+  bool canSeek() const {
+    if (state_ == PlaybackState::Stopped || queue_.empty()) return false;
+    const std::string &path = queue_.current();
+    auto dot = path.find_last_of('.');
+    if (dot == std::string::npos) return false;
+    std::string ext = path.substr(dot + 1);
+    for (char &c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return ext == "mp3" || ext == "wav";
+  }
+
   // `delta` is signed knob ticks; positive = louder.
   void adjustVolume(int delta, uint32_t nowMs) {
     int newVolume = static_cast<int>(volume_) + delta;
@@ -170,6 +200,14 @@ class PlaybackStateMachine {
   // Position in play order (shuffled order while shuffle is on).
   size_t currentIndex() const { return queue_.position(); }
   const std::string &currentPath() const { return queue_.current(); }
+  // Bumped every time playCurrent() actually starts a file -- play(),
+  // next()/prev(), and an onTrackFinished() restart/advance -- so callers
+  // like Shuttle (ADR 0013) can tell a track restart (e.g. repeat-one, or
+  // a one-track queue on repeat-all) apart from merely resuming the same
+  // track, which currentPath() alone can't do. Resuming a cued track via
+  // togglePlayPause() does NOT bump this: it's the same track starting to
+  // actually play, not a change.
+  uint32_t trackGeneration() const { return trackGeneration_; }
   uint8_t volume() const { return volume_; }
   bool hasPendingVolumeSave() const { return pendingVolumeSave_; }
 
@@ -221,6 +259,7 @@ class PlaybackStateMachine {
       state_ = PlaybackState::Playing;
       trackStartMs_ = nowMs;
       pausedAccumMs_ = 0;
+      ++trackGeneration_;
     }
   }
 
@@ -240,6 +279,7 @@ class PlaybackStateMachine {
   uint32_t trackStartMs_ = 0;
   uint32_t pausedAccumMs_ = 0;
   uint32_t pauseStartMs_ = 0;
+  uint32_t trackGeneration_ = 0;
 };
 
 }  // namespace knobify::playback

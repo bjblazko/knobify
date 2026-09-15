@@ -30,6 +30,10 @@ class FakeDriver : public PlaybackDriver {
     return playFile(path);
   }
   uint32_t filePosition() override { return position; }
+  bool seekByMs(int32_t deltaMs) override {
+    seeks.push_back(deltaMs);
+    return seekSucceeds;
+  }
   void pause() override { running = false; }
   void resume() override { running = true; }
   void stop() override { running = false; }
@@ -49,6 +53,8 @@ class FakeDriver : public PlaybackDriver {
   uint32_t duration = 0;
   uint32_t lastPosition = 0;
   uint32_t position = 0;
+  std::vector<int32_t> seeks;
+  bool seekSucceeds = true;
 };
 
 class FakeStore : public KeyValueStore {
@@ -309,6 +315,127 @@ void test_play_without_shuffle_turns_shuffle_off() {
   TEST_ASSERT_EQUAL_STRING("/b.mp3", driver.lastPlayed.c_str());
 }
 
+void test_seek_by_moves_elapsed_time_and_driver() {
+  FakeDriver driver;
+  FakeStore store;
+  VolumePersistence volume(store);
+  PlaybackStateMachine sm(driver, volume);
+  sm.begin();
+  sm.play({"/a.mp3"}, 0, 0);
+
+  sm.seekBy(5000, 1000);
+
+  TEST_ASSERT_EQUAL_UINT(1, driver.seeks.size());
+  TEST_ASSERT_EQUAL_INT32(5000, driver.seeks[0]);
+  TEST_ASSERT_EQUAL_UINT32(6000, sm.elapsedMs(1000));
+
+  sm.seekBy(-2000, 1000);
+  TEST_ASSERT_EQUAL_UINT32(4000, sm.elapsedMs(1000));
+}
+
+void test_seek_by_clamps_at_track_start() {
+  FakeDriver driver;
+  FakeStore store;
+  VolumePersistence volume(store);
+  PlaybackStateMachine sm(driver, volume);
+  sm.begin();
+  sm.play({"/a.mp3"}, 0, 0);
+
+  sm.seekBy(-9000, 3000);
+
+  TEST_ASSERT_EQUAL_INT32(-3000, driver.seeks[0]);
+  TEST_ASSERT_EQUAL_UINT32(0, sm.elapsedMs(3000));
+}
+
+void test_seek_by_keeps_elapsed_when_driver_refuses() {
+  FakeDriver driver;
+  FakeStore store;
+  VolumePersistence volume(store);
+  PlaybackStateMachine sm(driver, volume);
+  sm.begin();
+  sm.play({"/a.mp3"}, 0, 0);
+  driver.seekSucceeds = false;
+
+  sm.seekBy(5000, 1000);
+
+  TEST_ASSERT_EQUAL_UINT32(1000, sm.elapsedMs(1000));
+}
+
+void test_seek_by_ignored_when_stopped() {
+  FakeDriver driver;
+  FakeStore store;
+  VolumePersistence volume(store);
+  PlaybackStateMachine sm(driver, volume);
+  sm.begin();
+
+  sm.seekBy(5000, 1000);
+
+  TEST_ASSERT_EQUAL_UINT(0, driver.seeks.size());
+}
+
+void test_can_seek_only_mp3_and_wav_with_a_track() {
+  FakeDriver driver;
+  FakeStore store;
+  VolumePersistence volume(store);
+  PlaybackStateMachine sm(driver, volume);
+  sm.begin();
+  TEST_ASSERT_FALSE(sm.canSeek());  // Stopped, nothing queued.
+
+  sm.play({"/a.MP3"}, 0, 0);
+  TEST_ASSERT_TRUE(sm.canSeek());
+  sm.play({"/a.wav"}, 0, 0);
+  TEST_ASSERT_TRUE(sm.canSeek());
+  sm.play({"/a.ogg"}, 0, 0);
+  TEST_ASSERT_FALSE(sm.canSeek());
+  sm.play({"/noextension"}, 0, 0);
+  TEST_ASSERT_FALSE(sm.canSeek());
+}
+
+void test_track_generation_increments_on_play_next_and_restart() {
+  FakeDriver driver;
+  FakeStore store;
+  VolumePersistence volume(store);
+  PlaybackStateMachine sm(driver, volume);
+  sm.begin();
+
+  sm.play({"/a.mp3", "/b.mp3"}, 0, 0);
+  uint32_t afterPlay = sm.trackGeneration();
+  TEST_ASSERT_TRUE(afterPlay != 0);
+
+  sm.next(0);
+  uint32_t afterNext = sm.trackGeneration();
+  TEST_ASSERT_TRUE(afterNext != afterPlay);
+
+  sm.setRepeat(RepeatMode::One);
+  sm.onTrackFinished(0);  // Restarts the same track (/b.mp3).
+  uint32_t afterRestart = sm.trackGeneration();
+  TEST_ASSERT_TRUE(afterRestart != afterNext);
+}
+
+void test_track_generation_unchanged_by_pause_resume_and_cued_resume() {
+  FakeDriver driver;
+  FakeStore store;
+  VolumePersistence volume(store);
+  PlaybackStateMachine sm(driver, volume);
+  sm.begin();
+  sm.play({"/a.mp3"}, 0, 0);
+  uint32_t generation = sm.trackGeneration();
+
+  sm.togglePlayPause(0);  // Pause.
+  TEST_ASSERT_EQUAL_UINT32(generation, sm.trackGeneration());
+  sm.togglePlayPause(0);  // Resume.
+  TEST_ASSERT_EQUAL_UINT32(generation, sm.trackGeneration());
+
+  FakeDriver cuedDriver;
+  PlaybackStateMachine cuedSm(cuedDriver, volume);
+  cuedSm.begin();
+  cuedSm.cue({"/a.mp3"}, 0, false, knobify::playback::PlayScope::File, 1234, 5,
+             0);
+  uint32_t cuedGeneration = cuedSm.trackGeneration();
+  cuedSm.togglePlayPause(0);  // Resumes the cued track -- not a new track.
+  TEST_ASSERT_EQUAL_UINT32(cuedGeneration, cuedSm.trackGeneration());
+}
+
 int main(int argc, char **argv) {
   UNITY_BEGIN();
   RUN_TEST(test_play_starts_playing_selected_track);
@@ -327,5 +454,12 @@ int main(int argc, char **argv) {
   RUN_TEST(test_cycle_repeat_goes_off_all_one_off);
   RUN_TEST(test_shuffle_toggle_keeps_current_track_playing);
   RUN_TEST(test_play_without_shuffle_turns_shuffle_off);
+  RUN_TEST(test_seek_by_moves_elapsed_time_and_driver);
+  RUN_TEST(test_seek_by_clamps_at_track_start);
+  RUN_TEST(test_seek_by_keeps_elapsed_when_driver_refuses);
+  RUN_TEST(test_seek_by_ignored_when_stopped);
+  RUN_TEST(test_can_seek_only_mp3_and_wav_with_a_track);
+  RUN_TEST(test_track_generation_increments_on_play_next_and_restart);
+  RUN_TEST(test_track_generation_unchanged_by_pause_resume_and_cued_resume);
   return UNITY_END();
 }

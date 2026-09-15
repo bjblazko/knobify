@@ -34,13 +34,20 @@ screens described below.
   No charging indicator: the board exposes no charge-status signal (no
   dedicated pin, no voltage change on plug/unplug, no status LED).
 - Shuffle and repeat: a Shuffle row at the top of the Artists, Albums and
-  Tracks lists shuffles the library, the artist or the album. Two toggles
-  on Now Playing switch shuffle and repeat (off / all / one) — see
-  [ADR 0011](docs/adr/0011-shuffle-and-repeat.md).
+  Tracks lists shuffles the library, the artist or the album. Toggles
+  in Now Playing's options panel switch shuffle and repeat (off / all /
+  one) — see [ADR 0011](docs/adr/0011-shuffle-and-repeat.md).
+- Now Playing options panel: a handle at the bottom opens a panel with
+  shuffle, repeat, the cover/spectrum switch and lock, keeping the player
+  itself uncluttered — see
+  [ADR 0014](docs/adr/0014-now-playing-options-panel.md).
 - Resume after power loss: the device comes back on the last screen with
   the last track paused near where it was (no auto-play). State is saved
   periodically and power-cut safe — see
   [ADR 0012](docs/adr/0012-resume-session.md).
+- Jog/shuttle: hold the time readout on Now Playing and turn the knob to
+  fast forward or rewind (five speeds each way, CD-style cue); letting go
+  plays on from there — see [ADR 0013](docs/adr/0013-jog-shuttle.md).
 
 ## Explicitly out of scope for now
 
@@ -50,7 +57,6 @@ screens described below.
   SD card — the ESP32-S3's native USB-OTG could expose the SD card as a
   USB drive via TinyUSB's MSC class while plugged in, so the card
   wouldn't need to be physically removed and read on another computer
-- Jog/shuttle-style scrubbing through a track's playback position
 - Theming (selectable color schemes / customizable look)
 - General visual polish and animation ("eye candy") beyond the planned
   one-time gesture-hint nudge and screen-transition slide

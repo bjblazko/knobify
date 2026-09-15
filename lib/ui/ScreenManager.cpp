@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 
 #include "IconFont.h"
 #include "LvglButtonHelpers.h"
@@ -104,6 +105,11 @@ void ScreenManager::render() {
   volumeHudLabel_ = nullptr;
   volumeHudVisible_ = false;
   progressArcHost_ = nullptr;
+  timePill_ = nullptr;
+  shuttleArcHost_ = nullptr;
+  shuttleMarker_ = nullptr;
+  shownShuttleHeld_ = false;
+  shownShuttleStep_ = 0;
   lastShownSecond_ = -1;
   durationSeconds_ = 0;
 
@@ -111,6 +117,8 @@ void ScreenManager::render() {
   if (current.kind != renderedKind_) {
     renderedKind_ = current.kind;
     messages_.dismissScreenMessage();
+    // Leaving Now Playing closes its options panel (ADR 0014).
+    optionsPanelOpen_ = false;
   }
 
   if (current.kind == ScreenKind::NowPlaying) {
@@ -235,8 +243,7 @@ void ScreenManager::renderList(
     // Album rows end in the release year -- albums are sorted by it
     // (LibraryIndex::albumsFor()), so this makes the order legible. Plain
     // text, no pill/badge (ux-guidelines §7), and nothing at all when the
-    // year is unknown. No explicit color: it inherits the row's text color
-    // at reduced opacity, so it stays readable on the ink selected row too.
+    // year is unknown. Colored per row state by applyHighlight().
     if (current.kind == ScreenKind::Albums) {
       for (const auto &album : library_.albums) {
         if (album.id != static_cast<library::AlbumId>(items[i].second) ||
@@ -248,7 +255,6 @@ void ScreenManager::renderList(
                  static_cast<unsigned>(album.year));
         lv_obj_t *yearLabel = lv_label_create(btn);
         lv_obj_set_style_text_font(yearLabel, &lv_font_montserrat_14, 0);
-        lv_obj_set_style_text_opa(yearLabel, LV_OPA_60, 0);
         lv_label_set_text(yearLabel, yearText);
         lv_obj_set_style_pad_column(btn, 10, 0);
         break;
@@ -263,7 +269,6 @@ void ScreenManager::renderList(
                static_cast<unsigned>(brightness_.percent()));
       lv_obj_t *valueLabel = lv_label_create(btn);
       lv_obj_set_style_text_font(valueLabel, &lv_font_montserrat_14, 0);
-      lv_obj_set_style_text_opa(valueLabel, LV_OPA_60, 0);
       lv_label_set_text(valueLabel, valueText);
       lv_obj_set_style_pad_column(btn, 10, 0);
     }
@@ -511,19 +516,13 @@ void ScreenManager::renderNowPlaying() {
   lv_obj_t *spectrum = spectrum_.create(screen_, theme::ink(),
                                         theme::surfaceAlt(), theme::surface());
   lv_obj_align(spectrum, LV_ALIGN_TOP_MID, 0, kCoverY);
-  if (coverImg_) {
-    // Only switchable when there's something to switch to.
-    for (lv_obj_t *slot : {coverImg_, spectrum}) {
-      lv_obj_add_flag(slot, LV_OBJ_FLAG_CLICKABLE);
-      lv_obj_add_event_cb(slot, &ScreenManager::onCoverSlotClicked,
-                          LV_EVENT_CLICKED, this);
-    }
-  }
+  // Switched from the options panel (ADR 0014), no longer by tapping the
+  // slot itself: nothing on screen said the cover was tappable.
   applyCoverSlotMode();
   lastSpectrumTickMs_ = millis();
 
   const lv_coord_t slotSize = ui_widgets::DotMatrixSpectrum::kSize;
-  lv_coord_t titleY = kCoverY + slotSize + 12;
+  lv_coord_t titleY = kCoverY + slotSize + 10;
   TrackInfo info = trackInfoFor(playback_.currentPath());
 
   lv_obj_t *title = lv_label_create(screen_);
@@ -574,6 +573,43 @@ void ScreenManager::renderNowPlaying() {
   progressArc_.setValue(0.0f);
   lv_obj_add_flag(progressArcHost_, LV_OBJ_FLAG_HIDDEN);
 
+  // Shuttle indicator (ADR 0013), only while the time pill is held: an ink
+  // tick at the top marks normal speed, and a thin ink arc just inside the
+  // progress ring grows from it -- clockwise forward, counterclockwise
+  // back, 24° per step. The one deliberate exception to "one edge ring at
+  // a time": speed and position are both needed while scrubbing. Ink, not
+  // a signal color: it sits on the surface, not against the housing, and
+  // yellow/orange/green already mean something.
+  constexpr lv_coord_t kShuttleArcWidth = 5;
+  constexpr lv_coord_t kShuttleArcGap = 3;
+  ui_widgets::EdgeArcConfig shuttleArcConfig;
+  shuttleArcConfig.startAngle = 150;
+  shuttleArcConfig.endAngle = 30;
+  shuttleArcConfig.widthPx = kShuttleArcWidth;
+  shuttleArcConfig.color = theme::ink();
+  shuttleArcConfig.mode = LV_ARC_MODE_SYMMETRICAL;
+  shuttleArcHost_ = makeEdgeArcHost(screen_, progressArcConfig.widthPx + kShuttleArcGap);
+  shuttleArc_.create(shuttleArcHost_, shuttleArcConfig, -playback::Shuttle::kMaxStep,
+                     playback::Shuttle::kMaxStep);
+  shuttleArc_.setValue(static_cast<int32_t>(0));
+  // No track behind the arc: only the speed is drawn.
+  lv_obj_set_style_arc_opa(shuttleArc_.raw(), LV_OPA_TRANSP, LV_PART_MAIN);
+  lv_obj_add_flag(shuttleArcHost_, LV_OBJ_FLAG_HIDDEN);
+
+  // Same host as the progress ring, so it lines up with it wherever that
+  // ring actually lands on the bezel.
+  shuttleMarker_ = lv_obj_create(progressArcHost_);
+  lv_obj_set_size(shuttleMarker_, 4,
+                  progressArcConfig.widthPx + kShuttleArcGap + kShuttleArcWidth);
+  lv_obj_align(shuttleMarker_, LV_ALIGN_TOP_MID, 0, 0);
+  lv_obj_set_style_bg_color(shuttleMarker_, theme::ink(), 0);
+  lv_obj_set_style_border_width(shuttleMarker_, 0, 0);
+  lv_obj_set_style_radius(shuttleMarker_, 0, 0);
+  lv_obj_set_style_pad_all(shuttleMarker_, 0, 0);
+  lv_obj_clear_flag(shuttleMarker_, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_clear_flag(shuttleMarker_, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(shuttleMarker_, LV_OBJ_FLAG_HIDDEN);
+
   // Round-edge volume HUD: a ring flush against the physical bezel plus a
   // numeric readout, hidden until the first adjustment;
   // updateVolumeDisplay()/tickVolumeHud() show it and auto-hide it after
@@ -621,31 +657,16 @@ void ScreenManager::renderNowPlaying() {
   lv_obj_center(volumeHudLabel_);
   lv_obj_add_flag(volumeHudPill_, LV_OBJ_FLAG_HIDDEN);
 
-  // Shuffle and repeat toggles beside the time readout (ADR 0011): quiet
-  // buttons whose glyph turns confirm green while active -- state, not a
-  // second call to action, so Play/Pause stays the only accent. Created
-  // before the transport row so prev/next win where hit areas meet, and
-  // with no extended hit area: prev/next's own slop reaches down to them.
-  // x/y keep the 28px glyph inside the bezel at this height.
-  constexpr lv_coord_t kToggleX = 100;
-  const lv_coord_t toggleY = kTransportCenterY + 56 - 22;
-  auto makeToggle = [&](const char *glyph, bool active, lv_coord_t x,
-                        lv_event_cb_t cb) {
-    lv_obj_t *btn = makeIconButton(screen_, glyph, 44, 44, LV_ALIGN_TOP_MID, x,
-                                   toggleY, cb, this, ButtonRole::Quiet,
-                                   &knobify_icon_font_28);
-    lv_obj_set_ext_click_area(btn, 0);
-    if (active) {
-      lv_obj_set_style_text_color(lv_obj_get_child(btn, 0), theme::confirm(), 0);
-    }
-  };
-  makeToggle(KNOBIFY_ICON_SHUFFLE, playback_.shuffle(), -kToggleX,
-             &ScreenManager::onShuffleClicked);
-  playback::RepeatMode repeat = playback_.repeat();
-  makeToggle(repeat == playback::RepeatMode::One ? KNOBIFY_ICON_REPEAT_ONE
-                                                 : KNOBIFY_ICON_REPEAT,
-             repeat != playback::RepeatMode::Off, kToggleX,
-             &ScreenManager::onRepeatClicked);
+  // Options handle -- bottom-center, mirroring the back chevron at the top.
+  // Shuffle, repeat, cover/spectrum and lock moved behind it (ADR 0014):
+  // play, song and position stayed on the screen, and the three stacked
+  // rows below the title (transport, time, lock) had no gap left between
+  // them (user feedback 2026-09-15). Created before the time pill so the
+  // pill wins where the handle's slop reaches up to it.
+  makeIconButton(screen_, LV_SYMBOL_UP, kHeaderButtonW, kOptionsHandleH,
+                 LV_ALIGN_BOTTOM_MID, 0, -kOptionsHandleBottom,
+                 &ScreenManager::onOptionsHandleClicked, this,
+                 ButtonRole::Quiet, &lv_font_montserrat_20);
 
   // Transport row: secondary (grey) prev/next either side of the one
   // primary control. Inset well within the round display's visible area at this
@@ -671,20 +692,137 @@ void ScreenManager::renderNowPlaying() {
   // playback was actually progressing. Wall-clock time since the track
   // started minus paused time (see PlaybackStateMachine::elapsedMs()),
   // not the decoder's own position -- close enough for a simple readout.
-  elapsedLabel_ = lv_label_create(screen_);
-  lv_obj_set_style_text_font(elapsedLabel_, &lv_font_montserrat_14, 0);
-  lv_obj_set_style_text_color(elapsedLabel_, theme::structure(), 0);
-  lv_obj_align(elapsedLabel_, LV_ALIGN_TOP_MID, 0, kTransportCenterY + 44);
-  lv_label_set_text(elapsedLabel_, "0:00");
+  const lv_coord_t timeY = kTimePillY + 6;
+  if (playback_.canSeek()) {
+    // Hold-and-turn shuttle (ADR 0013): the readout of the song position
+    // is the control that changes it. Fast-wind marks say it can be
+    // held; no marks (Ogg) means it can't. No extended hit area -- Play
+    // and the options handle sit close above and below.
+    timePill_ = makeHoldButton(screen_, "0:00", kTimePillW, kTimePillH,
+                               LV_ALIGN_TOP_MID, 0, kTimePillY,
+                               &ScreenManager::onTimePillPressed,
+                               &ScreenManager::onTimePillReleased, this,
+                               ButtonRole::Secondary, &knobify_icon_font_16);
+    lv_obj_set_ext_click_area(timePill_, 0);
+    elapsedLabel_ = lv_obj_get_child(timePill_, 0);
+  } else {
+    elapsedLabel_ = lv_label_create(screen_);
+    lv_obj_set_style_text_font(elapsedLabel_, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(elapsedLabel_, theme::structure(), 0);
+    lv_obj_align(elapsedLabel_, LV_ALIGN_TOP_MID, 0, timeY);
+    lv_label_set_text(elapsedLabel_, "0:00");
+  }
   updateElapsedTimeDisplay();
 
-  // Lock button -- bottom-center, inset from the edge like the back
-  // button's top-center inset, clear of the round bezel and of the
-  // controls above.
-  makeIconButton(screen_, KNOBIFY_ICON_LOCK, kHeaderButtonW, kHeaderButtonH,
-                 LV_ALIGN_BOTTOM_MID, 0, -kHeaderButtonY,
-                 &ScreenManager::onLockClicked, this, ButtonRole::Quiet,
-                 &knobify_icon_font_28);
+  // Last, so it stacks above everything else on this screen.
+  if (optionsPanelOpen_) renderOptionsPanel(animateOptionsPanel_);
+  animateOptionsPanel_ = false;
+}
+
+// The options panel (ADR 0014): a sheet sliding up over the lower half of
+// Now Playing with the controls used less often. A scrim under it takes
+// taps outside the sheet, so closing it never also hits Play or the pill.
+// Rebuilt open on every render() (a toggle re-renders the screen), only
+// animated when it's opened.
+void ScreenManager::renderOptionsPanel(bool animate) {
+  lv_obj_t *scrim = lv_obj_create(screen_);
+  lv_obj_set_size(scrim, LV_PCT(100), LV_PCT(100));
+  lv_obj_center(scrim);
+  lv_obj_set_style_bg_opa(scrim, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(scrim, 0, 0);
+  lv_obj_set_style_radius(scrim, 0, 0);
+  // The theme's default padding would shift the sheet right (seen on the
+  // device 2026-09-15) -- it is placed in screen coordinates.
+  lv_obj_set_style_pad_all(scrim, 0, 0);
+  lv_obj_clear_flag(scrim, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_event_cb(scrim, &ScreenManager::onOptionsPanelCloseClicked,
+                      LV_EVENT_CLICKED, this);
+
+  lv_obj_t *panel = lv_obj_create(scrim);
+  lv_obj_set_size(panel, drivers::kLcdHorRes, drivers::kLcdVerRes - kOptionsPanelY);
+  lv_obj_set_pos(panel, 0, kOptionsPanelY);
+  lv_obj_set_style_bg_color(panel, theme::surface(), 0);
+  lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, 0);
+  lv_obj_set_style_radius(panel, 0, 0);
+  lv_obj_set_style_pad_all(panel, 0, 0);
+  // A hairline edge instead of a shadow: flat, like the rest of the design.
+  lv_obj_set_style_border_width(panel, 1, 0);
+  lv_obj_set_style_border_side(panel, LV_BORDER_SIDE_TOP, 0);
+  lv_obj_set_style_border_color(panel, theme::surfaceAlt(), 0);
+  lv_obj_clear_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
+  // Taps on the sheet's empty space must not reach the scrim and close it.
+  lv_obj_add_flag(panel, LV_OBJ_FLAG_CLICKABLE);
+
+  makeIconButton(panel, LV_SYMBOL_DOWN, kHeaderButtonW, kOptionsHandleH,
+                 LV_ALIGN_TOP_MID, 0, 4,
+                 &ScreenManager::onOptionsPanelCloseClicked, this,
+                 ButtonRole::Quiet, &lv_font_montserrat_20);
+
+  // Four secondary circles in a row, each named underneath -- the icons
+  // alone didn't say what shuffle/repeat were doing (ADR 0011), and the
+  // cover switch had no icon at all before. Active state is the glyph in
+  // confirm green, as the toggles had on Now Playing.
+  constexpr lv_coord_t kButtonSize = 64;
+  constexpr lv_coord_t kPitch = 72;
+  constexpr lv_coord_t kButtonTop = 60;
+  struct Option {
+    const char *glyph;
+    const char *label;
+    bool active;
+    bool enabled;
+    lv_event_cb_t cb;
+  };
+  playback::RepeatMode repeat = playback_.repeat();
+  bool showingSpectrum = preferSpectrum_ || !coverImg_;
+  const Option options[] = {
+      {KNOBIFY_ICON_SHUFFLE, "Shuffle", playback_.shuffle(), true,
+       &ScreenManager::onShuffleClicked},
+      {repeat == playback::RepeatMode::One ? KNOBIFY_ICON_REPEAT_ONE
+                                           : KNOBIFY_ICON_REPEAT,
+       "Repeat", repeat != playback::RepeatMode::Off, true,
+       &ScreenManager::onRepeatClicked},
+      // Shows what a tap switches to; only switchable when there is a cover.
+      {showingSpectrum ? KNOBIFY_ICON_IMAGE : KNOBIFY_ICON_EQUALIZER,
+       showingSpectrum ? "Cover" : "Spectrum", false, coverImg_ != nullptr,
+       &ScreenManager::onCoverSwitchClicked},
+      {KNOBIFY_ICON_LOCK, "Lock", false, true, &ScreenManager::onLockClicked},
+  };
+  constexpr int kCount = sizeof(options) / sizeof(options[0]);
+  for (int i = 0; i < kCount; ++i) {
+    const Option &option = options[i];
+    lv_coord_t x = static_cast<lv_coord_t>((2 * i - (kCount - 1)) * kPitch / 2);
+    lv_obj_t *btn = makeIconButton(panel, option.glyph, kButtonSize, kButtonSize,
+                                   LV_ALIGN_TOP_MID, x, kButtonTop, option.cb,
+                                   this, ButtonRole::Secondary,
+                                   &knobify_icon_font_28);
+    lv_obj_set_ext_click_area(btn, 0);
+    lv_obj_t *label = lv_label_create(panel);
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(label, theme::structure(), 0);
+    lv_label_set_text(label, option.label);
+    lv_obj_align(label, LV_ALIGN_TOP_MID, x, kButtonTop + kButtonSize + 6);
+    if (option.active) {
+      lv_obj_set_style_text_color(lv_obj_get_child(btn, 0), theme::confirm(), 0);
+    }
+    if (!option.enabled) {
+      lv_obj_add_state(btn, LV_STATE_DISABLED);
+      lv_obj_set_style_opa(btn, LV_OPA_40, 0);
+      lv_obj_set_style_opa(label, LV_OPA_40, 0);
+    }
+  }
+
+  if (animate) {
+    lv_anim_t anim;
+    lv_anim_init(&anim);
+    lv_anim_set_var(&anim, panel);
+    lv_anim_set_values(&anim, drivers::kLcdVerRes, kOptionsPanelY);
+    lv_anim_set_time(&anim, kOptionsPanelAnimMs);
+    lv_anim_set_path_cb(&anim, lv_anim_path_ease_out);
+    lv_anim_set_exec_cb(&anim, [](void *obj, int32_t y) {
+      lv_obj_set_y(static_cast<lv_obj_t *>(obj), static_cast<lv_coord_t>(y));
+    });
+    lv_anim_start(&anim);
+  }
 }
 
 void ScreenManager::applyHighlight() {
@@ -708,10 +846,22 @@ void ScreenManager::applyHighlight() {
   uint32_t count = lv_obj_get_child_cnt(list_);
   for (uint32_t i = 0; i < count; ++i) {
     lv_obj_t *btn = lv_obj_get_child(list_, i);
-    if (static_cast<int>(i) == highlightedIndex_) {
+    bool selected = static_cast<int>(i) == highlightedIndex_;
+    if (selected) {
       lv_obj_add_state(btn, LV_STATE_CHECKED);
     } else {
       lv_obj_clear_state(btn, LV_STATE_CHECKED);
+    }
+    // Trailing value labels (album year, brightness percent) after the
+    // title: inheriting the row color at reduced opacity came out as dark
+    // grey on the ink selected row, barely readable (user feedback
+    // 2026-09-15) -- so light grey there, mid anthracite otherwise.
+    uint32_t parts = lv_obj_get_child_cnt(btn);
+    for (uint32_t c = 1; c < parts; ++c) {
+      lv_obj_t *value = lv_obj_get_child(btn, c);
+      if (!lv_obj_check_type(value, &lv_label_class)) continue;
+      lv_obj_set_style_text_color(
+          value, selected ? theme::surfaceAlt() : theme::structure(), 0);
     }
   }
 }
@@ -777,6 +927,31 @@ void ScreenManager::setProgressRingVisible(bool visible) {
   }
 }
 
+void ScreenManager::onTimePillPressed(lv_event_t *e) {
+  auto *self = static_cast<ScreenManager *>(lv_event_get_user_data(e));
+  self->shuttle_.hold(millis());
+}
+
+void ScreenManager::onTimePillReleased(lv_event_t *e) {
+  auto *self = static_cast<ScreenManager *>(lv_event_get_user_data(e));
+  self->shuttle_.release(millis());
+}
+
+void ScreenManager::applyShuttleIndicator() {
+  if (!shuttleArcHost_ || !shuttleMarker_) return;
+  if (shownShuttleHeld_) {
+    shuttleArc_.setValue(static_cast<int32_t>(shownShuttleStep_));
+    lv_obj_clear_flag(shuttleArcHost_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(shuttleMarker_, LV_OBJ_FLAG_HIDDEN);
+    // A volume HUD still fading out from before the hold would hide the
+    // progress ring; the knob isn't setting volume now, so end it.
+    if (volumeHudVisible_) volumeHudHideAtMs_ = 0;
+  } else {
+    lv_obj_add_flag(shuttleArcHost_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(shuttleMarker_, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
 void ScreenManager::updateVolumeDisplay(uint32_t nowMs) {
   if (!volumeArcHost_ || !volumeHudLabel_) return;
   volumeArc_.setValue(static_cast<int32_t>(playback_.volume()));
@@ -808,20 +983,52 @@ void ScreenManager::updateElapsedTimeDisplay() {
   if (!elapsedLabel_) return;
   uint32_t elapsedMs = playback_.elapsedMs(millis());
   uint32_t totalSeconds = elapsedMs / 1000;
-  if (static_cast<int32_t>(totalSeconds) != lastShownSecond_) {
+  bool held = shuttle_.isHeld();
+  int8_t step = shuttle_.step();
+  bool shuttleChanged = held != shownShuttleHeld_ || step != shownShuttleStep_;
+  if (shuttleChanged) {
+    // Holding the pill alone does nothing visible to the song, so say what
+    // the knob does now until it's turned (user feedback 2026-09-15: the
+    // hold-and-turn wasn't obvious). Gone with the first detent or release.
+    // While winding, the same spot names the speed -- bigger and easier to
+    // read than inside the pill (user feedback 2026-09-15). ASCII "x": the
+    // built-in font has no "×".
+    if (held && step == 0) {
+      messages_.show("Turn knob to rewind or fast forward", kNowPlayingMessageAnchor,
+                     millis(), kShuttleHintMs);
+    } else if (held) {
+      char speed[32];
+      snprintf(speed, sizeof(speed), "%s %ux", step > 0 ? "Fast forward" : "Rewind",
+               1u << std::abs(step));
+      messages_.show(speed, kNowPlayingMessageAnchor, millis(), kShuttleHintMs);
+    } else if (shownShuttleHeld_) {
+      messages_.hide();
+    }
+    shownShuttleHeld_ = held;
+    shownShuttleStep_ = step;
+    applyShuttleIndicator();
+  }
+  if (static_cast<int32_t>(totalSeconds) != lastShownSecond_ || shuttleChanged) {
     lastShownSecond_ = static_cast<int32_t>(totalSeconds);
     durationSeconds_ = playback_.durationSeconds();
-    char text[24];
-    if (durationSeconds_ != 0) {
-      snprintf(text, sizeof(text), "%u:%02u / %u:%02u",
-               static_cast<unsigned>(totalSeconds / 60),
-               static_cast<unsigned>(totalSeconds % 60),
-               static_cast<unsigned>(durationSeconds_ / 60),
-               static_cast<unsigned>(durationSeconds_ % 60));
+    unsigned em = static_cast<unsigned>(totalSeconds / 60);
+    unsigned es = static_cast<unsigned>(totalSeconds % 60);
+    unsigned dm = static_cast<unsigned>(durationSeconds_ / 60);
+    unsigned ds = static_cast<unsigned>(durationSeconds_ % 60);
+    char text[40];
+    // The shuttle speed is shown in the message area instead (see above),
+    // so the pill keeps showing the time and total while winding.
+    if (timePill_ && durationSeconds_ != 0) {
+      snprintf(text, sizeof(text),
+               KNOBIFY_ICON_FAST_REWIND " %u:%02u / %u:%02u " KNOBIFY_ICON_FAST_FORWARD,
+               em, es, dm, ds);
+    } else if (timePill_) {
+      snprintf(text, sizeof(text),
+               KNOBIFY_ICON_FAST_REWIND " %u:%02u " KNOBIFY_ICON_FAST_FORWARD, em, es);
+    } else if (durationSeconds_ != 0) {
+      snprintf(text, sizeof(text), "%u:%02u / %u:%02u", em, es, dm, ds);
     } else {
-      snprintf(text, sizeof(text), "%u:%02u",
-               static_cast<unsigned>(totalSeconds / 60),
-               static_cast<unsigned>(totalSeconds % 60));
+      snprintf(text, sizeof(text), "%u:%02u", em, es);
     }
     lv_label_set_text(elapsedLabel_, text);
     // Honest: no duration known -> no progress ring at all, rather than
@@ -983,11 +1190,28 @@ void ScreenManager::onNextClicked(lv_event_t *e) {
   self->render();
 }
 
-void ScreenManager::onCoverSlotClicked(lv_event_t *e) {
+void ScreenManager::onCoverSwitchClicked(lv_event_t *e) {
   auto *self = static_cast<ScreenManager *>(lv_event_get_user_data(e));
   self->preferSpectrum_ = !self->preferSpectrum_;
-  self->applyCoverSlotMode();
   self->settings_.setU8(kSpectrumSettingKey, self->preferSpectrum_ ? 1 : 0);
+  // Re-render rather than applyCoverSlotMode(): the panel's switch shows
+  // what it switches to next, so it changes too.
+  self->render();
+}
+
+void ScreenManager::onOptionsHandleClicked(lv_event_t *e) {
+  auto *self = static_cast<ScreenManager *>(lv_event_get_user_data(e));
+  self->optionsPanelOpen_ = true;
+  self->animateOptionsPanel_ = true;
+  self->render();
+}
+
+void ScreenManager::onOptionsPanelCloseClicked(lv_event_t *e) {
+  auto *self = static_cast<ScreenManager *>(lv_event_get_user_data(e));
+  // The scrim gets bubbled clicks from nothing (children don't bubble by
+  // default), so a click here is on the scrim itself or the close chevron.
+  self->optionsPanelOpen_ = false;
+  self->render();
 }
 
 void ScreenManager::onShuffleClicked(lv_event_t *e) {
@@ -1038,10 +1262,14 @@ void ScreenManager::showRepeatMessage() {
 
 void ScreenManager::onLockClicked(lv_event_t *e) {
   auto *self = static_cast<ScreenManager *>(lv_event_get_user_data(e));
+  // Lock lives in the options panel (ADR 0014); close it so Now Playing is
+  // back to normal after unlocking.
+  self->optionsPanelOpen_ = false;
+  self->render();
   self->lockController_.requestLock();
-  // No re-render needed here: LockOverlay (shown on LVGL's top layer,
-  // independent of ScreenManager) picks up the new lock state on its own
-  // next tick() and covers this screen.
+  // LockOverlay (shown on LVGL's top layer, independent of ScreenManager)
+  // picks up the new lock state on its own next tick() and covers this
+  // screen.
 }
 
 // Runs from a tap on Settings' "Rescan library" row -- the only way to pick

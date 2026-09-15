@@ -30,6 +30,10 @@ class PlaybackDriver {
   // Byte offset the decoder has read the current file up to; 0 if nothing
   // is loaded. Only good for passing back to playFileAt().
   virtual uint32_t filePosition() = 0;
+  // Jumps the decoder by `deltaMs` within the current file (negative =
+  // back), for jog/shuttle (ADR 0013). Approximate: converted to bytes via
+  // the average bitrate. False if nothing seekable is loaded.
+  virtual bool seekByMs(int32_t deltaMs) = 0;
   virtual void pause() = 0;
   virtual void resume() = 0;
   virtual void stop() = 0;
