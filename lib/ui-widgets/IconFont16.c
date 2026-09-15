@@ -21,6 +21,21 @@
  *
  * --no-compress is required (LV_USE_FONT_COMPRESSED is 0 in lv_conf.h),
  * see IconFont.c's header. Keep it when regenerating/extending.
+ *
+ * Hand-edited after generation: .line_height/.base_line below were
+ * changed from lv_font_conv's own output (8 / -4, sized to this font's
+ * two short-and-wide glyphs) to lv_font_montserrat_14's values (16 / 3).
+ * LVGL 8.3 sizes and vertically places every glyph in a label using only
+ * the label's *primary* font's line metrics, even for glyphs actually
+ * drawn from a `.fallback` font (lv_label.c's self-sizing, and
+ * lv_draw_sw_letter.c's per-glyph placement) -- with this font's own
+ * (much shorter) metrics left in place, the pill's label box/clip area
+ * came out ~8px tall while 14pt Montserrat digits still drew into it,
+ * clipping them. This font is always the pill's primary font (Montserrat
+ * 14 is only its `.fallback`), so matching Montserrat 14's own
+ * line_height/base_line here is what makes the shared label size
+ * correctly for both. Keep in sync with lv_font_montserrat_14.c's own
+ * .line_height/.base_line if this font (or LVGL) is ever regenerated.
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE
@@ -130,8 +145,12 @@ lv_font_t knobify_icon_font_16 = {
 #endif
     .get_glyph_dsc = lv_font_get_glyph_dsc_fmt_txt,    /*Function pointer to get glyph's data*/
     .get_glyph_bitmap = lv_font_get_bitmap_fmt_txt,    /*Function pointer to get glyph's bitmap*/
-    .line_height = 8,          /*The maximum line height required by the font*/
-    .base_line = -4,             /*Baseline measured from the bottom of the line*/
+    // Hand-set to lv_font_montserrat_14's own line_height/base_line (not
+    // this font's generated 8/-4) -- labels size/position every glyph by
+    // the primary font's metrics, never the fallback's, and this font is
+    // always primary over the Montserrat-14 fallback. See header comment.
+    .line_height = 16,          /*The maximum line height required by the font*/
+    .base_line = 3,             /*Baseline measured from the bottom of the line*/
 #if !(LVGL_VERSION_MAJOR == 6 && LVGL_VERSION_MINOR == 0)
     .subpx = LV_FONT_SUBPX_NONE,
 #endif
