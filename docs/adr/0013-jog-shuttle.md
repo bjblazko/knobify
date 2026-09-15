@@ -44,10 +44,13 @@ knob was when you touched down. Letting go always means normal play. The
 control sits where its value is shown: you hold the song position to
 change it. The gesture is the same hold-and-turn as unlocking (ADR 0005).
 
-While held, the pill switches to its pressed state and shows the speed
-instead of the total time: `1:23 ▶▶ 8x` or `1:23 ◀◀ 8x` (ASCII `x`: the
-built-in font has no `×`). The arc alone can't show the exact step, and
-this adds nothing to the layout.
+While held, the pill switches to its pressed state and the message area
+over the cover says what the knob does: "Turn knob to rewind or fast
+forward" until the first detent, then the speed, "Fast forward 8x" or
+"Rewind 8x" (ASCII `x`: the built-in font has no `×`). The arc alone can't
+show the exact step. (First built as `1:23 ▶▶ 8x` inside the pill; the
+message is bigger and easier to read, and the hold-and-turn wasn't obvious
+without a hint — user feedback on the device, 2026-09-15.)
 
 For a track that can't seek (Ogg), the pill shows no ◀◀ ▶▶ marks and
 ignores the hold. It looks like the plain time readout it was before.
@@ -73,7 +76,7 @@ nothing (an end stop):
 | Speed | normal play | 2× | 4× | 8× | 16× | 32× |
 
 What you hear is CD-style cue: short snippets at normal speed with jumps in
-between. Every cue cycle (a tunable ~300 ms) plays one snippet and then
+between. Every cue cycle (600 ms, tuned by ear) plays one snippet and then
 jumps so the overall rate matches the step. Forward jumps `(N − 1) · cycle`,
 rewind jumps `−(N + 1) · cycle`. Both directions sound alike, and you can
 tell where you are by ear. Jumps are in milliseconds, computed from the
@@ -152,8 +155,13 @@ busier. The speed readout in the pill covers the exact step.
 - The pill has to fit between the shuffle and repeat toggles (±100 px), at
   most ~140 px. Long tracks (`12:34 / 45:67` with both marks) are tight.
   If they don't fit on the device, the marks move to a smaller size.
-- The cue cycle length and the end-stop margin are constants to tune on
-  the device.
+- The cue cycle started at 300 ms. On the device each seek was followed by
+  ~290 ms of silence (median gap 580 ms): the library discards its input
+  buffer on a seek and stays silent until it is full again, and its 300 KB
+  PSRAM default took that long to refill. The input buffer is now 64 KB
+  (~80 ms of silence per seek), and the cycle 600 ms, so forward cueing
+  sounds like faster playback with small skips rather than stutter.
+- The end-stop margin is a constant to tune on the device.
 - Elapsed time is still wall-clock based and not read from the decoder
   (ADR 0012), with jumps added on top. Drift from rounding in the
   bitrate-based jumps is possible for VBR MP3s and is accepted.

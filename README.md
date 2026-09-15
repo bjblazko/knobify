@@ -34,9 +34,13 @@ screens described below.
   No charging indicator: the board exposes no charge-status signal (no
   dedicated pin, no voltage change on plug/unplug, no status LED).
 - Shuffle and repeat: a Shuffle row at the top of the Artists, Albums and
-  Tracks lists shuffles the library, the artist or the album. Two toggles
-  on Now Playing switch shuffle and repeat (off / all / one) — see
-  [ADR 0011](docs/adr/0011-shuffle-and-repeat.md).
+  Tracks lists shuffles the library, the artist or the album. Toggles
+  in Now Playing's options panel switch shuffle and repeat (off / all /
+  one) — see [ADR 0011](docs/adr/0011-shuffle-and-repeat.md).
+- Now Playing options panel: a handle at the bottom opens a panel with
+  shuffle, repeat, the cover/spectrum switch and lock, keeping the player
+  itself uncluttered — see
+  [ADR 0014](docs/adr/0014-now-playing-options-panel.md).
 - Resume after power loss: the device comes back on the last screen with
   the last track paused near where it was (no auto-play). State is saved
   periodically and power-cut safe — see

@@ -204,7 +204,7 @@ class ScreenManager : public input::ListMoveSink {
   // and the volume readout (centered on the slot) stay visible above it.
   static constexpr lv_coord_t kOptionsPanelY = 146;
   static constexpr uint32_t kOptionsPanelAnimMs = 200;
-  // How long the shuttle hint may stay while the pill is held unturned.
+  // How long a shuttle hint/speed message may stay while the pill is held.
   static constexpr uint32_t kShuttleHintMs = 10000;
   static constexpr uint32_t kSpectrumFrameMs = 33;
   // Persisted cover-slot choice: 1 = spectrum, 0 = cover.

@@ -981,10 +981,18 @@ void ScreenManager::updateElapsedTimeDisplay() {
     // Holding the pill alone does nothing visible to the song, so say what
     // the knob does now until it's turned (user feedback 2026-09-15: the
     // hold-and-turn wasn't obvious). Gone with the first detent or release.
-    if (held && step == 0 && !shownShuttleHeld_) {
-      messages_.show("Turn to rewind or fast forward", kNowPlayingMessageAnchor,
+    // While winding, the same spot names the speed -- bigger and easier to
+    // read than inside the pill (user feedback 2026-09-15). ASCII "x": the
+    // built-in font has no "×".
+    if (held && step == 0) {
+      messages_.show("Turn knob to rewind or fast forward", kNowPlayingMessageAnchor,
                      millis(), kShuttleHintMs);
-    } else if (shownShuttleHeld_ && shownShuttleStep_ == 0) {
+    } else if (held) {
+      char speed[32];
+      snprintf(speed, sizeof(speed), "%s %ux", step > 0 ? "Fast forward" : "Rewind",
+               1u << std::abs(step));
+      messages_.show(speed, kNowPlayingMessageAnchor, millis(), kShuttleHintMs);
+    } else if (shownShuttleHeld_) {
       messages_.hide();
     }
     shownShuttleHeld_ = held;
@@ -999,13 +1007,9 @@ void ScreenManager::updateElapsedTimeDisplay() {
     unsigned dm = static_cast<unsigned>(durationSeconds_ / 60);
     unsigned ds = static_cast<unsigned>(durationSeconds_ % 60);
     char text[40];
-    if (held && step != 0) {
-      // Speed instead of the total, so the pill doesn't grow. ASCII "x":
-      // the built-in font has no "×".
-      snprintf(text, sizeof(text), "%u:%02u %s %ux", em, es,
-               step > 0 ? KNOBIFY_ICON_FAST_FORWARD : KNOBIFY_ICON_FAST_REWIND,
-               1u << std::abs(step));
-    } else if (timePill_ && durationSeconds_ != 0) {
+    // The shuttle speed is shown in the message area instead (see above),
+    // so the pill keeps showing the time and total while winding.
+    if (timePill_ && durationSeconds_ != 0) {
       snprintf(text, sizeof(text),
                KNOBIFY_ICON_FAST_REWIND " %u:%02u / %u:%02u " KNOBIFY_ICON_FAST_FORWARD,
                em, es, dm, ds);

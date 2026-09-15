@@ -16,6 +16,9 @@ constexpr uint8_t kAudioBclkPin = 39;
 constexpr uint8_t kAudioLrcPin = 40;
 constexpr uint8_t kAudioDoutPin = 41;
 
+// Decoder input buffer in PSRAM -- see Esp32AudioI2SDriver::begin().
+constexpr int kInputBufferBytes = 64 * 1024;
+
 // Wraps ESP32-audioI2S's Audio class behind PlaybackDriver -- the only
 // file including <Audio.h> outside src/main.cpp (ADR 0001,
 // coding-guidelines.md hardware/logic separation). The underlying

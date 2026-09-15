@@ -242,14 +242,17 @@ Full architecture: [ADR 0004](../adr/0004-navigation-library-and-index-architect
   begin with a Shuffle row that shuffles the whole library, the artist or
   the album. Tapping a track plays its album in order and turns shuffle
   off. There is no scope setting ([ADR 0011](../adr/0011-shuffle-and-repeat.md)).
-- **Shuffle and repeat are toggles on Now Playing**, beside the time:
-  quiet glyphs, `confirm` green while active. Repeat cycles off → all →
+- **Shuffle and repeat are toggles in Now Playing's options panel**
+  (the `︿` handle at the bottom, [ADR 0014](../adr/0014-now-playing-options-panel.md)):
+  glyphs `confirm` green while active. Repeat cycles off → all →
   one; only repeat is remembered across reboots. A glyph alone didn't say
   which mode was active, so every tap also shows a message naming what now
   happens ("Shuffle on - album", "Repeat this track").
-- **The cover slot switches by tap.** Tapping the Now Playing cover
-  swaps it for the dot-matrix spectrum and back; the choice persists.
-  Without a cover the spectrum always shows and the slot isn't tappable.
+- **The cover slot switches from the options panel.** Its Cover /
+  Spectrum button swaps the cover for the dot-matrix spectrum and back; the
+  choice persists. Without a cover the spectrum always shows and the button
+  is greyed out. The slot itself isn't tappable — nothing said it was
+  (ADR 0014).
   No separate visualizer screen — it would need an undiscoverable gesture
   ([ADR 0009](../adr/0009-now-playing-spectrum-analyzer.md)).
 - **Always-visible back button, in addition to swipe.** Swipe-to-back

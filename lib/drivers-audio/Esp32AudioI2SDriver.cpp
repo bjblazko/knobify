@@ -10,6 +10,14 @@ namespace knobify::drivers {
 
 void Esp32AudioI2SDriver::begin() {
   audio_.setPinout(kAudioBclkPin, kAudioLrcPin, kAudioDoutPin);
+  // Input buffer 64 KB instead of the library's 300 KB PSRAM default. After
+  // every seek the library discards the buffer and stays silent until it is
+  // full again; measured on the device 2026-09-15, refilling 300 KB took
+  // ~290 ms -- as long as the then 300 ms shuttle cue cycle (ADR 0013), so cueing
+  // was mostly silence. 64 KB still holds ~1.6 s of a 320 kbps MP3, and the
+  // decoder has a core to itself (ADR 0006). Must run before the first
+  // connecttoFS(), which allocates the buffer.
+  audio_.setBufsize(-1, kInputBufferBytes);
   mutex_ = xSemaphoreCreateMutex();
   // Priority 3 (above Arduino's default loopTask priority of 1) since
   // audio decoding is latency-sensitive; pinned to core 0, which

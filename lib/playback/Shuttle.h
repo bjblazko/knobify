@@ -19,7 +19,7 @@ namespace knobify::playback {
 class Shuttle {
  public:
   static constexpr int8_t kMaxStep = 5;
-  static constexpr uint32_t kCycleMs = 300;
+  static constexpr uint32_t kCycleMs = 600;
   // Forward parks this far before the end, so the track can't finish
   // while held.
   static constexpr uint32_t kEndMarginMs = 1000;

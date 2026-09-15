@@ -62,6 +62,10 @@ struct Fixture {
   }
 };
 
+// Timings below are in cue cycles, so tuning kCycleMs (tuned by ear on the
+// device, ADR 0013) doesn't rewrite every expectation.
+constexpr uint32_t C = Shuttle::kCycleMs;
+
 }  // namespace
 
 void test_hold_refused_for_unseekable_track() {
@@ -103,12 +107,12 @@ void test_forward_step_one_doubles_speed() {
   f.shuttle.hold(0);
   f.shuttle.turn(1, 0);
 
-  f.shuttle.tick(300);
+  f.shuttle.tick(C);
 
   TEST_ASSERT_EQUAL_UINT(1, f.driver.seeks.size());
-  TEST_ASSERT_EQUAL_INT32(300, f.driver.seeks[0]);  // (2-1) * 300
-  // 300 ms played plus 300 ms jumped: 2×.
-  TEST_ASSERT_EQUAL_UINT32(600, f.playback.elapsedMs(300));
+  TEST_ASSERT_EQUAL_INT32(C, f.driver.seeks[0]);  // (2-1) * C
+  // One cycle played plus one cycle jumped: 2×.
+  TEST_ASSERT_EQUAL_UINT32(2 * C, f.playback.elapsedMs(C));
 }
 
 void test_rewind_step_one_moves_back_at_double_speed() {
@@ -116,10 +120,10 @@ void test_rewind_step_one_moves_back_at_double_speed() {
   f.shuttle.hold(60000);
   f.shuttle.turn(-1, 60000);
 
-  f.shuttle.tick(60300);
+  f.shuttle.tick(60000 + C);
 
-  TEST_ASSERT_EQUAL_INT32(-900, f.driver.seeks[0]);  // -(2+1) * 300
-  TEST_ASSERT_EQUAL_UINT32(59400, f.playback.elapsedMs(60300));
+  TEST_ASSERT_EQUAL_INT32(-3 * static_cast<int32_t>(C), f.driver.seeks[0]);  // -(2+1) * C
+  TEST_ASSERT_EQUAL_UINT32(60000 - 2 * C, f.playback.elapsedMs(60000 + C));
 }
 
 void test_forward_parks_silently_before_the_end() {
@@ -127,13 +131,13 @@ void test_forward_parks_silently_before_the_end() {
   f.shuttle.hold(238000);
   f.shuttle.turn(5, 238000);
 
-  f.shuttle.tick(238300);
+  f.shuttle.tick(238000 + C);
 
-  TEST_ASSERT_EQUAL_INT32(700, f.driver.seeks[0]);
+  TEST_ASSERT_EQUAL_INT32(239000 - (238000 + C), f.driver.seeks[0]);
   TEST_ASSERT_TRUE(f.playback.state() == PlaybackState::Paused);
-  TEST_ASSERT_EQUAL_UINT32(239000, f.playback.elapsedMs(238300));
+  TEST_ASSERT_EQUAL_UINT32(239000, f.playback.elapsedMs(238000 + C));
 
-  f.shuttle.tick(238900);  // Still pushing forward: stays parked.
+  f.shuttle.tick(238000 + 3 * C);  // Still pushing forward: stays parked.
   TEST_ASSERT_EQUAL_UINT(1, f.driver.seeks.size());
   TEST_ASSERT_TRUE(f.playback.state() == PlaybackState::Paused);
 }
@@ -142,10 +146,10 @@ void test_turning_away_from_the_stop_resumes() {
   Fixture f;
   f.shuttle.hold(238000);
   f.shuttle.turn(5, 238000);
-  f.shuttle.tick(238300);  // Parked.
+  f.shuttle.tick(238000 + C);  // Parked.
 
-  f.shuttle.turn(-5, 238400);  // Back to center.
-  f.shuttle.tick(238500);
+  f.shuttle.turn(-5, 238100 + C);  // Back to center.
+  f.shuttle.tick(238200 + C);
 
   TEST_ASSERT_TRUE(f.playback.state() == PlaybackState::Playing);
 }
@@ -155,10 +159,10 @@ void test_rewind_parks_at_track_start() {
   f.shuttle.hold(1000);
   f.shuttle.turn(-5, 1000);
 
-  f.shuttle.tick(1300);
+  f.shuttle.tick(1000 + C);
 
-  TEST_ASSERT_EQUAL_INT32(-1300, f.driver.seeks[0]);
-  TEST_ASSERT_EQUAL_UINT32(0, f.playback.elapsedMs(1300));
+  TEST_ASSERT_EQUAL_INT32(-static_cast<int32_t>(1000 + C), f.driver.seeks[0]);
+  TEST_ASSERT_EQUAL_UINT32(0, f.playback.elapsedMs(1000 + C));
   TEST_ASSERT_TRUE(f.playback.state() == PlaybackState::Paused);
 }
 
@@ -166,9 +170,9 @@ void test_release_while_parked_resumes_playing() {
   Fixture f;
   f.shuttle.hold(238000);
   f.shuttle.turn(5, 238000);
-  f.shuttle.tick(238300);  // Parked (paused).
+  f.shuttle.tick(238000 + C);  // Parked (paused).
 
-  f.shuttle.release(238400);
+  f.shuttle.release(238100 + C);
 
   TEST_ASSERT_FALSE(f.shuttle.isHeld());
   TEST_ASSERT_EQUAL_INT8(0, f.shuttle.step());
@@ -190,10 +194,10 @@ void test_release_while_parked_at_start_resumes_playing() {
   Fixture f;
   f.shuttle.hold(1000);
   f.shuttle.turn(-5, 1000);
-  f.shuttle.tick(1300);  // Parked at the start stop (paused).
+  f.shuttle.tick(1000 + C);  // Parked at the start stop (paused).
   TEST_ASSERT_TRUE(f.playback.state() == PlaybackState::Paused);
 
-  f.shuttle.release(1400);
+  f.shuttle.release(1100 + C);
 
   TEST_ASSERT_FALSE(f.shuttle.isHeld());
   TEST_ASSERT_TRUE(f.playback.state() == PlaybackState::Playing);
@@ -203,12 +207,12 @@ void test_shrinking_step_that_keeps_its_sign_stays_parked() {
   Fixture f;
   f.shuttle.hold(238000);
   f.shuttle.turn(5, 238000);
-  f.shuttle.tick(238300);  // Parked at the end stop.
+  f.shuttle.tick(238000 + C);  // Parked at the end stop.
   TEST_ASSERT_EQUAL_UINT(1, f.driver.seeks.size());
 
-  f.shuttle.turn(-3, 238400);  // Step +5 -> +2: still pushing forward.
+  f.shuttle.turn(-3, 238100 + C);  // Step +5 -> +2: still pushing forward.
   TEST_ASSERT_EQUAL_INT8(2, f.shuttle.step());
-  f.shuttle.tick(238500);
+  f.shuttle.tick(238000 + 3 * C);
 
   TEST_ASSERT_EQUAL_UINT(1, f.driver.seeks.size());  // No new seek.
   TEST_ASSERT_TRUE(f.playback.state() == PlaybackState::Paused);
@@ -217,20 +221,20 @@ void test_shrinking_step_that_keeps_its_sign_stays_parked() {
 void test_consecutive_cycles_accumulate_up_to_the_end_stop() {
   Fixture f;  // 240 s track -> end stop at 239000 ms.
   f.shuttle.hold(230000);
-  f.shuttle.turn(2, 230000);  // Step +2: speed 4x, jump (4-1)*300 = 900 ms/cycle.
+  f.shuttle.turn(2, 230000);  // Step +2: speed 4x, jump (4-1)*C per cycle.
 
-  f.shuttle.tick(230300);  // 230000 + 300 played + 900 jump = 231200.
-  TEST_ASSERT_EQUAL_INT32(900, f.driver.seeks[0]);
-  TEST_ASSERT_EQUAL_UINT32(231200, f.playback.elapsedMs(230300));
+  f.shuttle.tick(230000 + C);  // One cycle played + 3 cycles jumped.
+  TEST_ASSERT_EQUAL_INT32(3 * C, f.driver.seeks[0]);
+  TEST_ASSERT_EQUAL_UINT32(230000 + 4 * C, f.playback.elapsedMs(230000 + C));
 
-  f.shuttle.tick(230600);  // 231200 + 300 + 900 = 232400.
-  TEST_ASSERT_EQUAL_INT32(900, f.driver.seeks[1]);
-  TEST_ASSERT_EQUAL_UINT32(232400, f.playback.elapsedMs(230600));
+  f.shuttle.tick(230000 + 2 * C);  // Another 4 cycles' worth.
+  TEST_ASSERT_EQUAL_INT32(3 * C, f.driver.seeks[1]);
+  TEST_ASSERT_EQUAL_UINT32(230000 + 8 * C, f.playback.elapsedMs(230000 + 2 * C));
 
   // Keep cycling until the end stop is reached.
-  uint32_t nowMs = 230600;
+  uint32_t nowMs = 230000 + 2 * C;
   while (f.playback.state() == PlaybackState::Playing) {
-    nowMs += 300;
+    nowMs += C;
     f.shuttle.tick(nowMs);
   }
 
@@ -244,7 +248,7 @@ void test_track_change_drops_the_hold() {
   f.shuttle.turn(3, 0);
 
   f.playback.next(100);
-  f.shuttle.tick(400);
+  f.shuttle.tick(100 + C);
 
   TEST_ASSERT_FALSE(f.shuttle.isHeld());
   TEST_ASSERT_EQUAL_UINT(0, f.driver.seeks.size());
@@ -257,7 +261,7 @@ void test_repeat_one_restart_of_same_path_drops_the_hold() {
   f.shuttle.turn(3, 0);
 
   f.playback.onTrackFinished(100);  // Restarts /a.mp3 -- same path, new track.
-  f.shuttle.tick(400);
+  f.shuttle.tick(100 + C);
 
   TEST_ASSERT_FALSE(f.shuttle.isHeld());
   TEST_ASSERT_EQUAL_UINT(0, f.driver.seeks.size());
@@ -285,7 +289,7 @@ void test_no_jumps_while_duration_unknown() {
   f.shuttle.hold(0);
   f.shuttle.turn(2, 0);
 
-  f.shuttle.tick(300);
+  f.shuttle.tick(C);
 
   TEST_ASSERT_EQUAL_UINT(0, f.driver.seeks.size());
 }
