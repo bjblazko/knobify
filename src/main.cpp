@@ -2,6 +2,7 @@
 // concrete drivers and inject them into the logic layer.
 #include <Arduino.h>
 #include <SD_MMC.h>
+#include <esp_heap_caps.h>
 
 #include <cstring>
 
@@ -223,6 +224,14 @@ void SdLibraryRescanner::rescan(knobify::library::ScanProgressListener *progress
 }  // namespace
 
 void setup() {
+  // Small allocations (under ESP-IDF's default 4096 bytes) otherwise all go
+  // to internal RAM, although ~8 MB of PSRAM is free: the library index's
+  // and play queue's path strings filled it until the SD driver's DMA
+  // buffers failed (ESP_ERR_NO_MEM, "sdmmc_read_blocks failed (257)") and
+  // a library shuffle couldn't open its first track -- measured on the
+  // device 2026-09-15: 38.9 KB internal free before, 1.7 KB after. Anything
+  // needing internal/DMA memory asks for it explicitly via heap_caps.
+  heap_caps_malloc_extmem_enable(32);
   Serial.begin(115200);
   Serial.printf("knobify %s starting\n", knobify::kVersion);
 

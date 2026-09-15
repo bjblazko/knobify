@@ -322,6 +322,16 @@ duplicating it.
   just wraps. Use `setClampedText()` in `ScreenManager.cpp` (explicit
   line budget). LVGL's built-in Montserrat fonts are also ASCII-only:
   umlauts, accents and `·` render as boxes. See ADR 0008.
+- **Small heap allocations must go to PSRAM, or SD reads fail.** ESP-IDF
+  keeps every `malloc` under 4096 bytes in internal RAM by default, so
+  the library index's and a play queue's path strings filled it (38.9 KB
+  free after boot, 1.7 KB after queueing 512 tracks) and the SD driver's
+  DMA buffers then failed: `sdmmc_read_blocks failed (257)`
+  (`ESP_ERR_NO_MEM`), `connecttoFS=FAILED`, a library shuffle showed a
+  track but never played. `setup()` now calls
+  `heap_caps_malloc_extmem_enable(32)` first (93.9 KB internal free after
+  boot, unchanged by the queue). If SD opens start failing with 257,
+  check internal heap before suspecting the card. See ADR 0011.
 
 ## Where things are documented (so you add to the right place)
 
