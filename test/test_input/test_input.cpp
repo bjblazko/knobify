@@ -2,6 +2,7 @@
 
 #include <map>
 
+#include "BrightnessSetting.h"
 #include "GestureRecognizer.h"
 #include "InputRouter.h"
 #include "TouchCalibration.h"
@@ -17,6 +18,7 @@ using knobify::input::TouchSample;
 using knobify::navigation::Screen;
 using knobify::navigation::ScreenKind;
 using knobify::navigation::TabController;
+using knobify::power::BrightnessSetting;
 using knobify::playback::KeyValueStore;
 using knobify::playback::PlaybackDriver;
 using knobify::playback::PlaybackStateMachine;
@@ -66,9 +68,11 @@ void test_encoder_scrolls_list_on_browse_screen() {
   FakeStore store;
   VolumePersistence volume(store);
   PlaybackStateMachine playback(driver, volume);
-  TabController tabs;  // Starts on Library/Artists.
+  TabController tabs;
+  tabs.openMusic();  // Library/Artists.
   RecordingListSink sink;
-  InputRouter router(tabs, playback, sink);
+  BrightnessSetting brightness(store);
+  InputRouter router(tabs, playback, brightness, sink);
 
   router.onEncoderDelta(3, 0);
 
@@ -84,7 +88,8 @@ void test_encoder_adjusts_volume_on_now_playing_screen() {
   TabController tabs;
   tabs.activeStack().push(Screen{ScreenKind::NowPlaying, {}});
   RecordingListSink sink;
-  InputRouter router(tabs, playback, sink);
+  BrightnessSetting brightness(store);
+  InputRouter router(tabs, playback, brightness, sink);
 
   uint8_t before = playback.volume();
   router.onEncoderDelta(2, 0);
@@ -93,15 +98,53 @@ void test_encoder_adjusts_volume_on_now_playing_screen() {
   TEST_ASSERT_TRUE(playback.volume() == before + 2);
 }
 
+void test_encoder_adjusts_brightness_on_brightness_screen() {
+  FakeDriver driver;
+  FakeStore store;
+  VolumePersistence volume(store);
+  PlaybackStateMachine playback(driver, volume);
+  TabController tabs;
+  tabs.activeStack().push(Screen{ScreenKind::Settings, {}});
+  tabs.activeStack().push(Screen{ScreenKind::Brightness, {}});
+  RecordingListSink sink;
+  BrightnessSetting brightness(store);
+  brightness.begin();
+  InputRouter router(tabs, playback, brightness, sink);
+
+  uint8_t volumeBefore = playback.volume();
+  router.onEncoderDelta(-3, 0);
+
+  TEST_ASSERT_EQUAL_INT(0, sink.calls);
+  TEST_ASSERT_TRUE(playback.volume() == volumeBefore);
+  TEST_ASSERT_EQUAL_UINT8(BrightnessSetting::kMaxLevel - 3, brightness.level());
+}
+
+void test_encoder_moves_tile_selection_on_home() {
+  FakeDriver driver;
+  FakeStore store;
+  VolumePersistence volume(store);
+  PlaybackStateMachine playback(driver, volume);
+  TabController tabs;  // Starts on Home.
+  RecordingListSink sink;
+  BrightnessSetting brightness(store);
+  InputRouter router(tabs, playback, brightness, sink);
+
+  router.onEncoderDelta(1, 0);
+
+  TEST_ASSERT_EQUAL_INT(1, sink.calls);
+}
+
 void test_swipe_pops_when_possible() {
   FakeDriver driver;
   FakeStore store;
   VolumePersistence volume(store);
   PlaybackStateMachine playback(driver, volume);
   TabController tabs;
+  tabs.openMusic();
   tabs.activeStack().push(Screen{ScreenKind::Albums, {}});
   RecordingListSink sink;
-  InputRouter router(tabs, playback, sink);
+  BrightnessSetting brightness(store);
+  InputRouter router(tabs, playback, brightness, sink);
 
   router.onGesture({GestureType::SwipeLeftToRight, 0, 0});
 
@@ -114,8 +157,10 @@ void test_swipe_switches_tab_at_root() {
   VolumePersistence volume(store);
   PlaybackStateMachine playback(driver, volume);
   TabController tabs;
+  tabs.openMusic();
   RecordingListSink sink;
-  InputRouter router(tabs, playback, sink);
+  BrightnessSetting brightness(store);
+  InputRouter router(tabs, playback, brightness, sink);
 
   router.onGesture({GestureType::SwipeLeftToRight, 0, 0});
 
@@ -128,8 +173,10 @@ void test_tap_is_not_routed_by_input_router() {
   VolumePersistence volume(store);
   PlaybackStateMachine playback(driver, volume);
   TabController tabs;
+  tabs.openMusic();
   RecordingListSink sink;
-  InputRouter router(tabs, playback, sink);
+  BrightnessSetting brightness(store);
+  InputRouter router(tabs, playback, brightness, sink);
 
   router.onGesture({GestureType::Tap, 10, 10});
 
@@ -217,6 +264,8 @@ int main(int argc, char **argv) {
   UNITY_BEGIN();
   RUN_TEST(test_encoder_scrolls_list_on_browse_screen);
   RUN_TEST(test_encoder_adjusts_volume_on_now_playing_screen);
+  RUN_TEST(test_encoder_adjusts_brightness_on_brightness_screen);
+  RUN_TEST(test_encoder_moves_tile_selection_on_home);
   RUN_TEST(test_swipe_pops_when_possible);
   RUN_TEST(test_swipe_switches_tab_at_root);
   RUN_TEST(test_tap_is_not_routed_by_input_router);

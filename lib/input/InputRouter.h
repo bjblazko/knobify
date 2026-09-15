@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "BrightnessSetting.h"
 #include "GestureRecognizer.h"
 #include "PlaybackStateMachine.h"
 #include "ScreenId.h"
@@ -20,23 +21,33 @@ class ListMoveSink {
 };
 
 // The context-sensitive piece (decision 3, ADR 0004): routes encoder
-// deltas to either list-scrolling or volume depending on the current
-// screen, and routes the one recognized gesture (left-to-right swipe) to
+// deltas to list/tile selection, volume or brightness depending on the
+// current screen, and routes the one recognized gesture (left-to-right swipe) to
 // TabController's pop-or-switch-tab logic. Pure logic over
 // TabController/PlaybackStateMachine/ListMoveSink -- host-testable, no
 // hardware or LVGL involved.
 class InputRouter {
  public:
   InputRouter(navigation::TabController &tabs,
-              playback::PlaybackStateMachine &playback, ListMoveSink &listSink)
-      : tabs_(tabs), playback_(playback), listSink_(listSink) {}
+              playback::PlaybackStateMachine &playback,
+              power::BrightnessSetting &brightness, ListMoveSink &listSink)
+      : tabs_(tabs),
+        playback_(playback),
+        brightness_(brightness),
+        listSink_(listSink) {}
 
   void onEncoderDelta(int16_t delta, uint32_t nowMs) {
-    if (tabs_.activeStack().current().kind ==
-        navigation::ScreenKind::NowPlaying) {
-      playback_.adjustVolume(delta, nowMs);
-    } else {
-      listSink_.onListMove(delta);
+    switch (tabs_.activeStack().current().kind) {
+      case navigation::ScreenKind::NowPlaying:
+        playback_.adjustVolume(delta, nowMs);
+        break;
+      case navigation::ScreenKind::Brightness:
+        brightness_.adjust(delta, nowMs);
+        break;
+      default:
+        // Browse lists and the Home tiles alike.
+        listSink_.onListMove(delta);
+        break;
     }
   }
 
@@ -51,6 +62,7 @@ class InputRouter {
  private:
   navigation::TabController &tabs_;
   playback::PlaybackStateMachine &playback_;
+  power::BrightnessSetting &brightness_;
   ListMoveSink &listSink_;
 };
 

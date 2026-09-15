@@ -36,8 +36,8 @@ void test_pop_at_root_does_nothing() {
 }
 
 void test_root_is_injectable() {
-  // Stands in for swapping in a future Home screen: NavigationStack
-  // doesn't hardcode Artists as special.
+  // NavigationStack doesn't hardcode Artists as special -- which is what
+  // let the Home menu become a root.
   NavigationStack stack(Screen{ScreenKind::NowPlaying, {}});
   TEST_ASSERT_TRUE(stack.current().kind == ScreenKind::NowPlaying);
 }
@@ -51,14 +51,68 @@ void test_push_beyond_max_depth_is_ignored() {
   TEST_ASSERT_TRUE(stack.current().kind == ScreenKind::Albums);
 }
 
-void test_tab_controller_starts_on_library_artists_root() {
+void test_tab_controller_starts_on_home() {
   TabController tabs;
+  TEST_ASSERT_TRUE(tabs.activeTab() == Tab::Menu);
+  TEST_ASSERT_TRUE(tabs.activeStack().current().kind == ScreenKind::Home);
+  TEST_ASSERT_FALSE(tabs.isMusicTab());
+  TEST_ASSERT_FALSE(tabs.canGoBackOrHome());
+}
+
+void test_open_music_starts_on_library_artists_root() {
+  TabController tabs;
+  tabs.openMusic();
   TEST_ASSERT_TRUE(tabs.activeTab() == Tab::Library);
   TEST_ASSERT_TRUE(tabs.activeStack().current().kind == ScreenKind::Artists);
+  TEST_ASSERT_TRUE(tabs.canGoBackOrHome());
+}
+
+void test_back_at_music_root_goes_home() {
+  TabController tabs;
+  tabs.openMusic();
+  tabs.back();
+  TEST_ASSERT_TRUE(tabs.activeStack().current().kind == ScreenKind::Home);
+}
+
+void test_back_pops_before_going_home() {
+  TabController tabs;
+  tabs.openMusic();
+  tabs.activeStack().push(Screen{ScreenKind::Albums, {}});
+  tabs.back();
+  TEST_ASSERT_TRUE(tabs.activeStack().current().kind == ScreenKind::Artists);
+}
+
+void test_open_music_returns_to_last_used_tab_and_stack() {
+  TabController tabs;
+  tabs.openMusic();
+  tabs.switchTab();
+  tabs.activeStack().push(Screen{ScreenKind::Folder, {}});
+  tabs.goHome();
+  tabs.openMusic();
+  TEST_ASSERT_TRUE(tabs.activeTab() == Tab::Files);
+  TEST_ASSERT_TRUE(tabs.activeStack().canGoBack());
+}
+
+void test_swipe_on_home_does_nothing() {
+  TabController tabs;
+  TEST_ASSERT_FALSE(tabs.handleSwipeBack());
+  TEST_ASSERT_TRUE(tabs.activeTab() == Tab::Menu);
+  TEST_ASSERT_TRUE(tabs.activeStack().current().kind == ScreenKind::Home);
+}
+
+void test_settings_and_brightness_stack_on_the_menu() {
+  TabController tabs;
+  tabs.activeStack().push(Screen{ScreenKind::Settings, {}});
+  tabs.activeStack().push(Screen{ScreenKind::Brightness, {}});
+  tabs.back();
+  TEST_ASSERT_TRUE(tabs.activeStack().current().kind == ScreenKind::Settings);
+  TEST_ASSERT_TRUE(tabs.handleSwipeBack());
+  TEST_ASSERT_TRUE(tabs.activeStack().current().kind == ScreenKind::Home);
 }
 
 void test_swipe_back_pops_when_possible() {
   TabController tabs;
+  tabs.openMusic();
   tabs.activeStack().push(Screen{ScreenKind::Albums, {}});
 
   bool popped = tabs.handleSwipeBack();
@@ -70,6 +124,7 @@ void test_swipe_back_pops_when_possible() {
 
 void test_swipe_back_switches_tab_at_root() {
   TabController tabs;
+  tabs.openMusic();
 
   bool popped = tabs.handleSwipeBack();
 
@@ -80,6 +135,7 @@ void test_swipe_back_switches_tab_at_root() {
 
 void test_switch_tab_preserves_each_tabs_own_stack() {
   TabController tabs;
+  tabs.openMusic();
   tabs.activeStack().push(Screen{ScreenKind::Albums, {}});
 
   tabs.switchTab();
@@ -98,7 +154,13 @@ int main(int argc, char **argv) {
   RUN_TEST(test_pop_at_root_does_nothing);
   RUN_TEST(test_root_is_injectable);
   RUN_TEST(test_push_beyond_max_depth_is_ignored);
-  RUN_TEST(test_tab_controller_starts_on_library_artists_root);
+  RUN_TEST(test_tab_controller_starts_on_home);
+  RUN_TEST(test_open_music_starts_on_library_artists_root);
+  RUN_TEST(test_back_at_music_root_goes_home);
+  RUN_TEST(test_back_pops_before_going_home);
+  RUN_TEST(test_open_music_returns_to_last_used_tab_and_stack);
+  RUN_TEST(test_swipe_on_home_does_nothing);
+  RUN_TEST(test_settings_and_brightness_stack_on_the_menu);
   RUN_TEST(test_swipe_back_pops_when_possible);
   RUN_TEST(test_swipe_back_switches_tab_at_root);
   RUN_TEST(test_switch_tab_preserves_each_tabs_own_stack);

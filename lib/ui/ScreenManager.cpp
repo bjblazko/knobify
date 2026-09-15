@@ -7,6 +7,7 @@
 
 #include "IconFont.h"
 #include "LvglButtonHelpers.h"
+#include "ScreenHelpers.h"
 #include "St77916Driver.h"
 #include "Theme.h"
 
@@ -22,7 +23,7 @@ namespace {
 // SD card -- same text/throttling as the old boot-time listener this
 // replaced (main.cpp no longer scans at boot, see AGENTS.md). Uses
 // lv_refr_now(), NOT lv_timer_handler(), to flush the label: rescan() runs
-// synchronously from inside onScanClicked, which is itself invoked BY an
+// synchronously from inside a list-row click (runRescan()), which is itself invoked BY an
 // in-progress lv_timer_handler() call (LvglGlue::pump(), called every
 // loop()) -- calling lv_timer_handler() again from in here would be a
 // reentrant call into LVGL's own timer/input dispatch, which isn't
@@ -51,25 +52,6 @@ class ScanProgressLabelListener : public knobify::library::ScanProgressListener 
  private:
   lv_obj_t *label_;
 };
-
-// Sets a label's text, wrapping to at most `maxLines` lines and ending
-// in an ellipsis beyond that. LV_LABEL_LONG_DOT alone only truncates a
-// label whose height is fixed -- with the default content height a long
-// title just kept wrapping and overlapped whatever sat below it (found
-// on real hardware 2026-09-13 with "70 Cities as Love Brings the Fall").
-// The label's font and width must already be set.
-void setClampedText(lv_obj_t *label, const char *text, int maxLines) {
-  lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
-  lv_label_set_text(label, text);
-  lv_obj_update_layout(label);
-  const lv_font_t *font = lv_obj_get_style_text_font(label, LV_PART_MAIN);
-  lv_coord_t lineSpace = lv_obj_get_style_text_line_space(label, LV_PART_MAIN);
-  lv_coord_t maxHeight = maxLines * lv_font_get_line_height(font) +
-                         (maxLines - 1) * lineSpace;
-  if (lv_obj_get_height(label) > maxHeight) {
-    lv_obj_set_height(label, maxHeight);
-  }
-}
 
 }  // namespace
 
@@ -106,6 +88,9 @@ void ScreenManager::render() {
     lv_obj_del_async(oldScreen);
   }
   list_ = nullptr;
+  tiles_ = nullptr;
+  brightnessArcHost_ = nullptr;
+  brightnessLabel_ = nullptr;
   miniBar_ = nullptr;
   elapsedLabel_ = nullptr;
   coverImg_ = nullptr;
@@ -122,6 +107,10 @@ void ScreenManager::render() {
 
   if (current.kind == ScreenKind::NowPlaying) {
     renderNowPlaying();
+  } else if (current.kind == ScreenKind::Home) {
+    renderHome();
+  } else if (current.kind == ScreenKind::Brightness) {
+    renderBrightness();
   } else {
     std::vector<std::pair<std::string, int>> items;
     switch (current.kind) {
@@ -154,6 +143,10 @@ void ScreenManager::render() {
         }
         break;
       }
+      case ScreenKind::Settings:
+        items.emplace_back("Brightness", 0);
+        items.emplace_back("Rescan library", 1);
+        break;
       default:
         break;
     }
@@ -167,7 +160,6 @@ void ScreenManager::render() {
   // full-screen widget there) but was invisible/unclickable on every
   // list screen.
   renderBackButtonIfNeeded();
-  renderScanButtonIfNeeded();
   renderContextCaption();
 }
 
@@ -175,7 +167,7 @@ void ScreenManager::renderList(
     const std::vector<std::pair<std::string, int>> &items, bool showMiniBar) {
   Screen current = tabs_.activeStack().current();
   list_ = lv_list_create(screen_);
-  // Starts below the header zone (back/scan button + context caption)
+  // Starts below the header zone (back button + context caption)
   // and ends above the mini-bar, rather than spanning the whole screen
   // with top padding -- rows used to scroll underneath the fixed back
   // button and visibly collide with it (ux-guidelines §7).
@@ -249,6 +241,19 @@ void ScreenManager::renderList(
       }
     }
 
+    // The Brightness row ends in its current value, styled like the album
+    // year: a plain secondary fact, not a badge.
+    if (current.kind == ScreenKind::Settings && items[i].second == 0) {
+      char valueText[8];
+      snprintf(valueText, sizeof(valueText), "%u%%",
+               static_cast<unsigned>(brightness_.percent()));
+      lv_obj_t *valueLabel = lv_label_create(btn);
+      lv_obj_set_style_text_font(valueLabel, &lv_font_montserrat_14, 0);
+      lv_obj_set_style_text_opa(valueLabel, LV_OPA_60, 0);
+      lv_label_set_text(valueLabel, valueText);
+      lv_obj_set_style_pad_column(btn, 10, 0);
+    }
+
     // After the year label exists: the title label flex-grows into
     // whatever width the year leaves, and truncates within that.
     if (label) setClampedText(label, items[i].first.c_str(), 1);
@@ -274,72 +279,74 @@ void ScreenManager::renderList(
                          LV_EVENT_CLICKED, itemContexts_.back().get());
   }
 
-  if (showMiniBar) {
-    // A light-grey bottom area rather than a floating pill -- Braun
-    // keeps surfaces neutral and puts color only on small functional
-    // details, so only the playback glyph is green ("active/running",
-    // ux-guidelines §3). A pale green tint was tried first (2026-09-13). Full-width and flush
-    // with the bottom edge on purpose: the round bezel cuts it into a
-    // circle segment that echoes the device's shape. (Earlier attempts: a
-    // bordered white box read as a text input, an ink pill as a second
-    // selected row, accent/grey as too loud/too anonymous -- user
-    // feedback 2026-09-12/13.) Its content stays narrow and near the top
-    // of the area, where the segment is still wide.
-    miniBar_ = lv_obj_create(screen_);
-    lv_obj_set_size(miniBar_, drivers::kLcdHorRes, kMiniBarZoneHeight);
-    lv_obj_align(miniBar_, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_set_style_radius(miniBar_, 0, 0);
-    lv_obj_set_style_bg_color(miniBar_, theme::surfaceAlt(), 0);
-    lv_obj_set_style_border_width(miniBar_, 0, 0);
-    lv_obj_set_style_pad_all(miniBar_, 0, 0);
-    // A long title otherwise made the bar itself scrollable, showing a
-    // scrollbar inside it.
-    lv_obj_clear_flag(miniBar_, LV_OBJ_FLAG_SCROLLABLE);
-
-    // Glyph + title as one horizontally centered row, so a short title
-    // stays centered too. At the text's height (~y=294..314) the bezel
-    // still shows ~220px, so the row is capped below that.
-    lv_obj_t *row = lv_obj_create(miniBar_);
-    lv_obj_set_size(row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(row, 0, 0);
-    lv_obj_set_style_pad_all(row, 0, 0);
-    lv_obj_set_style_pad_column(row, 10, 0);
-    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
-    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_clear_flag(row, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_flag(row, LV_OBJ_FLAG_EVENT_BUBBLE);
-    lv_obj_align(row, LV_ALIGN_TOP_MID, 0, 22);
-
-    // Playback *state*, not an action -- tapping the whole area opens
-    // Now Playing.
-    lv_obj_t *stateGlyph = lv_label_create(row);
-    lv_label_set_text(stateGlyph,
-                      playback_.state() == playback::PlaybackState::Playing
-                          ? LV_SYMBOL_PLAY
-                          : LV_SYMBOL_PAUSE);
-    lv_obj_set_style_text_color(stateGlyph, theme::confirm(), 0);
-
-    constexpr lv_coord_t kMaxTitleWidth = 170;
-    const std::string title = trackInfoFor(playback_.currentPath()).title;
-    lv_obj_t *label = lv_label_create(row);
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(label, theme::ink(), 0);
-    lv_label_set_text(label, title.c_str());
-    lv_obj_update_layout(label);
-    if (lv_obj_get_width(label) > kMaxTitleWidth) {
-      lv_obj_set_width(label, kMaxTitleWidth);
-      setClampedText(label, title.c_str(), 1);
-    }
-
-    lv_obj_add_flag(miniBar_, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(miniBar_, &ScreenManager::onMiniBarClicked,
-                         LV_EVENT_CLICKED, this);
-  }
+  if (showMiniBar) renderMiniBar();
 
   applyHighlight();
+}
+
+void ScreenManager::renderMiniBar() {
+  // A light-grey bottom area rather than a floating pill -- Braun
+  // keeps surfaces neutral and puts color only on small functional
+  // details, so only the playback glyph is green ("active/running",
+  // ux-guidelines §3). A pale green tint was tried first (2026-09-13). Full-width and flush
+  // with the bottom edge on purpose: the round bezel cuts it into a
+  // circle segment that echoes the device's shape. (Earlier attempts: a
+  // bordered white box read as a text input, an ink pill as a second
+  // selected row, accent/grey as too loud/too anonymous -- user
+  // feedback 2026-09-12/13.) Its content stays narrow and near the top
+  // of the area, where the segment is still wide.
+  miniBar_ = lv_obj_create(screen_);
+  lv_obj_set_size(miniBar_, drivers::kLcdHorRes, kMiniBarZoneHeight);
+  lv_obj_align(miniBar_, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_obj_set_style_radius(miniBar_, 0, 0);
+  lv_obj_set_style_bg_color(miniBar_, theme::surfaceAlt(), 0);
+  lv_obj_set_style_border_width(miniBar_, 0, 0);
+  lv_obj_set_style_pad_all(miniBar_, 0, 0);
+  // A long title otherwise made the bar itself scrollable, showing a
+  // scrollbar inside it.
+  lv_obj_clear_flag(miniBar_, LV_OBJ_FLAG_SCROLLABLE);
+
+  // Glyph + title as one horizontally centered row, so a short title
+  // stays centered too. At the text's height (~y=294..314) the bezel
+  // still shows ~220px, so the row is capped below that.
+  lv_obj_t *row = lv_obj_create(miniBar_);
+  lv_obj_set_size(row, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+  lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(row, 0, 0);
+  lv_obj_set_style_pad_all(row, 0, 0);
+  lv_obj_set_style_pad_column(row, 10, 0);
+  lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                        LV_FLEX_ALIGN_CENTER);
+  lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(row, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_flag(row, LV_OBJ_FLAG_EVENT_BUBBLE);
+  lv_obj_align(row, LV_ALIGN_TOP_MID, 0, 22);
+
+  // Playback *state*, not an action -- tapping the whole area opens
+  // Now Playing.
+  lv_obj_t *stateGlyph = lv_label_create(row);
+  lv_label_set_text(stateGlyph,
+                    playback_.state() == playback::PlaybackState::Playing
+                        ? LV_SYMBOL_PLAY
+                        : LV_SYMBOL_PAUSE);
+  lv_obj_set_style_text_color(stateGlyph, theme::confirm(), 0);
+
+  constexpr lv_coord_t kMaxTitleWidth = 170;
+  const std::string title = trackInfoFor(playback_.currentPath()).title;
+  lv_obj_t *label = lv_label_create(row);
+  lv_obj_set_style_text_font(label, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_color(label, theme::ink(), 0);
+  lv_label_set_text(label, title.c_str());
+  lv_obj_update_layout(label);
+  if (lv_obj_get_width(label) > kMaxTitleWidth) {
+    lv_obj_set_width(label, kMaxTitleWidth);
+    setClampedText(label, title.c_str(), 1);
+  }
+
+  lv_obj_add_flag(miniBar_, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(miniBar_, &ScreenManager::onMiniBarClicked,
+                       LV_EVENT_CLICKED, this);
 }
 
 void ScreenManager::renderContextCaption() {
@@ -350,6 +357,12 @@ void ScreenManager::renderContextCaption() {
   switch (current.kind) {
     case ScreenKind::Artists:
       caption = "Library";
+      break;
+    case ScreenKind::Settings:
+      caption = "Settings";
+      break;
+    case ScreenKind::Brightness:
+      caption = "Brightness";
       break;
     case ScreenKind::Albums:
       for (const auto &artist : library_.artists) {
@@ -389,7 +402,10 @@ void ScreenManager::renderBackButtonIfNeeded() {
   // supplementary, always-visible affordance for the same action.
   // Positioned top-center rather than a corner: the round bezel clips
   // corners much more aggressively than top-center at this height.
-  if (!tabs_.activeStack().canGoBack()) return;
+  // On a music tab's root there's nothing to pop, so it leads back to the
+  // main menu instead (ADR 0010) -- still a left chevron, since the
+  // caption names where you are.
+  if (!tabs_.canGoBackOrHome()) return;
   // On Now Playing a left chevron read like "previous track" (right
   // above the previous button) and didn't say where it goes -- a down
   // chevron instead means "collapse the player" back into the list's
@@ -404,42 +420,6 @@ void ScreenManager::renderBackButtonIfNeeded() {
                  &ScreenManager::onBackClicked, this, ButtonRole::Quiet,
                  &lv_font_montserrat_20);
 }
-
-void ScreenManager::renderScanButtonIfNeeded() {
-  // Boot no longer scans the SD card at all (just loads whatever library
-  // index was last cached, see AGENTS.md) -- this is the only way to pick
-  // up new/changed music. Artists is always the Library tab's root today
-  // (see ScreenId.h), so this doubles as "top of the library list" without
-  // needing a separate marker. Same top-center slot as the back button;
-  // mutually exclusive with it since a stack root never canGoBack().
-  if (tabs_.activeStack().current().kind != ScreenKind::Artists) return;
-  makeIconButton(screen_, LV_SYMBOL_REFRESH, kHeaderButtonW, kHeaderButtonH,
-                 LV_ALIGN_TOP_MID, 0, kHeaderButtonY,
-                 &ScreenManager::onScanClicked, this, ButtonRole::Quiet,
-                 &lv_font_montserrat_20);
-}
-
-namespace {
-
-// Transparent, non-interactive host for an edge-hugging EdgeArc.
-// Oversized beyond the screen's own bounds and let the screen object's
-// default clipping (plus the physical round bezel) eat the excess -- even
-// with EdgeArc's knob-padding fix, sizing the host to exactly
-// kLcdHorRes/VerRes still left a visible gap from the true edge on real
-// hardware (some further LVGL-internal margin), and overshooting is
-// harmless here since nothing else occupies that space.
-lv_obj_t *makeEdgeArcHost(lv_obj_t *parent) {
-  lv_obj_t *host = lv_obj_create(parent);
-  lv_obj_set_size(host, drivers::kLcdHorRes + 40, drivers::kLcdVerRes + 40);
-  lv_obj_center(host);
-  lv_obj_set_style_bg_opa(host, LV_OPA_TRANSP, 0);
-  lv_obj_set_style_border_width(host, 0, 0);
-  lv_obj_clear_flag(host, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_clear_flag(host, LV_OBJ_FLAG_CLICKABLE);
-  return host;
-}
-
-}  // namespace
 
 ScreenManager::TrackInfo ScreenManager::trackInfoFor(
     const std::string &path) const {
@@ -666,6 +646,19 @@ void ScreenManager::renderNowPlaying() {
 }
 
 void ScreenManager::applyHighlight() {
+  if (tiles_) {
+    // Home: the selected tile's circle (each cell's first child) turns ink.
+    uint32_t count = lv_obj_get_child_cnt(tiles_);
+    for (uint32_t i = 0; i < count; ++i) {
+      lv_obj_t *circle = lv_obj_get_child(lv_obj_get_child(tiles_, i), 0);
+      if (static_cast<int>(i) == highlightedIndex_) {
+        lv_obj_add_state(circle, LV_STATE_CHECKED);
+      } else {
+        lv_obj_clear_state(circle, LV_STATE_CHECKED);
+      }
+    }
+    return;
+  }
   if (!list_) return;
   // Toggling LV_STATE_CHECKED and letting the theme render it (rather
   // than overriding bg_color by hand) guarantees the theme's own
@@ -808,6 +801,15 @@ std::string ScreenManager::friendlyName(const std::string &path) {
 }
 
 void ScreenManager::onListMove(int16_t delta) {
+  if (tiles_) {
+    int count = static_cast<int>(lv_obj_get_child_cnt(tiles_));
+    if (count == 0) return;
+    highlightedIndex_ =
+        std::clamp(highlightedIndex_ + static_cast<int>(delta), 0, count - 1);
+    homeSelection_ = highlightedIndex_;
+    applyHighlight();
+    return;
+  }
   if (!list_) return;
   int count = static_cast<int>(lv_obj_get_child_cnt(list_));
   if (count == 0) return;
@@ -873,6 +875,14 @@ void ScreenManager::onListItemClicked(lv_event_t *e) {
         self->goToNowPlaying();
       }
       break;
+    case ScreenKind::Settings:
+      if (ctx->index == 0) {
+        self->tabs_.activeStack().push(Screen{ScreenKind::Brightness, {}});
+        self->render();
+      } else {
+        self->runRescan();
+      }
+      break;
     default:
       break;
   }
@@ -880,7 +890,7 @@ void ScreenManager::onListItemClicked(lv_event_t *e) {
 
 void ScreenManager::onBackClicked(lv_event_t *e) {
   auto *self = static_cast<ScreenManager *>(lv_event_get_user_data(e));
-  self->tabs_.activeStack().pop();
+  self->tabs_.back();
   self->render();
 }
 
@@ -922,9 +932,9 @@ void ScreenManager::onLockClicked(lv_event_t *e) {
   // next tick() and covers this screen.
 }
 
-void ScreenManager::onScanClicked(lv_event_t *e) {
-  auto *self = static_cast<ScreenManager *>(lv_event_get_user_data(e));
-
+// Runs from a tap on Settings' "Rescan library" row -- the only way to pick
+// up new/changed music, since boot only loads the cached index.
+void ScreenManager::runRescan() {
   // A one-shot full-screen overlay on LVGL's top layer, same technique as
   // LockOverlay -- but built and torn down here rather than a persistent
   // begin()/tick() class, since a rescan is a single blocking call, not
@@ -952,14 +962,14 @@ void ScreenManager::onScanClicked(lv_event_t *e) {
   lv_refr_now(nullptr);
 
   ScanProgressLabelListener progress(label);
-  self->rescanner_.rescan(&progress);
+  rescanner_.rescan(&progress);
 
   // Async, not lv_obj_del() -- we're still inside the click event that
   // LVGL's own (outer) lv_timer_handler() is currently dispatching;
   // deleting synchronously here risks the same input-state corruption
   // ScreenManager::render() already guards against for screen_ below.
   lv_obj_del_async(overlay);
-  self->render();
+  render();
 }
 
 }  // namespace knobify::ui

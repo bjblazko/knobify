@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "BrightnessSetting.h"
 #include "CoverArtCache.h"
 #include "DotMatrixSpectrum.h"
 #include "EdgeArc.h"
@@ -46,7 +47,8 @@ class ScreenManager : public input::ListMoveSink {
                 library::FileOpener &fileOpener,
                 library::JpegDecoder &jpegDecoder,
                 library::CoverWriter &coverWriter,
-                playback::KeyValueStore &settings)
+                playback::KeyValueStore &settings,
+                power::BrightnessSetting &brightness)
       : tabs_(tabs),
         library_(library),
         directoryReader_(directoryReader),
@@ -57,7 +59,8 @@ class ScreenManager : public input::ListMoveSink {
         fileOpener_(fileOpener),
         jpegDecoder_(jpegDecoder),
         coverWriter_(coverWriter),
-        settings_(settings) {}
+        settings_(settings),
+        brightness_(brightness) {}
 
   void begin();
 
@@ -92,12 +95,20 @@ class ScreenManager : public input::ListMoveSink {
   // the FFT and every redraw. Call every loop() iteration.
   void tickSpectrum(uint32_t nowMs, bool visible);
 
+  // Cheap live update of the Brightness screen's ring and percentage --
+  // call after any encoder tick. A no-op on every other screen.
+  void updateBrightnessDisplay();
+
  private:
   void renderList(const std::vector<std::pair<std::string, int>> &items,
                    bool showMiniBar);
+  void renderMiniBar();
   void renderNowPlaying();
+  // Main menu and settings -- ScreenManagerMenu.cpp (ADR 0010).
+  void renderHome();
+  void renderBrightness();
+  void runRescan();
   void renderBackButtonIfNeeded();
-  void renderScanButtonIfNeeded();
   void renderContextCaption();
   void setProgressRingVisible(bool visible);
   void applyCoverSlotMode();
@@ -120,7 +131,8 @@ class ScreenManager : public input::ListMoveSink {
   static void onPlayPauseClicked(lv_event_t *e);
   static void onNextClicked(lv_event_t *e);
   static void onLockClicked(lv_event_t *e);
-  static void onScanClicked(lv_event_t *e);
+  static void onHomeTilePressed(lv_event_t *e);
+  static void onHomeTileClicked(lv_event_t *e);
   static void onCoverSlotClicked(lv_event_t *e);
 
   navigation::TabController &tabs_;
@@ -134,6 +146,7 @@ class ScreenManager : public input::ListMoveSink {
   library::JpegDecoder &jpegDecoder_;
   library::CoverWriter &coverWriter_;
   playback::KeyValueStore &settings_;
+  power::BrightnessSetting &brightness_;
 
   static constexpr uint32_t kVolumeHudTimeoutMs = 3000;
 
@@ -154,6 +167,15 @@ class ScreenManager : public input::ListMoveSink {
 
   lv_obj_t *screen_ = nullptr;
   lv_obj_t *list_ = nullptr;
+  // Home's tile cells (one child per menu entry); the knob moves the
+  // selection across them like across list rows.
+  lv_obj_t *tiles_ = nullptr;
+  // Remembered across renders so returning to Home keeps the tile you
+  // left from selected.
+  int homeSelection_ = 0;
+  lv_obj_t *brightnessArcHost_ = nullptr;
+  lv_obj_t *brightnessLabel_ = nullptr;
+  ui_widgets::EdgeArc brightnessArc_;
   lv_obj_t *miniBar_ = nullptr;
   lv_obj_t *elapsedLabel_ = nullptr;
   lv_obj_t *coverImg_ = nullptr;

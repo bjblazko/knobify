@@ -6,10 +6,13 @@
 namespace knobify::navigation {
 
 // Which screen is showing. Deliberately open-ended (not "Artists is the
-// app root") so a future Home/menu screen can be inserted above today's
-// roots without changing NavigationStack or TabController — see
-// docs/adr/0004-navigation-library-and-index-architecture.md.
+// app root"), which is what let the Home menu be added above the music
+// roots later -- see docs/adr/0004-navigation-library-and-index-architecture.md
+// and docs/adr/0010-main-menu-and-settings.md.
 enum class ScreenKind {
+  Home,
+  Settings,
+  Brightness,
   Artists,
   Albums,
   Tracks,

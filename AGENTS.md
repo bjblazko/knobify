@@ -221,14 +221,13 @@ duplicating it.
   now just decodes the cached `library.idx` directly (a single small
   file read) and shows whatever that contains, instantly, even if it's
   stale. Detecting changes and rebuilding the index is now **on-demand
-  only**, via a refresh-icon button (`LV_SYMBOL_REFRESH`) on the library
-  screen's root (`ScreenManager::renderScanButtonIfNeeded()`,
-  `onScanClicked()`) that calls a small `library::LibraryRescanner`
+  only**, via Settings > "Rescan library" (`ScreenManager::runRescan()`;
+  a refresh button on the library root until ADR 0010) that calls a small `library::LibraryRescanner`
   interface (`lib/library/LibraryRescanner.h`) implemented in
   `src/main.cpp` (`SdLibraryRescanner`) so the UI layer doesn't need to
   know about the concrete SD types. A device with no cache yet (e.g.
   first boot after flashing) just shows an empty library until the user
-  taps that button.
+  runs it.
 - **A UI action that runs a synchronous, multi-second blocking call
   (like the scan button above) must NOT call `lv_timer_handler()` to
   flush progress to the screen while it's running -- it corrupts touch

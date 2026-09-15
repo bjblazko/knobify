@@ -51,8 +51,6 @@ screens described below.
   current controls + elapsed time)
 - Using the rotary encoder as a jog dial for scrolling long lists/menus
   faster (beyond the current one-item-per-detent behavior)
-- A dedicated settings screen (once a home/main-menu screen exists to
-  hang it off, per decision 8 in ADR 0004)
 - General UX polish pass once the above land and real usage patterns are
   clearer
 - Charging state indicator (no signal available to detect it — see

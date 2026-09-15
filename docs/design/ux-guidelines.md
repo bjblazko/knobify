@@ -45,8 +45,10 @@ product.
    battery indicator staying neutral until it actually needs attention.
 6. **Good design is honest.** Indicators show only what's actually known
    — the battery indicator shows "Charging" only when the rail voltage proves USB power, the progress
-   ring is hidden when a track's duration is unknown, and titles come
-   from tags rather than dressed-up filenames whenever tags exist.
+   ring is hidden when a track's duration is unknown, titles come
+   from tags rather than dressed-up filenames whenever tags exist, and the
+   lowest brightness is still clearly lit, so it never looks like the
+   display is off.
 7. **Good design is long-lasting.** No fashionable effects (gradients,
    glows, shadows, glassmorphism). The form vocabulary is deliberately
    timeless: a neutral surface, one typeface, the circle (echoing the
@@ -65,7 +67,7 @@ product.
     mechanism over several one-off effects — e.g. one `EdgeArc` widget
     serves the volume, unlock-progress and song-progress rings, and one
     button helper with three roles (§3a) draws every button on every
-    screen.
+    screen; Settings is an ordinary list, not a new widget.
 
 ## 3. Color System — Braun-Inspired Palette
 
@@ -163,7 +165,9 @@ backlight. Every screen, the lock screen included, uses `surface`.
   details.
 - **Shapes.** Circles for the round, thumb-operated controls (transport,
   unlock) — echoing the device's own form. 12px radius for list rows;
-  a fully rounded pill for the volume readout. The mini-bar is a
+  a fully rounded pill for the volume readout; 112px circles for the
+  main menu tiles, `surfaceAlt` with an `ink` glyph, turning `ink` with a
+  `surface` glyph when selected — the same selection color as a list row. The mini-bar is a
   full-width bottom area that the round bezel cuts into a circle segment
   — letting the bezel shape an element is fine when its *content* stays
   inside the visible circle.
@@ -206,9 +210,19 @@ Context section):
 Full architecture: [ADR 0004](../adr/0004-navigation-library-and-index-architecture.md).
 
 - **Injectable-root screen stack.** The navigation stack never hardcodes
-  a particular screen as "the" permanent root, so a future Home/menu
-  screen can be inserted without restructuring navigation.
-- **Two swipeable top-level tabs** — Library (tag-based Artist → Album →
+  a particular screen as "the" permanent root, which is how the Home menu
+  was added above the music tabs without restructuring navigation.
+- **The device boots into the main menu** — a grid of large round tiles
+  (icon + label), today Music and Settings ([ADR 0010](../adr/0010-main-menu-and-settings.md)).
+  All options are visible at once; the knob moves the selection, touch
+  selects on press and opens on release, and the last-used tile stays
+  selected. Adding a destination is one table row; beyond four tiles the
+  layout needs a new decision.
+- **Settings is a list; each setting has its own screen** when it's set by
+  the knob. A row ends in its current value as plain text. Brightness
+  applies live while turning, with no confirm step. Maintenance actions
+  (Rescan library) live here, not in content headers.
+- **Two swipeable music tabs** — Library (tag-based Artist → Album →
   Track) and Files (raw folder browse) — rather than a separate picker
   screen.
 - **One gesture, two meanings by context.** A left-right swipe pops the
@@ -217,7 +231,8 @@ Full architecture: [ADR 0004](../adr/0004-navigation-library-and-index-architect
   dedicated picker UI and mirrors the same context-sensitivity principle
   applied to the encoder.
 - **Context-sensitive encoder.** On browse screens, rotating scrolls the
-  highlighted list item; on Now Playing, rotating adjusts volume. The
+  highlighted list item; on Now Playing, rotating adjusts volume; on Home
+  it moves the tile selection; on Brightness it sets brightness. The
   mapping is unambiguous per screen since no mode button exists to switch
   it explicitly.
 - **The cover slot switches by tap.** Tapping the Now Playing cover
@@ -230,7 +245,8 @@ Full architecture: [ADR 0004](../adr/0004-navigation-library-and-index-architect
   no visible way back at all) — a supplementary, always-visible quiet
   back affordance sits top-center rather than in a corner (§4, §7).
 - **The back glyph says what going back means.** On list screens it is a
-  left chevron (up one level; the caption names where you are). On Now
+  left chevron (up one level; the caption names where you are). On the
+  Library/Files roots it leads to the main menu; Home itself has none. On Now
   Playing it is a down chevron — "collapse the player" into the list's
   mini-bar. A left chevron there sat right above the previous-track
   button, read like "previous", and didn't say where it led.
@@ -319,7 +335,7 @@ Full architecture: [ADR 0005](../adr/0005-power-lock-and-round-edge-indicators.m
   serial-dumped screenshot captures the raw square framebuffer, not what
   the round bezel actually shows.
 - **Content never scrolls underneath fixed controls.** A list starts
-  below the header zone (back/scan button + caption) and ends above the
+  below the header zone (back button + caption) and ends above the
   mini-bar, instead of spanning the full screen with padding — rows
   sliding under the back button collided with it visually.
 - **List screens say where you are.** A small caption under the top

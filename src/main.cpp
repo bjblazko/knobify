@@ -8,6 +8,7 @@
 #include "BatteryAdcDriver.h"
 #include "BatteryIndicator.h"
 #include "BatteryMonitor.h"
+#include "BrightnessSetting.h"
 #include "CoverArtCache.h"
 #include "Cst816Driver.h"
 #include "EncoderPins.h"
@@ -160,7 +161,7 @@ knobify::library::LibraryIndex loadOrBuildLibraryIndex(
 // Concrete LibraryRescanner: wraps the SD-backed lister/opener (file-scope
 // here, so ScreenManager/LibraryRescanner can't reference them directly)
 // and calls the existing signature-check-then-scan logic on demand, from
-// the library screen's scan button rather than at boot -- see AGENTS.md.
+// Settings' "Rescan library" row rather than at boot -- see AGENTS.md.
 // Defined out-of-line below, once g_libraryIndex/g_fileLister/g_fileOpener
 // exist.
 class SdLibraryRescanner : public knobify::library::LibraryRescanner {
@@ -182,6 +183,7 @@ knobify::playback::VolumePersistence g_volume(g_nvsStore);
 knobify::drivers::Esp32AudioI2SDriver g_audioDriver;
 knobify::playback::PlaybackStateMachine g_playback(g_audioDriver, g_volume);
 knobify::navigation::TabController g_tabs;
+knobify::power::BrightnessSetting g_brightness(g_nvsStore);
 
 knobify::drivers::St77916Driver g_display;
 knobify::drivers::Cst816Driver g_touch;
@@ -192,16 +194,19 @@ knobify::power::LockController g_lockController;
 knobify::ui::ScreenManager g_screenManager(
     g_tabs, g_libraryIndex, g_directoryReader, g_playback, g_lockController,
     g_libraryRescanner, g_coverReader, g_fileOpener, g_jpegDecoder,
-    g_coverWriter, g_nvsStore);
+    g_coverWriter, g_nvsStore, g_brightness);
 knobify::ui::LockOverlay g_lockOverlay(g_lockController);
 knobify::drivers::BatteryAdcDriver g_batteryAdc;
 knobify::power::BatteryMonitor g_batteryMonitor;
 knobify::ui::BatteryIndicator g_batteryIndicator(g_batteryMonitor);
-knobify::input::InputRouter g_inputRouter(g_tabs, g_playback, g_screenManager);
+knobify::input::InputRouter g_inputRouter(g_tabs, g_playback, g_brightness,
+                                        g_screenManager);
 knobify::input::GestureRecognizer g_gestureRecognizer;
 
 bool g_wasPlaying = false;
-bool g_backlightOn = true;
+// Last duty written to the backlight PWM; LvglGlue::begin() leaves it at
+// full (St77916Driver::initBacklight()).
+uint8_t g_backlightDuty = 255;
 bool g_touchPressedPrev = false;
 bool g_swallowingWakeTouch = false;
 uint32_t g_lastBatteryUpdateMs = 0;
@@ -228,6 +233,7 @@ void setup() {
   // loaded volume into) -- see PlaybackStateMachine's constructor comment
   // for why this isn't done eagerly in the constructor itself.
   g_playback.begin();
+  g_brightness.begin();
 
   if (!g_touch.begin()) {
     Serial.println("Touch init FAILED -- check wiring/pinout in device.md");
@@ -242,6 +248,10 @@ void setup() {
   lv_obj_t *bootScreen = nullptr;
   lv_obj_t *bootLabel = nullptr;
   bool displayOk = g_lvglGlue.begin(g_display);
+  if (displayOk) {
+    g_backlightDuty = g_brightness.duty();
+    g_display.setBacklight(g_backlightDuty);
+  }
   if (!displayOk) {
     Serial.println("Display init FAILED -- check wiring/pinout in device.md");
   } else {
@@ -282,7 +292,7 @@ void setup() {
                      static_cast<unsigned>(g_libraryIndex.albums.size()),
                      static_cast<unsigned>(g_libraryIndex.tracks.size()));
     } else {
-      Serial.println("No library cache yet -- use the scan button to build one.");
+      Serial.println("No library cache yet -- use Settings > Rescan library to build one.");
     }
   }
 
@@ -402,9 +412,11 @@ void loop() {
     g_idleTimer.noteActivity(now);
   }
   bool displayOn = g_idleTimer.tick(now);
-  if (displayOn != g_backlightOn) {
-    g_display.setBacklight(displayOn ? 255 : 0);
-    g_backlightOn = displayOn;
+  // Also follows the brightness setting live while it's being adjusted.
+  uint8_t backlightDuty = displayOn ? g_brightness.duty() : 0;
+  if (backlightDuty != g_backlightDuty) {
+    g_display.setBacklight(backlightDuty);
+    g_backlightDuty = backlightDuty;
   }
   // Nothing to render on a dark panel (this also stops the lock screen's
   // endless pulse animation). LVGL keeps its invalidated areas, so the
@@ -445,6 +457,7 @@ void loop() {
       // ScreenManager::updateVolumeDisplay(). A no-op on any screen
       // other than Now Playing.
       g_screenManager.updateVolumeDisplay(now);
+      g_screenManager.updateBrightnessDisplay();
     }
   }
   g_screenManager.tickVolumeHud(now);
@@ -460,6 +473,7 @@ void loop() {
   }
 
   g_playback.tick(now);
+  g_brightness.tick(now);
   // Cheap (no full re-render), a no-op on any screen other than Now
   // Playing -- see ScreenManager::updateElapsedTimeDisplay().
   if (displayOn) g_screenManager.updateElapsedTimeDisplay();

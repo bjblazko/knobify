@@ -18,6 +18,14 @@ LV_FONT_DECLARE(knobify_icon_font_28);
 #define KNOBIFY_ICON_LOCK_OPEN "\xEE\xA2\x98"  // U+E898
 #define KNOBIFY_ICON_LOCK "\xEE\xA2\x99"       // U+E899
 
+// 48px glyphs for the main menu tiles and the Brightness screen (ADR
+// 0010) -- IconFont48.c, same source font.
+LV_FONT_DECLARE(knobify_icon_font_48);
+
+#define KNOBIFY_ICON_MUSIC_NOTE "\xEE\x90\x85"  // U+E405
+#define KNOBIFY_ICON_SETTINGS "\xEE\xA2\xB8"    // U+E8B8
+#define KNOBIFY_ICON_LIGHT_MODE "\xEE\x94\x98"  // U+E518
+
 #ifdef __cplusplus
 }
 #endif
