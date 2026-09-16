@@ -70,7 +70,7 @@ constexpr uint32_t C = Shuttle::kCycleMs;
 }  // namespace
 
 void test_hold_refused_for_unseekable_track() {
-  Fixture f("/a.ogg");
+  Fixture f("/a.flac");
   TEST_ASSERT_FALSE(f.shuttle.hold(0));
   TEST_ASSERT_FALSE(f.shuttle.isHeld());
 }

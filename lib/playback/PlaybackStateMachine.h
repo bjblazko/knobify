@@ -165,9 +165,9 @@ class PlaybackStateMachine {
     trackStartMs_ -= static_cast<uint32_t>(deltaMs);
   }
 
-  // Whether the current track can be shuttled: ESP32-audioI2S only seeks
-  // within MP3, M4A and WAV of the formats knobify plays (not Ogg). By
-  // extension, so it's known before a cued track is loaded.
+  // Whether the current track can be shuttled: the library seeks within
+  // MP3, M4A and WAV, and knobify's own Vorbis backend seeks by sample
+  // (ADR 0017). By extension, so it's known before a cued track loads.
   bool canSeek() const {
     if (state_ == PlaybackState::Stopped || queue_.empty()) return false;
     const std::string &path = queue_.current();
@@ -175,7 +175,8 @@ class PlaybackStateMachine {
     if (dot == std::string::npos) return false;
     std::string ext = path.substr(dot + 1);
     for (char &c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    return ext == "mp3" || ext == "m4a" || ext == "wav";
+    return ext == "mp3" || ext == "m4a" || ext == "wav" || ext == "ogg" ||
+           ext == "oga";
   }
 
   // `delta` is signed knob ticks; positive = louder.

@@ -408,7 +408,7 @@ void test_seek_by_ignored_when_stopped() {
   TEST_ASSERT_EQUAL_UINT(0, driver.seeks.size());
 }
 
-void test_can_seek_only_mp3_m4a_and_wav_with_a_track() {
+void test_can_seek_mp3_m4a_wav_and_ogg_with_a_track() {
   FakeDriver driver;
   FakeStore store;
   VolumePersistence volume(store);
@@ -423,7 +423,7 @@ void test_can_seek_only_mp3_m4a_and_wav_with_a_track() {
   sm.play({"/a.m4a"}, 0, 0);
   TEST_ASSERT_TRUE(sm.canSeek());
   sm.play({"/a.ogg"}, 0, 0);
-  TEST_ASSERT_FALSE(sm.canSeek());
+  TEST_ASSERT_TRUE(sm.canSeek());
   sm.play({"/noextension"}, 0, 0);
   TEST_ASSERT_FALSE(sm.canSeek());
 }
@@ -496,7 +496,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_seek_by_clamps_at_track_start);
   RUN_TEST(test_seek_by_keeps_elapsed_when_driver_refuses);
   RUN_TEST(test_seek_by_ignored_when_stopped);
-  RUN_TEST(test_can_seek_only_mp3_m4a_and_wav_with_a_track);
+  RUN_TEST(test_can_seek_mp3_m4a_wav_and_ogg_with_a_track);
   RUN_TEST(test_stop_releases_the_file_and_keeps_the_queue);
   RUN_TEST(test_track_generation_increments_on_play_next_and_restart);
   RUN_TEST(test_track_generation_unchanged_by_pause_resume_and_cued_resume);
