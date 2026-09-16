@@ -15,6 +15,7 @@ all of them are compatible with GPL-3.0-or-later. Versions are pinned in
 | [ESP-IDF](https://github.com/espressif/esp-idf) (bundled with the core) | FreeRTOS, FatFs, drivers | Apache-2.0 |
 | [Material Symbols](https://github.com/google/material-design-icons) | The icon glyphs in `lib/ui-widgets/IconFont*.c` | Apache-2.0 |
 | [Unity](https://github.com/ThrowTheSwitch/Unity) | Host-side unit tests only (not shipped) | MIT |
+| [stb_vorbis](https://github.com/nothings/stb) (vendored) | Ogg Vorbis decoding | Public domain / MIT |
 
 GPL-3.0-or-later for knobify is not a free choice: ESP32-audioI2S is
 GPL-3.0, so any distributed firmware linking it is covered as a whole.

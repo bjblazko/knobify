@@ -6,6 +6,9 @@
 #include <atomic>
 #include <cstdint>
 
+#include "AudioGain.h"
+#include "AudioOutputStage.h"
+
 namespace knobify::drivers {
 
 void Esp32AudioI2SDriver::begin() {
@@ -31,54 +34,19 @@ void Esp32AudioI2SDriver::begin() {
 
 }  // namespace knobify::drivers
 
-// Spectrum analyzer tap (ADR 0009): audio_process_i2s below pushes a mono
-// downmix of every sample into this ring. Single producer (the audio task,
-// core 0) and single consumer (readRecentSamples(), main loop, core 1);
-// the producer only ever stores a sample and then bumps the counter, so
-// there's no lock in the hot path. A reader racing a writer can at worst
-// see the oldest sample of its window overwritten by a newer one, which
-// is invisible in a spectrum.
-namespace {
-constexpr size_t kSampleRingSize = 1024;  // Power of two.
-int16_t g_sampleRing[kSampleRingSize];
-std::atomic<uint32_t> g_samplesWritten{0};
-// setOutputGain()'s 0..4096 (unity), applied per sample on the audio task.
-constexpr int32_t kUnityOutputGain = 4096;
-std::atomic<uint16_t> g_outputGain{kUnityOutputGain};
-
-// ESP32-audioI2S's volumetable (Audio.h): Gain() multiplies by entry/64.
-// The library's own >>1 and this file's x2 compensation cancel out.
-constexpr uint8_t kVolumeTable[22] = {0,  1,  2,  3,  4,  6,  8,  10,
-                                      12, 14, 17, 20, 23, 27, 30, 34,
-                                      38, 43, 48, 52, 58, 64};
-}  // namespace
-
 namespace knobify::drivers {
 
-playback::SampleWindow Esp32AudioI2SDriver::readRecentSamples(
-    int16_t *dst, size_t maxSamples) {
-  uint32_t written = g_samplesWritten.load(std::memory_order_relaxed);
-  if (written == lastSampleCount_) return {};  // Paused or between tracks.
-  lastSampleCount_ = written;
-
-  size_t count = std::min<size_t>({maxSamples, kSampleRingSize, written});
-  for (size_t i = 0; i < count; ++i) {
-    dst[i] = g_sampleRing[(written - count + i) & (kSampleRingSize - 1)];
-  }
-  playback::SampleWindow window;
-  window.count = count;
-  // A plain field read, deliberately without mutex_: taking it at frame
-  // rate would wait on the audio task's decode chunks, and a stale rate
-  // for one frame right after a track change is harmless.
-  window.sampleRate = audio_.getSampleRate();
-  window.gain = kVolumeTable[std::min<uint8_t>(volume_.load(), 21)] / 64.0f *
-                g_outputGain.load(std::memory_order_relaxed) / kUnityOutputGain;
-  return window;
+playback::SampleWindow Esp32AudioI2SDriver::readRecentSamples(int16_t *dst,
+                                                              size_t maxSamples) {
+  // Plain field reads, deliberately without mutex_: taking it at frame
+  // rate would wait on the decode task's chunks, and a stale rate for one
+  // frame right after a track change or backend switch is harmless.
+  return audioOutputStage().readRecentSamples(
+      dst, maxSamples, vorbisActive_ ? vorbis_.sampleRate() : audio_.getSampleRate());
 }
 
 void Esp32AudioI2SDriver::setOutputGain(uint16_t gain) {
-  g_outputGain.store(std::min<int32_t>(gain, kUnityOutputGain),
-                     std::memory_order_relaxed);
+  audioOutputStage().setOutputGain(gain);
 }
 
 }  // namespace knobify::drivers
@@ -92,15 +60,16 @@ void Esp32AudioI2SDriver::setOutputGain(uint16_t gain) {
 // audio_process_extern hook (tried and reverted, see AGENTS.md), it only
 // rewrites one packed sample and leaves the library's write path intact.
 namespace {
-constexpr int32_t kHeadroomCompensation = 2;
+using knobify::playback::AudioGain;
 
-// Also applies the output gain (the sleep timer's fade), which can never
-// exceed unity.
-int16_t compensate(int16_t s, int32_t gain) {
-  // Clamp is a safety net only: the input was halved, so x2 can't clip
-  // unless the library's EQ (setTone) is ever used to boost.
-  return static_cast<int16_t>(std::clamp<int32_t>(
-      s * kHeadroomCompensation * gain / kUnityOutputGain, INT16_MIN, INT16_MAX));
+// ESP32-audioI2S 2.3.0's Audio::playSample() halves every sample before
+// its EQ and Gain() ("half Vin so we can boost up to 6dB in filters"), so
+// volume 21/21 only ever reached -6 dBFS. Doubling here, right before
+// i2s_write(), makes 21 true 0 dBFS. The sleep timer's gain rides along
+// via AudioGain, shared with the Vorbis path.
+int16_t compensate(int16_t s, uint16_t outputGain) {
+  return AudioGain::applyOutputGain(
+      static_cast<int16_t>(std::clamp<int32_t>(s * 2, INT16_MIN, INT16_MAX)), outputGain);
 }
 }  // namespace
 
@@ -108,13 +77,11 @@ void audio_process_i2s(uint32_t *sample, bool *continueI2S) {
   // Packed as Gain() returns it: left in the high 16 bits, right in the low.
   // Verified on hardware 2026-09-13: loud tracks peak at 16383 in, 32766
   // out, zero clipped samples.
-  const int32_t gain = g_outputGain.load(std::memory_order_relaxed);
+  auto &stage = knobify::drivers::audioOutputStage();
+  const uint16_t gain = stage.outputGain();
   const int16_t left = compensate(static_cast<int16_t>(*sample >> 16), gain);
   const int16_t right = compensate(static_cast<int16_t>(*sample & 0xFFFF), gain);
-  uint32_t written = g_samplesWritten.load(std::memory_order_relaxed);
-  g_sampleRing[written & (kSampleRingSize - 1)] =
-      static_cast<int16_t>((static_cast<int32_t>(left) + right) / 2);
-  g_samplesWritten.store(written + 1, std::memory_order_relaxed);
+  stage.noteMonoSample(static_cast<int16_t>((static_cast<int32_t>(left) + right) / 2));
   *sample = (static_cast<uint32_t>(static_cast<uint16_t>(left)) << 16) |
             static_cast<uint16_t>(right);
   *continueI2S = true;

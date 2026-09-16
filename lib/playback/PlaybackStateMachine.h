@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "AudioBackendKind.h"
 #include "PlayQueue.h"
 #include "PlaybackDriver.h"
 #include "VolumePersistence.h"
@@ -165,12 +166,17 @@ class PlaybackStateMachine {
     trackStartMs_ -= static_cast<uint32_t>(deltaMs);
   }
 
-  // Whether the current track can be shuttled: ESP32-audioI2S only seeks
-  // within MP3, M4A and WAV of the formats knobify plays (not Ogg). By
-  // extension, so it's known before a cued track is loaded.
+  // Whether the current track can be shuttled. backendForPath() (owned by
+  // AudioBackendKind.h) is the one place that knows which decoder a path
+  // goes to; everything on knobify's own Vorbis path seeks by sample
+  // (ADR 0017), so it's always seekable, and this only needs to name the
+  // library codecs that seek (MP3, M4A, WAV) among the rest of the
+  // library path (e.g. FLAC, which doesn't). Known before a cued track
+  // loads, from the path alone.
   bool canSeek() const {
     if (state_ == PlaybackState::Stopped || queue_.empty()) return false;
     const std::string &path = queue_.current();
+    if (backendForPath(path) == AudioBackendKind::Vorbis) return true;
     auto dot = path.find_last_of('.');
     if (dot == std::string::npos) return false;
     std::string ext = path.substr(dot + 1);

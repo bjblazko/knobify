@@ -3,14 +3,18 @@
 #include <Audio.h>
 #include <SD_MMC.h>
 #include <atomic>
+#include <driver/i2s.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
 
+#include "AudioBackendKind.h"
+#include "AudioOutputStage.h"
 #include "Mp3Duration.h"
 #include "Mp4Parser.h"
 #include "PlaybackDriver.h"
 #include "SdRawFile.h"
+#include "VorbisBackend.h"
 
 namespace knobify::drivers {
 
@@ -49,6 +53,10 @@ constexpr int kInputBufferBytes = 64 * 1024;
 // pause, resume, stop, setVolume, isRunning) are all short, so they
 // don't meaningfully compete with the audio task's per-chunk loop()
 // calls for the mutex.
+//
+// This class also owns the second decode path, VorbisBackend, and picks
+// between the two by file extension -- see ADR 0017 for why there are
+// two paths instead of one.
 class Esp32AudioI2SDriver : public playback::PlaybackDriver {
  public:
   // Defined in Esp32AudioI2SDriver.cpp, not inline, on purpose: that file
@@ -60,11 +68,22 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
   bool playFile(const std::string &path) override { return playFileAt(path, 0); }
 
   // The library corrects the offset to a frame boundary per codec itself.
-  bool playFileAt(const std::string &path, uint32_t filePosition) override {
+  bool playFileAt(const std::string &path, uint32_t position) override {
+    // Only ever one decoder: stop the other before starting this one.
+    stop();
+    if (playback::backendForPath(path) == playback::AudioBackendKind::Vorbis) {
+      MutexGuard guard(mutex_);
+      // stop() above already called audio_.stopSong(); no need to repeat
+      // it here.
+      // Programs the I2S port's clock itself, before its decode task
+      // exists -- see VorbisBackend::open().
+      vorbisActive_ = vorbis_.open(path, position);
+      return vorbisActive_;
+    }
     timing_ = readTrackTiming(path);
     MutexGuard guard(mutex_);
     paused_ = false;
-    bool ok = audio_.connecttoFS(SD_MMC, path.c_str(), filePosition);
+    bool ok = audio_.connecttoFS(SD_MMC, path.c_str(), position);
     // TEMPORARY DIAGNOSTIC (2026-09-12): investigating "play does
     // nothing, no sound" reports on real hardware -- see AGENTS.md.
     Serial.printf("Esp32AudioI2SDriver::playFile('%s') -> connecttoFS=%s\n",
@@ -74,6 +93,15 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
 
   void pause() override {
     MutexGuard guard(mutex_);
+    if (vorbisActive_) {
+      vorbis_.setPaused(true);
+      // Otherwise the last DMA buffer keeps looping -- an audible
+      // buzz/tail MP3 doesn't have, since the library's own
+      // pauseResume() does the same call.
+      i2s_zero_dma_buffer(I2S_NUM_0);
+      paused_ = true;
+      return;
+    }
     if (!paused_) {
       audio_.pauseResume();
       paused_ = true;
@@ -82,6 +110,11 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
 
   void resume() override {
     MutexGuard guard(mutex_);
+    if (vorbisActive_) {
+      vorbis_.setPaused(false);
+      paused_ = false;
+      return;
+    }
     if (paused_) {
       audio_.pauseResume();
       paused_ = false;
@@ -90,6 +123,10 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
 
   void stop() override {
     MutexGuard guard(mutex_);
+    if (vorbisActive_) {
+      vorbis_.close();
+      vorbisActive_ = false;
+    }
     audio_.stopSong();
     paused_ = false;
   }
@@ -97,7 +134,7 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
   void setVolume(uint8_t volume) override {
     MutexGuard guard(mutex_);
     audio_.setVolume(volume);
-    volume_.store(volume);
+    audioOutputStage().setVolumeStep(volume);
   }
 
   // Lock-free: read per sample on the audio task (audio_process_i2s()).
@@ -105,6 +142,7 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
 
   bool isRunning() override {
     MutexGuard guard(mutex_);
+    if (vorbisActive_) return vorbis_.running();
     return audio_.isRunning();
   }
 
@@ -116,6 +154,7 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
   // and matches seekByMs() below.
   uint32_t filePosition() override {
     MutexGuard guard(mutex_);
+    if (vorbisActive_) return vorbis_.currentSample();
     uint32_t reader = audio_.getFilePos();
     if (reader == 0) return 0;  // Nothing loaded.
     int64_t heard = static_cast<int64_t>(reader) - audio_.inBufferFilled();
@@ -135,6 +174,16 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
   // to get the position actually being decoded/heard.
   bool seekByMs(int32_t deltaMs) override {
     MutexGuard guard(mutex_);
+    if (vorbisActive_) {
+      const uint32_t rate = vorbis_.sampleRate();
+      if (rate == 0) return false;
+      const int64_t delta = static_cast<int64_t>(deltaMs) * rate / 1000;
+      const int64_t maxSample = static_cast<int64_t>(vorbis_.durationSeconds()) * rate;
+      int64_t target = static_cast<int64_t>(vorbis_.currentSample()) + delta;
+      if (target < 0) target = 0;
+      if (target > maxSample) target = maxSample;
+      return vorbis_.seekToSample(static_cast<uint32_t>(target));
+    }
     int64_t start = audio_.getAudioDataStartPos();
     int64_t end = audio_.getFileSize();
     // An M4A's moov atom (tags, cover, sample tables) can sit after the
@@ -172,8 +221,9 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
   // for VBR files starts too long and corrects itself over the first seconds
   // -- see Mp3Duration.h, Mp4Parser.h).
   uint32_t durationSeconds() override {
-    if (timing_.durationSeconds != 0) return timing_.durationSeconds;
     MutexGuard guard(mutex_);
+    if (vorbisActive_) return vorbis_.durationSeconds();
+    if (timing_.durationSeconds != 0) return timing_.durationSeconds;
     return audio_.getAudioFileDuration();
   }
 
@@ -251,14 +301,12 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
   }
 
   Audio audio_;
+  VorbisBackend vorbis_;
+  bool vorbisActive_ = false;
   bool paused_ = false;
   // Of the current track (set in playFileAt(), read by durationSeconds() and
   // seekByMs() -- all on the main task).
   TrackTiming timing_;
-  // Mirrors the last setVolume() so readRecentSamples() can report the
-  // gain without taking mutex_ at spectrum frame rate.
-  std::atomic<uint8_t> volume_{0};
-  uint32_t lastSampleCount_ = 0;
   SemaphoreHandle_t mutex_ = nullptr;
   TaskHandle_t taskHandle_ = nullptr;
 };

@@ -52,6 +52,10 @@ screens described below.
   progressive JPEG covers decode too. Settings > USB drive exposes the
   SD card to a computer over the USB cable — see
   [ADR 0016](docs/adr/0016-native-formats-and-usb-drive.md).
+- Ogg Vorbis plays too, on knobify's own decode path (ESP32-audioI2S has
+  no Vorbis decoder). Embedded Ogg cover art
+  (`METADATA_BLOCK_PICTURE`) isn't read; a folder `cover.jpg` still works
+  — see [ADR 0017](docs/adr/0017-two-audio-decode-paths.md).
 
 ## Preparing an SD card
 
@@ -122,9 +126,11 @@ Settings > USB drive, at about 0.8 MB/s writing and 0.9 MB/s reading
 
 - Bluetooth headphone output
 - Wi-Fi-based features (time/date sync, weather, podcasts, internet radio)
-- Ogg Vorbis playback (ESP32-audioI2S 2.3.0 has no Vorbis decoder;
-  stb_vorbis runs 2.5x realtime on the device — a second decode path,
-  see ADR 0016) and 24-bit FLAC
+- 24-bit FLAC (ESP32-audioI2S 2.3.0 refuses it)
+- A smoother jog/shuttle cue for Ogg Vorbis: winding currently plays
+  short fragments separated by silence (ADR 0017)
+- Cover art embedded in Ogg files (`METADATA_BLOCK_PICTURE`); folder
+  `cover.jpg` covers already work
 - Formatting the SD card from Settings with 32 KB clusters, which USB
   drive mode needs on macOS (ADR 0016)
 - A desktop sync tool (mirror a folder to the knob, delete removed
@@ -171,12 +177,14 @@ for what was decided and why.
 
 v1 works on real hardware: browsing by artist/album (or raw folders),
 playback with cover art, jog/shuttle, lock, sleep timer, resume, and
-copying music over the USB cable. Formats are **MP3, M4A (AAC), WAV**;
-Ogg Vorbis files are listed but not yet decoded (backlog above). See
+copying music over the USB cable. Formats are **MP3, M4A (AAC), WAV,
+FLAC (16-bit) and Ogg Vorbis**. See
 [ADR 0004](docs/adr/0004-navigation-library-and-index-architecture.md)
-for the navigation/library architecture and the bring-up history, and
+for the navigation/library architecture and the bring-up history,
 [ADR 0016](docs/adr/0016-native-formats-and-usb-drive.md) for formats,
-cover decoding and USB drive mode.
+cover decoding and USB drive mode, and
+[ADR 0017](docs/adr/0017-two-audio-decode-paths.md) for the Vorbis decode
+path.
 
 ## License
 

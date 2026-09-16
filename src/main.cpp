@@ -452,15 +452,24 @@ void pollSerialCommands() {
 }
 
 #ifdef KNOBIFY_LOOP_WDT
-// Diagnostic build only: turns a hung loop() into a panic, so the crash's
-// core dump names the call it hung in (scripts/read-coredump.sh).
+// Diagnostic build only (PLATFORMIO_BUILD_FLAGS=-DKNOBIFY_LOOP_WDT): turns
+// a hung loop() into a panic, so the crash's core dump names the call it
+// hung in (scripts/read-coredump.sh). That is how the USB CDC write spin
+// was found twice (AGENTS.md).
+//
+// The timeout must clear the longest legitimate blocking call in loop(),
+// which is a full library rescan: at 15 s it killed the scan itself
+// (2026-09-16, ~1000 tracks). 90 s is comfortably past that and still
+// catches a hang within a minute and a half.
 #include <esp_task_wdt.h>
 namespace {
+constexpr int kLoopWatchdogSeconds = 90;
+
 void armLoopWatchdog() {
   static bool armed = false;
   if (armed) return;
   armed = true;
-  esp_task_wdt_init(15, true);
+  esp_task_wdt_init(kLoopWatchdogSeconds, true);
   esp_task_wdt_add(nullptr);
 }
 }  // namespace
