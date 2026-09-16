@@ -91,6 +91,7 @@ flowchart TB
         Play["lib/playback\nPlaybackStateMachine, VolumePersistence"]
         Input["lib/input\nGestureRecognizer, InputRouter"]
         Power["lib/power\nIdleTimer, LockController"]
+        UsbDrv["lib/usbdrive\nUsbDriveSession"]
     end
     subgraph UI["lib/ui (hardware-facing, thin)"]
         Screens["ArtistsScreen, AlbumsScreen, TracksScreen,\nFolderScreen, NowPlayingScreen, MiniBar"]
@@ -101,13 +102,15 @@ flowchart TB
     subgraph Widgets["lib/ui-widgets (reusable LVGL widgets)"]
         Arc["EdgeArc, IconFont"]
     end
-    subgraph Drivers["lib/drivers (thin hardware adapters)"]
-        SdDrv["sd/ (SdFileLister)"]
-        DispDrv["display/ (St77916Driver)"]
-        TouchDrv["touch/ (Cst816Driver)"]
-        EncDrv["encoder/ (GpioEncoderDriver)"]
-        AudioDrv["audio/ (Esp32AudioI2SDriver)"]
-        NvsDrv["storage/ (NvsKeyValueStore)"]
+    subgraph Drivers["lib/drivers-* (thin hardware adapters)"]
+        SdDrv["drivers-sd (SdFileLister, SdInit)"]
+        DispDrv["drivers-display (St77916Driver)"]
+        TouchDrv["drivers-touch (Cst816Driver)"]
+        EncDrv["drivers-encoder (GpioEncoderDriver)"]
+        AudioDrv["drivers-audio (Esp32AudioI2SDriver)"]
+        JpegDrv["drivers-jpeg (JpegDecAdapter)"]
+        UsbDrv2["drivers-usb (UsbMscStorage)"]
+        NvsDrv["drivers-storage (NvsKeyValueStore)"]
     end
     Main["src/main.cpp\n(wiring)"]
 
@@ -141,11 +144,14 @@ flowchart TB
   stack) and `TabController` (owns the Library/Files tabs, decides
   pop-vs-tab-switch on a swipe).
 - **`lib/library`** — `model` (plain Artist/Album/Track structs), `tags`
-  (hand-rolled ID3v2/Vorbis-comment/RIFF-INFO parsers behind a
-  `TagReader`/`RawFile` interface), `scan` (`FileLister` interface,
-  `LibraryScanner`, `FolderBrowser` for live Files-mode listing),
+  (hand-rolled ID3v2/Vorbis-comment/RIFF-INFO/MP4 parsers behind a
+  `TagReader`/`RawFile` interface, `Mp4Parser` also yielding an M4A's
+  exact duration and `mdat` range, ADR 0016), `scan` (`FileLister`
+  interface, `LibraryScanner`, `FolderBrowser` for live Files-mode
+  listing, `AudioFileTypes` for the one shared extension check),
   `index` (`IndexCache` — the `/knobify/library.idx` format and
-  staleness-signature check).
+  staleness-signature check), plus `SquareResampler` behind the cover
+  pipeline.
 - **`lib/playback`** — `PlaybackStateMachine` driving a `PlaybackDriver`
   interface (wraps `ESP32-audioI2S`), plus `VolumePersistence` over a
   `KeyValueStore` interface (wraps NVS).
@@ -154,6 +160,10 @@ flowchart TB
   LVGL's periodic read), `GestureRecognizer` (raw touch points → tap/swipe
   with direction) and `InputRouter` (context-sensitive encoder routing:
   list-scroll vs. volume, by current screen kind).
+- **`lib/usbdrive`** (ADR 0016) — `UsbDriveSession`: one "hand the SD
+  card to a computer" session over a `UsbStorage` interface, ending on
+  eject, an absent host or the user's Done. Host-tested; the TinyUSB mass
+  storage side lives in `lib/drivers-usb`.
 - **`lib/power`** (ADR 0005) — `IdleTimer` (display on/off, idle-timeout
   driven) and `LockController` (lock state + the hold-button-while-
   turning-encoder unlock gesture). Host-testable, no LVGL/hardware deps,

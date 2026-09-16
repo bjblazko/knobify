@@ -99,7 +99,20 @@ scheme **MBR**, file system **FAT32**, cluster size **32 kilobytes**, then
 Start. (On a card of 32 GB or less, `format F: /FS:FAT32 /A:32K /Q` in an
 Administrator command prompt does the same.)
 
-Then copy music as `Music/<Artist>/<Album>/<tracks>` — either with a card
+### "You don't have permission" in Finder
+
+If the drive mounts but Finder refuses to open it, that is macOS's privacy
+setting for removable media, not the card: recent macOS mounts FAT volumes
+through FSKit, and Finder needs to be allowed to read them. Switch on
+**System Settings > Privacy & Security > Files and Folders > Finder >
+Removable Volumes**, or run `tccutil reset SystemPolicyRemovableVolumes`
+and allow the prompt that appears the next time the drive is connected. A
+terminal with full disk access can read the volume either way, which is a
+quick way to tell this apart from a real filesystem problem.
+
+### Copying music
+
+Copy music as `Music/<Artist>/<Album>/<tracks>` — either with a card
 reader (much faster for a first fill) or over the cable via
 Settings > USB drive, at about 0.8 MB/s writing and 0.9 MB/s reading
 (the ESP32-S3 has USB full speed only, whose practical ceiling is
@@ -156,14 +169,14 @@ Arduino, native + esp32-s3 environments) are in place — see
 [`docs/adr/`](docs/adr/README.md) and [`docs/arc42/arc42.md`](docs/arc42/arc42.md)
 for what was decided and why.
 
-v1 UX is designed and implemented end-to-end (navigation, library
-indexing, playback, input routing, display/touch/LVGL screens) but not
-yet verified on real hardware — see
+v1 works on real hardware: browsing by artist/album (or raw folders),
+playback with cover art, jog/shuttle, lock, sleep timer, resume, and
+copying music over the USB cable. Formats are **MP3, M4A (AAC), WAV**;
+Ogg Vorbis files are listed but not yet decoded (backlog above). See
 [ADR 0004](docs/adr/0004-navigation-library-and-index-architecture.md)
-for what's built and what's still unverified. v1 scope: play MP3/WAV/OGG
-from an SD card, browse a library by artist/album (or raw folders),
-control via touch + one rotary encoder, fully offline — see
-[ADR 0002](docs/adr/0002-v1-format-and-mcu-scope.md).
+for the navigation/library architecture and the bring-up history, and
+[ADR 0016](docs/adr/0016-native-formats-and-usb-drive.md) for formats,
+cover decoding and USB drive mode.
 
 ## License
 

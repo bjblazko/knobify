@@ -1,5 +1,9 @@
 # Native formats and USB drive mode — plan
 
+**Done (2026-09-16).** All phases implemented and verified on the device;
+see ADR 0016 for the outcome and the measured numbers. Kept for the
+record of how the work was planned.
+
 Goal: get music onto the built-in SD card without opening the housing and
 without transcoding (proposal "A": smart player, plain cable). Feasibility
 was measured on the device on 2026-09-15 with the throwaway firmware on
