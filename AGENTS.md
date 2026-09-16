@@ -366,6 +366,14 @@ duplicating it.
   ~80 ms (measured with a sample-gap log in `audio_process_i2s`). See ADR
   0012 and ADR 0013.
 
+- **knobify decodes audio two ways**: ESP32-audioI2S for MP3/M4A/WAV/FLAC,
+  and knobify's own stb_vorbis-based backend for Ogg Vorbis, dispatched by
+  file extension in `Esp32AudioI2SDriver`. `AudioGain` and
+  `AudioOutputStage` are what keep the two paths consistent in volume,
+  the sleep-timer fade and the spectrum. Ogg positions are sample
+  indices, not byte offsets -- opaque above `PlaybackDriver`, unlike the
+  library path's byte positions. See ADR 0017.
+
 ## Where things are documented (so you add to the right place)
 
 - **Pure hardware facts** (pinout, board identification, electrical

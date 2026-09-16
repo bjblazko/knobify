@@ -25,3 +25,4 @@ supersedes the old one (and the old one is marked "Superseded by NNNN").
 | [0014](0014-now-playing-options-panel.md) | Now Playing options panel | Accepted (amends 0005, 0009, 0011) |
 | [0015](0015-sleep-timer.md) | Sleep timer | Accepted (amends 0010's Home layout) |
 | [0016](0016-native-formats-and-usb-drive.md) | Native M4A, progressive covers, USB drive mode | Accepted (supersedes 0002's format decision) |
+| [0017](0017-two-audio-decode-paths.md) | Two audio decode paths (Vorbis) | Accepted |

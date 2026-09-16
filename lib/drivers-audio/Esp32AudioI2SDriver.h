@@ -53,6 +53,10 @@ constexpr int kInputBufferBytes = 64 * 1024;
 // pause, resume, stop, setVolume, isRunning) are all short, so they
 // don't meaningfully compete with the audio task's per-chunk loop()
 // calls for the mutex.
+//
+// This class also owns the second decode path, VorbisBackend, and picks
+// between the two by file extension -- see ADR 0017 for why there are
+// two paths instead of one.
 class Esp32AudioI2SDriver : public playback::PlaybackDriver {
  public:
   // Defined in Esp32AudioI2SDriver.cpp, not inline, on purpose: that file
