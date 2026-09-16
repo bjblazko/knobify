@@ -47,7 +47,6 @@ class VorbisBackend : public DecoderBackend {
   int16_t *frames_ = nullptr;  // kFramesPerChunk * 2, PSRAM.
   uint32_t sampleRate_ = 0;
   uint32_t durationSeconds_ = 0;
-  int channels_ = 0;
   std::atomic<uint32_t> currentSample_{0};
   std::atomic<bool> running_{false};
   std::atomic<bool> paused_{false};

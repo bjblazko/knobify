@@ -6,6 +6,15 @@
 
 #include "AudioOutputStage.h"
 
+// STB_VORBIS_HEADER_ONLY makes this #include produce declarations only
+// (no decoder body), so this translation unit can call stb_vorbis_*
+// functions without redefining them. The actual implementation comes
+// from PlatformIO separately compiling the vendored lib/third_party
+// stb_vorbis.c (without this define) as its own translation unit, and
+// the two get linked together. If that vendored .c file is ever
+// excluded from the build, or this define is dropped so this #include
+// pulls in the implementation too, the link fails: either with missing
+// symbols (excluded) or duplicate-definition errors (define dropped).
 #define STB_VORBIS_HEADER_ONLY
 #include "stb_vorbis.c"
 
@@ -27,7 +36,6 @@ bool VorbisBackend::open(const std::string &path, uint32_t startSample) {
   // i2s_set_sample_rates() below rejects 0, as would the library's own
   // Audio::setSampleRate() it replaces -- fuse it the same way.
   sampleRate_ = info.sample_rate ? info.sample_rate : 16000;
-  channels_ = info.channels;
   durationSeconds_ =
       static_cast<uint32_t>(stb_vorbis_stream_length_in_seconds(stream_) + 0.5f);
   frames_ = static_cast<int16_t *>(
@@ -84,7 +92,6 @@ void VorbisBackend::close() {
   }
   sampleRate_ = 0;
   durationSeconds_ = 0;
-  channels_ = 0;
   currentSample_.store(0, std::memory_order_relaxed);
   running_.store(false, std::memory_order_relaxed);
 }

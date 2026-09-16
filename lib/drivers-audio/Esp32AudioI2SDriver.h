@@ -73,7 +73,8 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
     stop();
     if (playback::backendForPath(path) == playback::AudioBackendKind::Vorbis) {
       MutexGuard guard(mutex_);
-      audio_.stopSong();
+      // stop() above already called audio_.stopSong(); no need to repeat
+      // it here.
       // Programs the I2S port's clock itself, before its decode task
       // exists -- see VorbisBackend::open().
       vorbisActive_ = vorbis_.open(path, position);

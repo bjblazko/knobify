@@ -424,6 +424,10 @@ void test_can_seek_mp3_m4a_wav_and_ogg_with_a_track() {
   TEST_ASSERT_TRUE(sm.canSeek());
   sm.play({"/a.ogg"}, 0, 0);
   TEST_ASSERT_TRUE(sm.canSeek());
+  sm.play({"/a.oga"}, 0, 0);
+  TEST_ASSERT_TRUE(sm.canSeek());
+  sm.play({"/a.flac"}, 0, 0);
+  TEST_ASSERT_FALSE(sm.canSeek());
   sm.play({"/noextension"}, 0, 0);
   TEST_ASSERT_FALSE(sm.canSeek());
 }
