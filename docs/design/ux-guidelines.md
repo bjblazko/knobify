@@ -143,6 +143,15 @@ on a monitor.
    restraint — is why they differ (§6).
 4. **No noise** — neutrals stay matte/desaturated; no shadows or
    gradients.
+5. **The brand mark carries no signal colour either.** Home's "knobify"
+   wordmark is led by a small dial — an `ink` disc with the surface colour
+   notched out as its indicator. A coloured bullet was tried first and was
+   wrong for exactly the reason rule 2 gives: a logo means nothing in the
+   functional sense, so it may not borrow a colour that does (the red it
+   used is `warning`, which elsewhere means a flat battery). The mark
+   earns its place through form instead — a knob seen from above, echoing
+   the round display and the rotary encoder the way the circular transport
+   buttons do.
 
 ### Why a light theme
 
@@ -217,6 +226,9 @@ Full architecture: [ADR 0004](../adr/0004-navigation-library-and-index-architect
 - **Injectable-root screen stack.** The navigation stack never hardcodes
   a particular screen as "the" permanent root, which is how the Home menu
   was added above the music tabs without restructuring navigation.
+- **Home is the one screen with the wordmark.** It has no caption, title
+  or back button, and it is the screen the device boots into — so it is
+  where the product gets to say its name, and the only screen that does.
 - **The device boots into the main menu** — a carousel of large round
   tiles (icon + label): Music, Audiobooks, Radio Plays, Settings, Sleep
   ([ADR 0010](../adr/0010-main-menu-and-settings.md),
@@ -266,9 +278,13 @@ Full architecture: [ADR 0004](../adr/0004-navigation-library-and-index-architect
   anyone wants. Tapping a track plays its album in order and turns shuffle
   off. There is no scope setting ([ADR 0011](../adr/0011-shuffle-and-repeat.md)).
 - **Shuffle and repeat are toggles in Now Playing's options panel**
-  (the `︿` handle at the bottom, [ADR 0014](../adr/0014-now-playing-options-panel.md)):
+  (the `...` handle at the bottom, [ADR 0014](../adr/0014-now-playing-options-panel.md)
+  — an ellipsis, since a chevron there promised a direction and
+  contradicted the down chevron that closes the same panel):
   glyphs `confirm` green while active. Repeat cycles off → all →
-  one; only repeat is remembered across reboots. A glyph alone didn't say
+  one; only repeat is remembered across reboots. Spoken-word collections
+  get no Shuffle toggle at all, judged by what is playing rather than by
+  what is on screen behind the panel. A glyph alone didn't say
   which mode was active, so every tap also shows a message naming what now
   happens ("Shuffle on - album", "Repeat this track").
 - **The cover slot switches from the options panel.** Its Cover /

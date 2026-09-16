@@ -83,6 +83,26 @@ Two new glyphs were added to the icon fonts: `menu_book` (U+EA19) for
 Audiobooks and `theater_comedy` (U+EA66) for Radio Plays. The 28 px font
 gained the five menu glyphs, since the neighbour tiles draw at that size.
 
+### The wordmark
+
+Home carries a "knobify" wordmark led by a small dial: an `ink` disc with
+the surface colour notched out as an indicator, set off vertical so it
+reads as a knob at a setting rather than a full stop.
+
+A red bullet was tried first and was wrong on the palette's own terms
+(ux-guidelines §3 rule 2): every colour in this system means something, a
+brand mark means nothing in that sense, and the red it borrowed is
+`warning` — a flat battery. The mark is drawn in ink like the text it
+belongs to, and earns its place through form instead. Its indicator is a
+dot placed off-centre rather than a rotated bar: LVGL 8 only applies
+`transform_angle` to images, so a rotated plain object renders upright.
+
+Shuffle also leaves Now Playing's options panel for spoken word. The lists
+had already dropped their Shuffle row, which left the toggle as the one
+remaining way to shuffle an audiobook's chapters. It is judged by what is
+*playing*, not by the screen behind the panel: a book can be running while
+Music is being browsed, and those buttons act on the queue.
+
 ### The user decides what Home shows
 
 Settings > Main menu lists the five destinations, each row ending in
