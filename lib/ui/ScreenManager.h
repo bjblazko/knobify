@@ -248,6 +248,7 @@ class ScreenManager : public input::ListMoveSink {
   // which nothing on those screens reads.
   collection::CollectionId currentCollection() const;
   const collection::CollectionProfile &profile() const;
+  const collection::CollectionProfile &playingProfile() const;
   library::LibraryIndex &library();
   const library::LibraryIndex &library() const {
     return const_cast<ScreenManager *>(this)->library();

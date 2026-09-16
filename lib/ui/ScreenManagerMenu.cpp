@@ -115,12 +115,27 @@ constexpr lv_coord_t kDotSize = 6;
 constexpr lv_coord_t kDotSpacing = 14;
 constexpr lv_coord_t kDotsY = 252;
 
-// The wordmark, top-centre: a small red bullet and "knobify" in lowercase.
-// Home is the one screen with room for it -- it has no caption, title or
-// back button, and it is the screen the device boots into.
+// The wordmark, top-centre: a small dial and "knobify" in lowercase. Home
+// is the one screen with room for it -- no caption, title or back button,
+// and it is the screen the device boots into.
+//
+// The mark is a knob seen from above: a filled ink disc with the surface
+// colour notched out of it as a pointer, set a little past vertical so it
+// reads as a dial at a setting rather than a full stop. It carries no
+// signal colour -- every colour in this system means something (§3 rule
+// 2), and a brand mark means nothing, so it is drawn in ink like the text
+// it belongs to. Its form does the work instead, echoing the round
+// display and the rotary encoder the way the circular transport buttons
+// do (Rams #1, #7).
 constexpr lv_coord_t kWordmarkY = 44;
-constexpr lv_coord_t kBulletSize = 8;
-constexpr lv_coord_t kWordmarkGap = 7;
+constexpr lv_coord_t kDialSize = 15;
+constexpr lv_coord_t kDialDotSize = 4;
+// The indicator sits up and to the right of centre, inside the rim. Not
+// straight up: a mark at twelve o'clock reads as "off" or as a full stop,
+// one turned a little reads as a knob someone has set.
+constexpr lv_coord_t kDialDotX = 8;
+constexpr lv_coord_t kDialDotY = 3;
+constexpr lv_coord_t kWordmarkGap = 8;
 constexpr const char *kWordmark = "knobify";
 
 // Which carousel slot a tile sits in. Stored in the cell's user data so
@@ -316,35 +331,48 @@ void ScreenManager::renderWordmark() {
   lv_txt_get_size(&textSize, kWordmark, font, 0, 0, LV_COORD_MAX,
                   LV_TEXT_FLAG_NONE);
   const lv_coord_t total =
-      static_cast<lv_coord_t>(kBulletSize + kWordmarkGap + textSize.x);
+      static_cast<lv_coord_t>(kDialSize + kWordmarkGap + textSize.x);
   const lv_coord_t left = static_cast<lv_coord_t>(-total / 2);
 
-  lv_obj_t *bullet = lv_obj_create(tiles_);
-  lv_obj_set_size(bullet, kBulletSize, kBulletSize);
-  // Optically centred on the x-height rather than the full line box: a
-  // dot level with the baseline-to-cap middle reads as part of the word.
-  lv_obj_align(bullet, LV_ALIGN_TOP_MID,
-               static_cast<lv_coord_t>(left + kBulletSize / 2),
-               static_cast<lv_coord_t>(kWordmarkY + (textSize.y - kBulletSize) / 2 + 1));
-  lv_obj_set_style_radius(bullet, LV_RADIUS_CIRCLE, 0);
-  lv_obj_set_style_border_width(bullet, 0, 0);
-  lv_obj_set_style_pad_all(bullet, 0, 0);
-  lv_obj_set_style_bg_opa(bullet, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(bullet, theme::warning(), 0);
-  lv_obj_clear_flag(bullet, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_clear_flag(bullet, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_t *dial = lv_obj_create(tiles_);
+  lv_obj_set_size(dial, kDialSize, kDialSize);
+  // Optically centred on the text's own box, so the pair reads as one
+  // word rather than a mark sitting beside one.
+  lv_obj_align(dial, LV_ALIGN_TOP_MID,
+               static_cast<lv_coord_t>(left + kDialSize / 2),
+               static_cast<lv_coord_t>(kWordmarkY + (textSize.y - kDialSize) / 2 + 1));
+  lv_obj_set_style_radius(dial, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_border_width(dial, 0, 0);
+  lv_obj_set_style_pad_all(dial, 0, 0);
+  lv_obj_set_style_bg_opa(dial, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(dial, theme::ink(), 0);
+  lv_obj_clear_flag(dial, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(dial, LV_OBJ_FLAG_CLICKABLE);
+
+  // The indicator, notched out of the disc in the screen's own colour, so
+  // the mark stays two tones and reads at 15px.
+  lv_obj_t *dot = lv_obj_create(dial);
+  lv_obj_set_size(dot, kDialDotSize, kDialDotSize);
+  lv_obj_align(dot, LV_ALIGN_TOP_LEFT, kDialDotX, kDialDotY);
+  lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_border_width(dot, 0, 0);
+  lv_obj_set_style_pad_all(dot, 0, 0);
+  lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(dot, theme::surface(), 0);
+  lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(dot, LV_OBJ_FLAG_CLICKABLE);
 
   lv_obj_t *word = lv_label_create(tiles_);
   lv_obj_set_style_text_font(word, font, 0);
   lv_obj_set_style_text_color(word, theme::ink(), 0);
   lv_label_set_text(word, kWordmark);
   lv_obj_align(word, LV_ALIGN_TOP_MID,
-               static_cast<lv_coord_t>(left + kBulletSize + kWordmarkGap +
+               static_cast<lv_coord_t>(left + kDialSize + kWordmarkGap +
                                        textSize.x / 2),
                kWordmarkY);
 }
 
-// One carousel tile. The centre one is the ADR 0015 tile unchanged (84px,
+// One carousel tile. The centre one is full size (96px,
 // labelled, selected-looking); a neighbour is smaller, dimmed and
 // unlabelled -- enough to say "there is more this way" without competing
 // with the destination you are actually on (Rams #5).

@@ -70,6 +70,17 @@ library::LibraryIndex &ScreenManager::library() {
   return collections_.index(currentCollection());
 }
 
+// The profile of whatever is *playing*, which is not always the
+// collection being browsed -- Now Playing and its options panel act on
+// the queue, and you can leave a book running and go browse Music.
+const collection::CollectionProfile &ScreenManager::playingProfile() const {
+  collection::CollectionId id = currentCollection();
+  if (playback_.hasQueue()) {
+    collections_.findByPath(playback_.currentPath(), id);
+  }
+  return collections_.profile(id);
+}
+
 void ScreenManager::begin() {
   uint8_t stored = 0;
   preferSpectrum_ = settings_.getU8(kSpectrumSettingKey, stored) && stored != 0;
@@ -911,20 +922,30 @@ void ScreenManager::renderOptionsPanel(bool animate) {
   };
   playback::RepeatMode repeat = playback_.repeat();
   bool showingSpectrum = preferSpectrum_ || !coverImg_;
-  const Option options[] = {
-      {KNOBIFY_ICON_SHUFFLE, "Shuffle", playback_.shuffle(), true,
-       &ScreenManager::onShuffleClicked},
-      {repeat == playback::RepeatMode::One ? KNOBIFY_ICON_REPEAT_ONE
-                                           : KNOBIFY_ICON_REPEAT,
-       "Repeat", repeat != playback::RepeatMode::Off, true,
-       &ScreenManager::onRepeatClicked},
-      // Shows what a tap switches to; only switchable when there is a cover.
-      {showingSpectrum ? KNOBIFY_ICON_IMAGE : KNOBIFY_ICON_EQUALIZER,
-       showingSpectrum ? "Cover" : "Spectrum", false, coverImg_ != nullptr,
-       &ScreenManager::onCoverSwitchClicked},
-      {KNOBIFY_ICON_LOCK, "Lock", false, true, &ScreenManager::onLockClicked},
-  };
-  constexpr int kCount = sizeof(options) / sizeof(options[0]);
+  Option options[4];
+  int kCount = 0;
+  // No Shuffle for spoken word (ADR 0018). The lists already drop their
+  // Shuffle row; leaving the toggle here was the one way left to shuffle
+  // an audiobook's chapters, which is never what anyone wants. Judged by
+  // what is *playing*, not by the screen behind the panel -- you can be
+  // browsing Music while a book plays, and these buttons act on playback.
+  if (playingProfile().hasShuffleRow) {
+    options[kCount++] = {KNOBIFY_ICON_SHUFFLE, "Shuffle", playback_.shuffle(),
+                         true, &ScreenManager::onShuffleClicked};
+  }
+  options[kCount++] = {repeat == playback::RepeatMode::One
+                           ? KNOBIFY_ICON_REPEAT_ONE
+                           : KNOBIFY_ICON_REPEAT,
+                       "Repeat", repeat != playback::RepeatMode::Off, true,
+                       &ScreenManager::onRepeatClicked};
+  // Shows what a tap switches to; only switchable when there is a cover.
+  options[kCount++] = {showingSpectrum ? KNOBIFY_ICON_IMAGE
+                                       : KNOBIFY_ICON_EQUALIZER,
+                       showingSpectrum ? "Cover" : "Spectrum", false,
+                       coverImg_ != nullptr,
+                       &ScreenManager::onCoverSwitchClicked};
+  options[kCount++] = {KNOBIFY_ICON_LOCK, "Lock", false, true,
+                       &ScreenManager::onLockClicked};
   for (int i = 0; i < kCount; ++i) {
     const Option &option = options[i];
     lv_coord_t x = static_cast<lv_coord_t>((2 * i - (kCount - 1)) * kPitch / 2);
@@ -1200,7 +1221,9 @@ void ScreenManager::onListMove(int16_t delta) {
 }
 
 void ScreenManager::goToNowPlaying() {
-  tabs_.activeStack().push(Screen{ScreenKind::NowPlaying, {}});
+  tabs_.activeStack().push(
+      Screen{ScreenKind::NowPlaying,
+             ScreenParams{.collection = currentCollection()}});
   render();
 }
 
