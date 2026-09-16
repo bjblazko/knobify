@@ -179,8 +179,10 @@ bool UsbMscStorage::hostAttached() {
 
 bool UsbMscStorage::takeEjectRequest() { return g_ejectRequested.exchange(false); }
 
+bool UsbMscStorage::exporting() { return g_exported.load(); }
+
 void UsbMscStorage::printEvents() {
-  if (g_eventCount == 0 || !Serial) return;
+  if (g_eventCount == 0 || !Serial || g_exported) return;
   EventRecord copy[kMaxEvents];
   portENTER_CRITICAL(&g_eventsLock);
   const size_t count = g_eventCount;

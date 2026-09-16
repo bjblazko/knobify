@@ -27,6 +27,12 @@ class UsbMscStorage : public usbdrive::UsbStorage {
   // port is connected again -- it drops with every re-enumeration, and
   // lines printed meanwhile are lost. Call every loop().
   void printEvents();
+
+  // True while the card is exported. Nothing may print to Serial then:
+  // Arduino-ESP32 2.0.x's USBCDC::write() spins without a timeout while
+  // the CDC endpoint can't drain, and a busy drive starves it -- one log
+  // line froze the whole loop until the watchdog reset it (2026-09-16).
+  static bool exporting();
 };
 
 }  // namespace knobify::drivers

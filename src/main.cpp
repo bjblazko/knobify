@@ -421,13 +421,18 @@ void pollSerialCommands() {
         buf[len] = '\0';
         int x = 0;
         int y = 0;
+        // Screenshots and INFO write a lot; not while the USB drive is
+        // busy (UsbMscStorage::exporting()), where that would hang.
         if (strcmp(buf, "SCREENSHOT") == 0) {
-          g_lvglGlue.writeScreenshotToSerial();
+          if (!knobify::drivers::UsbMscStorage::exporting()) {
+            g_lvglGlue.writeScreenshotToSerial();
+          }
         } else if (sscanf(buf, "TAP %d %d", &x, &y) == 2) {
           g_injectedTapX = static_cast<int16_t>(x);
           g_injectedTapY = static_cast<int16_t>(y);
           g_injectedTapUntilMs = millis() + kInjectedTapMs;
-        } else if (strcmp(buf, "INFO") == 0) {
+        } else if (strcmp(buf, "INFO") == 0 &&
+                   !knobify::drivers::UsbMscStorage::exporting()) {
           // A reset reason of 4 is a panic: read the core dump (AGENTS.md).
           Serial.printf("[info] up %lus, reset reason %d, internal free %u, "
                         "loop stack left %u\n",
@@ -445,7 +450,26 @@ void pollSerialCommands() {
   }
 }
 
+#ifdef KNOBIFY_LOOP_WDT
+// Diagnostic build only: turns a hung loop() into a panic, so the crash's
+// core dump names the call it hung in (scripts/read-coredump.sh).
+#include <esp_task_wdt.h>
+namespace {
+void armLoopWatchdog() {
+  static bool armed = false;
+  if (armed) return;
+  armed = true;
+  esp_task_wdt_init(15, true);
+  esp_task_wdt_add(nullptr);
+}
+}  // namespace
+#endif
+
 void loop() {
+#ifdef KNOBIFY_LOOP_WDT
+  armLoopWatchdog();
+  esp_task_wdt_reset();
+#endif
   // Esp32AudioI2SDriver::loop() is a no-op: audio now services itself
   // continuously on its own FreeRTOS task (started in begin()),
   // decoupled from this loop's LVGL/input timing -- see that class's
@@ -616,6 +640,8 @@ void loop() {
   g_screenManager.tickTouchCalibration(now);
   g_screenManager.tickUsbDrive(now);
   g_usbStorage.printEvents();
+  // Serial commands are read, not written, so they stay available while a
+  // USB drive session runs.
 
   // A shuttle hold ends with the finger (the pill's RELEASED/PRESS_LOST
   // normally does it; this also covers the pill being deleted by a
@@ -637,7 +663,10 @@ void loop() {
   if (now - g_lastBatteryUpdateMs >= kBatteryUpdateIntervalMs) {
     g_lastBatteryUpdateMs = now;
     uint32_t batteryMilliVolts = g_batteryAdc.readMilliVolts();
-    Serial.printf("[battery] %u mV\n", batteryMilliVolts);
+    // Never while the USB drive is busy -- see UsbMscStorage::exporting().
+    if (!knobify::drivers::UsbMscStorage::exporting()) {
+      Serial.printf("[battery] %u mV\n", batteryMilliVolts);
+    }
     g_batteryIndicator.update(batteryMilliVolts);
   }
 

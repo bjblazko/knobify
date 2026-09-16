@@ -300,10 +300,18 @@ duplicating it.
     boot). Send `INFO` over serial: reset reason 4 is a panic. Then run
     `scripts/read-coredump.sh` (the core dump sits in the `coredump`
     partition) with the ELF of the crashing build.
-  - **`Serial.write()` spins forever while a host holds the port open
-    without reading** (Arduino-ESP32 2.0.x `USBCDC::write` has no
-    timeout) -- the whole loop freezes. Keep a monitor reading
-    continuously, and never run two readers on the port.
+  - **`Serial.write()` spins forever whenever the CDC endpoint can't
+    drain** (Arduino-ESP32 2.0.x `USBCDC::write` has no timeout): a host
+    that holds the port open without reading, or a busy USB drive
+    starving CDC. The loop freezes until the watchdog resets it -- one
+    `[battery]` line during a drive copy was enough (core dump showed
+    loopTask in `tu_fifo_count`, 2026-09-16). Nothing may print while
+    `UsbMscStorage::exporting()`; keep it that way when adding logs, and
+    keep a monitor reading continuously (never two readers on the port).
+  - **A hung loop leaves no trace by itself.** Build with
+    `-DKNOBIFY_LOOP_WDT` (PLATFORMIO_BUILD_FLAGS) to arm a 15 s task
+    watchdog on loop(): the hang becomes a panic whose core dump names
+    the call. That is how the CDC spin above was found.
   - The port drops on every USB drive start/stop (re-enumeration):
     `UsbMscStorage::printEvents()` prints the drive's host events later.
   - Serial commands for driving the device without a hand on it:
