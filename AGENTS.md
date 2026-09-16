@@ -309,9 +309,12 @@ duplicating it.
     `UsbMscStorage::exporting()`; keep it that way when adding logs, and
     keep a monitor reading continuously (never two readers on the port).
   - **A hung loop leaves no trace by itself.** Build with
-    `-DKNOBIFY_LOOP_WDT` (PLATFORMIO_BUILD_FLAGS) to arm a 15 s task
-    watchdog on loop(): the hang becomes a panic whose core dump names
-    the call. That is how the CDC spin above was found.
+    `-DKNOBIFY_LOOP_WDT` (PLATFORMIO_BUILD_FLAGS) to arm a task watchdog
+    on loop(): the hang becomes a panic whose core dump names the call.
+    That is how the CDC spin above was found. Its timeout must stay
+    clear of the longest legitimate blocking call, a full library rescan
+    -- at 15 s the watchdog killed the scan itself (2026-09-16), so it is
+    90 s now. Flash a normal build before handing the device back.
   - The port drops on every USB drive start/stop (re-enumeration):
     `UsbMscStorage::printEvents()` prints the drive's host events later.
   - Serial commands for driving the device without a hand on it:
