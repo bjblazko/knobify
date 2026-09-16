@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted — 2026-09-11
+Accepted — 2026-09-11. **The format decision is superseded by
+[ADR 0016](0016-native-formats-and-usb-drive.md) (2026-09-16)**: M4A/AAC
+plays natively, and knobify is licensed GPL-3.0-or-later, matching the
+audio library that has always bundled the AAC decoder. The MCU scope
+below still holds.
 
 ## Context
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 // Entry point and wiring only, per docs/coding-guidelines.md: construct
 // concrete drivers and inject them into the logic layer.
 #include <Arduino.h>

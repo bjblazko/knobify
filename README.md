@@ -113,6 +113,16 @@ from an SD card, browse a library by artist/album (or raw folders),
 control via touch + one rotary encoder, fully offline — see
 [ADR 0002](docs/adr/0002-v1-format-and-mcu-scope.md).
 
+## License
+
+knobify is licensed under **GPL-3.0-or-later** — see [LICENSE](LICENSE).
+
+That follows from the audio library: ESP32-audioI2S is GPL-3.0, so
+firmware linking it is covered as a whole. [THIRD-PARTY.md](THIRD-PARTY.md)
+lists every component and its licence, and explains where M4A/AAC decoding
+comes from (the Helix-derived decoder inside that same library) and how
+its patent situation looks — knobify ships no decoder of its own.
+
 ## Starting a new session here
 
 The next step is UX/design work for v1 (navigation model, screen

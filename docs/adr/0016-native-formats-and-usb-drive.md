@@ -2,10 +2,13 @@
 
 ## Status
 
-Proposed — 2026-09-16. Implemented on branch `feature/native-formats-usb-drive`
-while the user was away (they had approved "solution A"). **Reverses ADR
-0002's decision not to decode AAC/M4A natively**; the licensing concern
-behind that decision needs the user's confirmation before this is accepted.
+Accepted — 2026-09-16. Implemented on branch
+`feature/native-formats-usb-drive`. **Supersedes ADR 0002's format
+decision**: M4A/AAC is decoded natively. The licensing concern behind ADR
+0002 was resolved the same day — the project is licensed GPL-3.0-or-later
+(the audio library's licence, which already applied), the AAC decoder has
+always been part of that library, and AAC-LC's core patents have expired.
+See [THIRD-PARTY.md](../../THIRD-PARTY.md).
 
 ## Context
 

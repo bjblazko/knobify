@@ -10,7 +10,7 @@ supersedes the old one (and the old one is marked "Superseded by NNNN").
 | # | Title | Status |
 |---|-------|--------|
 | [0001](0001-language-and-framework-choice.md) | Language and framework choice | Accepted |
-| [0002](0002-v1-format-and-mcu-scope.md) | v1 format and MCU scope | Accepted |
+| [0002](0002-v1-format-and-mcu-scope.md) | v1 format and MCU scope | Accepted (format part superseded by 0016) |
 | [0003](0003-testing-strategy.md) | Testing strategy | Accepted |
 | [0004](0004-navigation-library-and-index-architecture.md) | Navigation, library indexing, and index cache architecture | Accepted |
 | [0005](0005-power-lock-and-round-edge-indicators.md) | Device lock, display power, and round-edge UI widgets | Accepted |
@@ -24,4 +24,4 @@ supersedes the old one (and the old one is marked "Superseded by NNNN").
 | [0013](0013-jog-shuttle.md) | Jog/shuttle on Now Playing | Accepted (amends 0008's one-edge-ring rule) |
 | [0014](0014-now-playing-options-panel.md) | Now Playing options panel | Accepted (amends 0005, 0009, 0011) |
 | [0015](0015-sleep-timer.md) | Sleep timer | Accepted (amends 0010's Home layout) |
-| [0016](0016-native-formats-and-usb-drive.md) | Native M4A, progressive covers, USB drive mode | Proposed (reverses 0002's format decision) |
+| [0016](0016-native-formats-and-usb-drive.md) | Native M4A, progressive covers, USB drive mode | Accepted (supersedes 0002's format decision) |
