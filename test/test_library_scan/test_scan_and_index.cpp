@@ -228,6 +228,50 @@ void test_albums_for_sorted_by_year() {
                             index.albums[albumIds[1]].title.c_str());
 }
 
+void test_artists_sorted_alphabetically_ignoring_case_the_and_accents() {
+  // Listed in an order no reader would want them in.
+  FakeFileLister lister({{"/1.mp3", 10, 1},
+                         {"/2.mp3", 10, 2},
+                         {"/3.mp3", 10, 3},
+                         {"/4.mp3", 10, 4},
+                         {"/5.mp3", 10, 5}});
+  FakeFileOpener opener;
+  opener.put("/1.mp3", buildTaggedMp3("Wir sind Helden", "A", "S"));
+  opener.put("/2.mp3", buildTaggedMp3("The Beatles", "A", "S"));
+  opener.put("/3.mp3", buildTaggedMp3("air", "A", "S"));
+  opener.put("/4.mp3", buildTaggedMp3("\xC3\x84rzte", "A", "S"));
+  opener.put("/5.mp3", buildTaggedMp3("Bj\xC3\xB6rk", "A", "S"));
+
+  LibraryIndex index = LibraryScanner::scan(lister, opener);
+  auto sorted = index.artistsSorted();
+
+  TEST_ASSERT_EQUAL_UINT32(5, sorted.size());
+  // "air" lowercase first, "Ärzte" like "Arzte" (with A, not after Z),
+  // "The Beatles" under B, "Björk" like "Bjork". Only "The" is skipped:
+  // "Die Ärzte" would belong under D.
+  TEST_ASSERT_EQUAL_STRING("air", index.artists[sorted[0]].name.c_str());
+  TEST_ASSERT_EQUAL_STRING("\xC3\x84rzte", index.artists[sorted[1]].name.c_str());
+  TEST_ASSERT_EQUAL_STRING("The Beatles", index.artists[sorted[2]].name.c_str());
+  TEST_ASSERT_EQUAL_STRING("Bj\xC3\xB6rk", index.artists[sorted[3]].name.c_str());
+  TEST_ASSERT_EQUAL_STRING("Wir sind Helden",
+                            index.artists[sorted[4]].name.c_str());
+}
+
+void test_artist_named_only_the_keeps_its_name_as_key() {
+  FakeFileLister lister({{"/1.mp3", 10, 1}, {"/2.mp3", 10, 2}});
+  FakeFileOpener opener;
+  opener.put("/1.mp3", buildTaggedMp3("Zebra", "A", "S"));
+  opener.put("/2.mp3", buildTaggedMp3("The", "A", "S"));
+
+  LibraryIndex index = LibraryScanner::scan(lister, opener);
+  auto sorted = index.artistsSorted();
+
+  // "The" alone has nothing left to sort by if the prefix is stripped, so
+  // it keeps its full name and lands before "Zebra".
+  TEST_ASSERT_EQUAL_STRING("The", index.artists[sorted[0]].name.c_str());
+  TEST_ASSERT_EQUAL_STRING("Zebra", index.artists[sorted[1]].name.c_str());
+}
+
 void test_tag_reader_falls_back_to_filename_track_and_folder_year() {
   FakeFileLister lister(
       {{"/Music/Artist/1998 The Album/07 A Song.mp3", 10, 1}});
@@ -381,6 +425,8 @@ int main(int argc, char **argv) {
   RUN_TEST(test_tracks_for_sorted_by_disc_then_track);
   RUN_TEST(test_tag_reader_falls_back_to_filename_disc_and_track);
   RUN_TEST(test_albums_for_sorted_by_year);
+  RUN_TEST(test_artists_sorted_alphabetically_ignoring_case_the_and_accents);
+  RUN_TEST(test_artist_named_only_the_keeps_its_name_as_key);
   RUN_TEST(test_tag_reader_falls_back_to_filename_track_and_folder_year);
   RUN_TEST(test_scanner_notifies_new_album_once_per_album_with_folder_path);
   RUN_TEST(test_folder_browser_filters_and_sorts);

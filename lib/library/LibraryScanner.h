@@ -1,6 +1,8 @@
 #pragma once
 
 #include <algorithm>
+#include <cctype>
+#include <string>
 #include <memory>
 #include <vector>
 
@@ -11,10 +13,76 @@
 
 namespace knobify::library {
 
+namespace detail {
+
+// UTF-8 Latin-1 letters (0xC3 0x80..0xBF) folded to ASCII, which is what
+// a German/European library needs to sort sensibly. Everything else is
+// left alone -- this is a sort key, not a transliteration.
+inline char foldLatin1(unsigned char second) {
+  static constexpr char kFolded[] =
+      "AAAAAAECEEEEIIIIDNOOOOO*OUUUUYPsaaaaaaeceeeeiiiidnooooo/ouuuuypy";
+  if (second < 0x80 || second > 0xBF) return '\0';
+  return kFolded[second - 0x80];
+}
+
+}  // namespace detail
+
 struct LibraryIndex {
   std::vector<Artist> artists;
   std::vector<Album> albums;
   std::vector<Track> tracks;
+
+  // Alphabetical, the way a reader scans a shelf: case is ignored, a
+  // leading "The " doesn't count (The Beatles sits under B), and the
+  // accented letters a German library is full of fold to their base
+  // letter, so "Die Ärzte" sorts with A instead of after Z. Scan order
+  // (which is SD directory order) is meaningless to a listener --
+  // unsorted artists were unusable on a real library of ~100 of them.
+  std::vector<ArtistId> artistsSorted() const {
+    std::vector<ArtistId> result;
+    result.reserve(artists.size());
+    for (const auto &artist : artists) result.push_back(artist.id);
+    std::sort(result.begin(), result.end(), [this](ArtistId a, ArtistId b) {
+      const std::string left = artistSortKey(artists[a].name);
+      const std::string right = artistSortKey(artists[b].name);
+      if (left != right) return left < right;
+      return artists[a].name < artists[b].name;  // Stable for equal keys.
+    });
+    return result;
+  }
+
+  // Exposed for testing the folding rules directly.
+  static std::string artistSortKey(const std::string &name) {
+    std::string key = foldAccents(name);
+    for (char &c : key) {
+      c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    // Only as a prefix with something behind it: an artist actually
+    // called "The" would otherwise sort under an empty key.
+    if (key.size() > 4 && key.compare(0, 4, "the ") == 0) key.erase(0, 4);
+    return key;
+  }
+
+  // "Björk" -> "Bjork", "Die Ärzte" -> "Die Arzte"; other bytes pass
+  // through unchanged.
+  static std::string foldAccents(const std::string &name) {
+    std::string out;
+    out.reserve(name.size());
+    for (size_t i = 0; i < name.size(); ++i) {
+      const unsigned char c = static_cast<unsigned char>(name[i]);
+      if (c == 0xC3 && i + 1 < name.size()) {
+        const char folded =
+            detail::foldLatin1(static_cast<unsigned char>(name[i + 1]));
+        if (folded != '\0') {
+          out.push_back(folded);
+          ++i;
+          continue;
+        }
+      }
+      out.push_back(name[i]);
+    }
+    return out;
+  }
 
   // Sorted by year (ascending), unknown-year (0) albums last, title as a
   // stable tie-break -- so an artist's albums read chronologically.

@@ -154,8 +154,11 @@ void ScreenManager::render() {
     }
     switch (current.kind) {
       case ScreenKind::Artists:
-        for (const auto &artist : library_.artists) {
-          items.emplace_back(artist.name, static_cast<int>(artist.id));
+        // Alphabetically, like the tap handler below -- both go through
+        // artistsSorted() so a row's index means the same thing in each.
+        for (auto artistId : library_.artistsSorted()) {
+          items.emplace_back(library_.artists[artistId].name,
+                             static_cast<int>(artistId));
         }
         break;
       case ScreenKind::Albums:
@@ -1181,8 +1184,9 @@ void ScreenManager::onListItemClicked(lv_event_t *e) {
   switch (current.kind) {
     case ScreenKind::Artists:
       self->tabs_.activeStack().push(
-          Screen{ScreenKind::Albums, ScreenParams{.artistId = static_cast<uint32_t>(
-                                          self->library_.artists[ctx->index].id)}});
+          Screen{ScreenKind::Albums,
+                 ScreenParams{.artistId = static_cast<uint32_t>(
+                                  self->library_.artistsSorted()[ctx->index])}});
       self->render();
       break;
     case ScreenKind::Albums:
