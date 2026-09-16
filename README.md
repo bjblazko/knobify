@@ -127,6 +127,10 @@ Settings > USB drive, at about 0.8 MB/s writing and 0.9 MB/s reading
 - Bluetooth headphone output
 - Wi-Fi-based features (time/date sync, weather, podcasts, internet radio)
 - 24-bit FLAC (ESP32-audioI2S 2.3.0 refuses it)
+- A smoother jog/shuttle cue for Ogg Vorbis: winding currently plays
+  short fragments separated by silence (ADR 0017)
+- Cover art embedded in Ogg files (`METADATA_BLOCK_PICTURE`); folder
+  `cover.jpg` covers already work
 - Formatting the SD card from Settings with 32 KB clusters, which USB
   drive mode needs on macOS (ADR 0016)
 - A desktop sync tool (mirror a folder to the knob, delete removed

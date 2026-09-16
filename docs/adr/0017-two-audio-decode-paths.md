@@ -40,6 +40,22 @@ through `AudioOutputStage`, the single place where samples reach the DAC.
   both are released when it stops. PSRAM is shared with the LVGL pool.
 - Opus is a new backend, not a new structure — but see below.
 
+## Verified on the device (2026-09-16)
+
+An Ogg Vorbis Hörspiel plays with the correct duration and at the right
+speed, so the I2S clock substitution is sound. Pause ends in a very short
+buzz (the DMA buffer's tail), judged acceptable. Switching between the
+paths works.
+
+**Rough edge, accepted for now:** cueing with the jog/shuttle plays short
+fragments separated by silence, rather than the steadier cue the library
+path gives. Seeking to the enclosing frame instead of the exact sample
+(stb_vorbis_seek_frame) improved it but did not solve it -- each cue step
+still costs a seek plus the decode of a fresh frame. If it becomes
+annoying, the fix is to stop seeking per cue step and instead decode
+continuously while skipping output, or to cache the last seek position
+and reuse the decoder state.
+
 ## Revisit when
 
 1. **Opus is wanted.** A third decode path would make this a pattern
