@@ -70,19 +70,17 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
     if (playback::backendForPath(path) == playback::AudioBackendKind::Vorbis) {
       MutexGuard guard(mutex_);
       audio_.stopSong();
+      // Programs the I2S port's clock itself, before its decode task
+      // exists -- see VorbisBackend::open().
       vorbisActive_ = vorbis_.open(path, position);
-      if (vorbisActive_) {
-        // The library set the port's clock for its own last track.
-        // Audio::setSampleRate() is private in this library version, so
-        // reach the port directly -- it's exactly what that method does.
-        i2s_set_sample_rates(I2S_NUM_0, vorbis_.sampleRate());
-      }
       return vorbisActive_;
     }
     timing_ = readTrackTiming(path);
     MutexGuard guard(mutex_);
     paused_ = false;
     bool ok = audio_.connecttoFS(SD_MMC, path.c_str(), position);
+    // TEMPORARY DIAGNOSTIC (2026-09-12): investigating "play does
+    // nothing, no sound" reports on real hardware -- see AGENTS.md.
     Serial.printf("Esp32AudioI2SDriver::playFile('%s') -> connecttoFS=%s\n",
                   path.c_str(), ok ? "OK" : "FAILED");
     return ok;
@@ -92,6 +90,10 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
     MutexGuard guard(mutex_);
     if (vorbisActive_) {
       vorbis_.setPaused(true);
+      // Otherwise the last DMA buffer keeps looping -- an audible
+      // buzz/tail MP3 doesn't have, since the library's own
+      // pauseResume() does the same call.
+      i2s_zero_dma_buffer(I2S_NUM_0);
       paused_ = true;
       return;
     }
@@ -171,8 +173,11 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
       const uint32_t rate = vorbis_.sampleRate();
       if (rate == 0) return false;
       const int64_t delta = static_cast<int64_t>(deltaMs) * rate / 1000;
-      const int64_t target = static_cast<int64_t>(vorbis_.currentSample()) + delta;
-      return vorbis_.seekToSample(static_cast<uint32_t>(target < 0 ? 0 : target));
+      const int64_t maxSample = static_cast<int64_t>(vorbis_.durationSeconds()) * rate;
+      int64_t target = static_cast<int64_t>(vorbis_.currentSample()) + delta;
+      if (target < 0) target = 0;
+      if (target > maxSample) target = maxSample;
+      return vorbis_.seekToSample(static_cast<uint32_t>(target));
     }
     int64_t start = audio_.getAudioDataStartPos();
     int64_t end = audio_.getFileSize();

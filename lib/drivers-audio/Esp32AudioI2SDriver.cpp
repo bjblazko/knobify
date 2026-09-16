@@ -38,10 +38,11 @@ namespace knobify::drivers {
 
 playback::SampleWindow Esp32AudioI2SDriver::readRecentSamples(int16_t *dst,
                                                               size_t maxSamples) {
-  // A plain field read, deliberately without mutex_: taking it at frame
-  // rate would wait on the audio task's decode chunks, and a stale rate
-  // for one frame right after a track change is harmless.
-  return audioOutputStage().readRecentSamples(dst, maxSamples, audio_.getSampleRate());
+  // Plain field reads, deliberately without mutex_: taking it at frame
+  // rate would wait on the decode task's chunks, and a stale rate for one
+  // frame right after a track change or backend switch is harmless.
+  return audioOutputStage().readRecentSamples(
+      dst, maxSamples, vorbisActive_ ? vorbis_.sampleRate() : audio_.getSampleRate());
 }
 
 void Esp32AudioI2SDriver::setOutputGain(uint16_t gain) {

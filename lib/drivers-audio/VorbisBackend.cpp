@@ -1,6 +1,7 @@
 #include "VorbisBackend.h"
 
 #include <Arduino.h>
+#include <driver/i2s.h>
 #include <esp_heap_caps.h>
 
 #include "AudioOutputStage.h"
@@ -23,7 +24,9 @@ bool VorbisBackend::open(const std::string &path, uint32_t startSample) {
     return false;
   }
   const stb_vorbis_info info = stb_vorbis_get_info(stream_);
-  sampleRate_ = info.sample_rate;
+  // i2s_set_sample_rates() below rejects 0, as would the library's own
+  // Audio::setSampleRate() it replaces -- fuse it the same way.
+  sampleRate_ = info.sample_rate ? info.sample_rate : 16000;
   channels_ = info.channels;
   durationSeconds_ =
       static_cast<uint32_t>(stb_vorbis_stream_length_in_seconds(stream_) + 0.5f);
@@ -39,6 +42,17 @@ bool VorbisBackend::open(const std::string &path, uint32_t startSample) {
   stopRequested_.store(false, std::memory_order_relaxed);
   paused_.store(false, std::memory_order_relaxed);
   running_.store(true, std::memory_order_relaxed);
+  // Program the port's clock before the decode task exists: reprogramming
+  // it once the task may already be blocked in i2s_write() stops and
+  // restarts the channel out from under that writer, and is also the one
+  // way close()'s wait loop below could hang. Audio::setSampleRate() does
+  // the equivalent i2s_set_sample_rates() call but is private in this
+  // library version.
+  if (i2s_set_sample_rates(I2S_NUM_0, sampleRate_) != ESP_OK) {
+    Serial.println("[vorbis] could not program the I2S sample rate");
+    close();
+    return false;
+  }
   // Pinned to core 0 at priority 3, like the library's audio task, so it
   // never competes with LVGL on core 1.
   if (xTaskCreatePinnedToCore(&VorbisBackend::taskTrampoline, "vorbis",
@@ -56,7 +70,8 @@ void VorbisBackend::close() {
     stopRequested_.store(true, std::memory_order_relaxed);
     // The decode loop checks the flag between chunks (at most ~23 ms of
     // audio) and deletes itself; wait for it before freeing anything.
-    while (running_.load(std::memory_order_relaxed)) delay(2);
+    // Acquire pairs with the release store in decodeLoop().
+    while (running_.load(std::memory_order_acquire)) delay(2);
     task_ = nullptr;
   }
   if (stream_) {
@@ -90,8 +105,7 @@ void VorbisBackend::decodeLoop() {
   auto &stage = audioOutputStage();
   while (!stopRequested_.load(std::memory_order_relaxed)) {
     const uint32_t seekTo = seekRequest_.exchange(kNoSeek, std::memory_order_relaxed);
-    if (seekTo != kNoSeek) {
-      stb_vorbis_seek(stream_, seekTo);
+    if (seekTo != kNoSeek && stb_vorbis_seek(stream_, seekTo)) {
       currentSample_.store(seekTo, std::memory_order_relaxed);
     }
     if (paused_.load(std::memory_order_relaxed)) {
@@ -106,7 +120,14 @@ void VorbisBackend::decodeLoop() {
     if (!stage.writeFrames(frames_, static_cast<size_t>(frames))) break;
     currentSample_.fetch_add(static_cast<uint32_t>(frames), std::memory_order_relaxed);
   }
-  running_.store(false, std::memory_order_relaxed);
+  // Otherwise the last DMA buffer keeps looping (an audible buzz/tail)
+  // instead of going silent, like the library's own pauseResume()/
+  // stopSong() do with the same call.
+  i2s_zero_dma_buffer(I2S_NUM_0);
+  // Release pairs with the acquire load in close()'s wait loop: close()
+  // frees stream_/frames_ right after observing this false, so that free
+  // must not be reordered ahead of the work above.
+  running_.store(false, std::memory_order_release);
   vTaskDelete(nullptr);
 }
 
