@@ -7,6 +7,7 @@
 #include <freertos/semphr.h>
 #include <freertos/task.h>
 
+#include "AudioOutputStage.h"
 #include "Mp3Duration.h"
 #include "Mp4Parser.h"
 #include "PlaybackDriver.h"
@@ -98,6 +99,7 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
     MutexGuard guard(mutex_);
     audio_.setVolume(volume);
     volume_.store(volume);
+    audioOutputStage().setVolumeStep(volume);
   }
 
   // Lock-free: read per sample on the audio task (audio_process_i2s()).
