@@ -158,11 +158,9 @@ Settings > USB drive, at about 0.8 MB/s writing and 0.9 MB/s reading
 - A "recently played" / "recently added" quick-access list
 - Resume support for future sources (podcasts, web radio, video) — each
   adds its own section to the resume record, see ADR 0012
-- Per-title bookmarks for spoken word: `CollectionProfile::
-  resumesWithinTitle` is set for Audiobooks and Radio Plays but nothing
-  reads it yet. Leaving an audiobook to play music and coming back should
-  return to the spot, not the start (ADR 0018). Session resume across a
-  power cut already works.
+- Marking a spoken-word title finished, so its Continue row stops
+  offering the end of the last part (`Bookmarks::forget()` is there,
+  nothing calls it — ADR 0018)
 - M3U playlist file import
 - Gapless playback (for live albums, concept albums, etc.)
 - On-device firmware updates from a file on the SD card (no Wi-Fi

@@ -29,6 +29,8 @@
 #include "LockController.h"
 #include "LockOverlay.h"
 #include "LvglGlue.h"
+#include "BookmarkKeeper.h"
+#include "Bookmarks.h"
 #include "PlaybackResumeSource.h"
 #include "NavigationResumeSource.h"
 #include "NvsKeyValueStore.h"
@@ -233,11 +235,15 @@ knobify::ui::LvglGlue g_lvglGlue;
 knobify::power::IdleTimer g_idleTimer;
 knobify::power::LockController g_lockController;
 knobify::ui_widgets::MessageArea g_messageArea;
+// Per-title positions for spoken word (ADR 0018). Separate from the
+// session resume: that restores the one thing that was playing when the
+// power went, this remembers where several titles were left.
+knobify::resume::Bookmarks g_bookmarks;
 knobify::ui::ScreenManager g_screenManager(
     g_tabs, g_collections, g_directoryReader, g_playback, g_shuttle,
     g_lockController, g_coverReader, g_fileOpener, g_jpegDecoder,
     g_coverWriter, g_nvsStore, g_brightness, g_sleepTimer, g_touchCalibration,
-    g_usbDrive, g_messageArea);
+    g_usbDrive, g_messageArea, g_bookmarks);
 knobify::ui::LockOverlay g_lockOverlay(g_lockController);
 knobify::drivers::BatteryAdcDriver g_batteryAdc;
 knobify::power::BatteryMonitor g_batteryMonitor;
@@ -255,6 +261,8 @@ knobify::resume::PlaybackResumeSource g_playbackResume(g_playback, g_collections
                                                        &sdFileExists);
 knobify::resume::NavigationResumeSource g_navigationResume(g_tabs, g_collections,
                                                            g_playback);
+knobify::resume::BookmarkKeeper g_bookmarkKeeper(g_bookmarks, g_nvsStore,
+                                                g_collections, g_playback);
 knobify::resume::ResumeScheduler g_resumeScheduler(
     g_nvsStore, {&g_playbackResume, &g_navigationResume});
 
@@ -287,6 +295,7 @@ void SdCollectionSet::rescan(knobify::collection::CollectionId id,
     g_playback.togglePlayPause(now);
   }
   g_resumeScheduler.saveNow(now);
+  g_bookmarkKeeper.saveNow(now);
   // Volume and brightness changes still inside their save debounce.
   g_playback.tick(now + knobify::playback::PlaybackStateMachine::kVolumeSaveDebounceMs);
   g_brightness.tick(now + knobify::power::BrightnessSetting::kSaveDebounceMs);
@@ -393,6 +402,11 @@ void setup() {
       }
     }
   }
+
+  // Before the screens: a Tracks list asks whether it has a bookmark the
+  // moment it renders. Unlike the session record below, bookmarks survive
+  // a crash -- a position in an audiobook can't be what caused one.
+  g_bookmarkKeeper.begin();
 
   // After a crash the saved state may be what caused it: start on Home once,
   // so a bad record can't trap the device in a reboot loop.
@@ -712,6 +726,7 @@ void loop() {
 
   g_playback.tick(now);
   g_resumeScheduler.tick(now);
+  g_bookmarkKeeper.tick(now);
   g_brightness.tick(now);
   // Cheap (no full re-render), a no-op on any screen other than Now
   // Playing -- see ScreenManager::updateElapsedTimeDisplay().

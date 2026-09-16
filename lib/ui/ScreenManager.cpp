@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include "BookmarkKeeper.h"
 #include "IconFont.h"
 #include "LvglButtonHelpers.h"
 #include "PlaylistBuilder.h"
@@ -165,6 +166,14 @@ void ScreenManager::render() {
     if (hasShuffleRow(current.kind)) {
       items.emplace_back(LV_SYMBOL_SHUFFLE "  Shuffle", kShuffleItemId);
     }
+    // A spoken-word title you are part-way through leads with Continue,
+    // in the slot Shuffle occupies for music (ADR 0018). Tapping a part
+    // still plays that part from its start -- an explicit choice is never
+    // overridden by a remembered position.
+    resume::Bookmark bookmark;
+    if (hasContinueRow(current, bookmark)) {
+      items.emplace_back(LV_SYMBOL_PLAY "  Continue", kContinueItemId);
+    }
     switch (current.kind) {
       case ScreenKind::Artists:
         // In the collection's own order, like the tap handler below --
@@ -237,6 +246,13 @@ void ScreenManager::render() {
 void ScreenManager::renderList(
     const std::vector<std::pair<std::string, int>> &items, bool showMiniBar) {
   Screen current = tabs_.activeStack().current();
+  // Rows that are actions rather than data (Shuffle, Continue) sit at the
+  // top, so every row below them is one further along than its index.
+  int leadingRows = 0;
+  for (const auto &item : items) {
+    if (item.second != kShuffleItemId && item.second != kContinueItemId) break;
+    ++leadingRows;
+  }
   list_ = lv_list_create(screen_);
   // Starts below the header zone (back button + context caption)
   // and ends above the mini-bar, rather than spanning the whole screen
@@ -331,7 +347,8 @@ void ScreenManager::renderList(
     // tracks are sorted by it (LibraryIndex::tracksFor()). Nothing when
     // the number is unknown.
     if (current.kind == ScreenKind::Tracks &&
-        !(hasShuffleRow(current.kind) && i == 0)) {
+        items[i].second != kShuffleItemId &&
+        items[i].second != kContinueItemId) {
       const auto trackId = static_cast<library::TrackId>(items[i].second);
       if (trackId < library().tracks.size() &&
           library().tracks[trackId].trackNumber != 0) {
@@ -379,9 +396,11 @@ void ScreenManager::renderList(
 
     auto ctx = std::make_unique<ItemContext>();
     ctx->self = this;
-    ctx->isShuffle = hasShuffleRow(current.kind) && i == 0;
-    // Index into the screen's data (artists, albums, tracks), not the row.
-    ctx->index = static_cast<int>(i) - (hasShuffleRow(current.kind) ? 1 : 0);
+    ctx->isShuffle = items[i].second == kShuffleItemId;
+    ctx->isContinue = items[i].second == kContinueItemId;
+    // Index into the screen's data (artists, albums, tracks), not the row
+    // -- so a leading Shuffle or Continue row doesn't shift everything.
+    ctx->index = static_cast<int>(i) - (leadingRows > 0 ? leadingRows : 0);
     ctx->albumId = current.params.albumId;
     if (current.kind == ScreenKind::Tracks && !ctx->isShuffle) {
       ctx->trackId = static_cast<library::TrackId>(items[i].second);
@@ -775,7 +794,13 @@ void ScreenManager::renderNowPlaying() {
   // rows below the title (transport, time, lock) had no gap left between
   // them (user feedback 2026-09-15). Created before the time pill so the
   // pill wins where the handle's slop reaches up to it.
-  makeIconButton(screen_, LV_SYMBOL_UP, kHeaderButtonW, kOptionsHandleH,
+  //
+  // An ellipsis, not an up chevron (user feedback 2026-09-16): a chevron
+  // promises a direction -- and this one sat at the bottom of a screen
+  // whose back control is a *down* chevron, so the pair read as a
+  // contradiction. "..." is the conventional "more options" mark and says
+  // what is behind it rather than which way it moves.
+  makeIconButton(screen_, "...", kHeaderButtonW, kOptionsHandleH,
                  LV_ALIGN_BOTTOM_MID, 0, -kOptionsHandleBottom,
                  &ScreenManager::onOptionsHandleClicked, this,
                  ButtonRole::Quiet, &lv_font_montserrat_20);
@@ -1179,10 +1204,63 @@ void ScreenManager::goToNowPlaying() {
   render();
 }
 
+std::string ScreenManager::titleKeyFor(library::AlbumId albumId) const {
+  const auto trackIds = library().tracksFor(albumId);
+  if (trackIds.empty()) return "";
+  return resume::BookmarkKeeper::titleKeyFor(
+      library().tracks[trackIds[0]].filePath);
+}
+
+bool ScreenManager::hasContinueRow(const navigation::Screen &screen,
+                                   resume::Bookmark &out) const {
+  if (screen.kind != ScreenKind::Tracks) return false;
+  if (!profile().resumesWithinTitle) return false;
+  const std::string key = titleKeyFor(screen.params.albumId);
+  if (key.empty()) return false;
+  if (!bookmarks_.lookup(key, out)) return false;
+  // A bookmark whose part is no longer in the album (renamed, deleted,
+  // rescanned away) would resume nothing -- don't offer it.
+  for (library::TrackId id : library().tracksFor(screen.params.albumId)) {
+    if (library().tracks[id].filePath == out.trackPath) return true;
+  }
+  return false;
+}
+
+// Cue at the saved position, then start -- the same two steps the session
+// resume takes when the user presses play, so the seek behaviour is
+// identical rather than a second way of doing it.
+void ScreenManager::playFromBookmark(const resume::Bookmark &mark,
+                                     library::AlbumId albumId) {
+  std::vector<std::string> playlist =
+      library::PlaylistBuilder::forAlbum(library(), albumId);
+  size_t index = 0;
+  bool found = false;
+  for (size_t i = 0; i < playlist.size(); ++i) {
+    if (playlist[i] != mark.trackPath) continue;
+    index = i;
+    found = true;
+    break;
+  }
+  if (!found) return;
+  playback_.cue(std::move(playlist), index, /*shuffle=*/false,
+                playback::PlayScope::Album, mark.filePosition,
+                mark.elapsedSeconds, millis());
+  playback_.togglePlayPause(millis());
+  goToNowPlaying();
+}
+
 void ScreenManager::onListItemClicked(lv_event_t *e) {
   auto *ctx = static_cast<ItemContext *>(lv_event_get_user_data(e));
   ScreenManager *self = ctx->self;
   Screen current = self->tabs_.activeStack().current();
+
+  if (ctx->isContinue) {
+    resume::Bookmark mark;
+    if (self->hasContinueRow(current, mark)) {
+      self->playFromBookmark(mark, current.params.albumId);
+    }
+    return;
+  }
 
   if (ctx->isShuffle) {
     std::vector<std::string> playlist;

@@ -123,6 +123,40 @@ That changes the navigation section's layout mid-record, so
 `ResumeCodec::kVersion` is 2. v1 blobs are rejected, which every caller
 already treats as "no record" — an updated device starts on Home once.
 
+### Spoken word remembers where each title was
+
+Session resume (above) restores the one thing that was playing when the
+power went. That is not enough for an audiobook: leaving it to play music
+and coming back should return to the spot, and there may be several books
+on the go.
+
+`resume::Bookmarks` keeps one position per *title* — the folder holding
+its parts, so the key is the book, not the chapter — for collections whose
+profile sets `resumesWithinTitle`. It is bounded at 12 entries, most
+recently used first: a device used for years should not grow an unbounded
+NVS blob, and the titles you are part-way through are the recent ones.
+Encoding drops the oldest entries rather than refusing to save, so one
+very long path cannot make the whole set unwritable.
+
+`resume::BookmarkKeeper` samples the position every 2 s and writes at most
+every 30 s, and only when something changed — the same "there is no
+shutdown signal" shape as `ResumeScheduler`, but much less often, because
+a bookmark that is a few seconds stale costs nothing and NVS writes are
+what to be stingy with. Unlike the session record, bookmarks survive a
+crash: a position in an audiobook cannot be what caused one.
+
+**A Continue row, not a silent jump.** A spoken-word Tracks list leads
+with "Continue" in the slot Shuffle occupies for music. Tapping a part
+still plays that part from its start — an explicit choice is never
+overridden by a remembered position, which is the surprising behaviour
+that auto-resuming whatever you tapped would have. The row only appears
+when the remembered part is still in the album, so a rescan that moved
+files cannot offer to resume nothing.
+
+Not done: nothing forgets a title when it plays out, so Continue on a
+finished book points at the end of its last part. `Bookmarks::forget()`
+exists for when that is worth wiring to a real "finished" signal.
+
 ## Consequences
 
 - Adding a fourth collection is one row in `kCollections` plus one in

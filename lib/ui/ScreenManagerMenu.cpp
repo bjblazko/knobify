@@ -85,21 +85,43 @@ lv_obj_t *makeMark(lv_obj_t *parent, lv_coord_t cx, lv_coord_t cy,
 // the selected tile at full size in the middle with its two neighbours
 // shrunk and dimmed either side, and the knob rotates through them.
 //
-// The centre tile keeps ADR 0015's 84px and y=96, so a device that only
-// ever shows Music/Settings/Sleep looks nearly unchanged. Neighbours are
-// 56px, centred on the same axis (dy keeps their middles level with the
-// centre tile's), 118px out -- their outer edge reaches x=32/328, the same
-// span ADR 0015 verified as inside the bezel. Only the centre tile is
-// labelled: three labels at this spacing overlapped.
-constexpr lv_coord_t kTileSize = 84;
-constexpr lv_coord_t kSideTileSize = 56;
-constexpr lv_coord_t kSideTileDx = 118;
-constexpr lv_coord_t kTileTopY = 96;
-constexpr lv_coord_t kCellHeight = kTileSize + 34;
-// Page dots above the tiles, centred -- never a corner (ux-guidelines §7).
+// Sizes are up from the first cut (84/56) on the device: with only one
+// destination fully shown at a time there is room to make it read from
+// further away, which is the point of a carousel. The outer edge still
+// lands at x=32/328 (116 + 64/2 = 148 from centre), the span ADR 0015
+// verified as inside the bezel, and the 36px between the centre tile and
+// a neighbour is well clear of the 20px two touch-slop margins need
+// (ux-guidelines §3a).
+constexpr lv_coord_t kTileSize = 96;
+constexpr lv_coord_t kSideTileSize = 64;
+constexpr lv_coord_t kSideTileDx = 116;
+// Pushed down from ADR 0015's y=96 to make room for the wordmark above.
+// The whole stack now reads top to bottom: wordmark 44, tiles 112..208,
+// label 218, dots 252 -- and still ends clear of the mini-bar zone
+// (y>=272), so the menu never jumps when playback starts.
+constexpr lv_coord_t kTileTopY = 112;
+// The label is as wide as the screen allows rather than as wide as the
+// tile: it lives on the carousel container, not inside the 96px cell,
+// which clipped "Audiobooks" and "Radio Plays" at both ends (found on the
+// device 2026-09-16). Only the centre tile is labelled -- three labels at
+// this spacing overlapped.
+constexpr lv_coord_t kLabelWidth = 280;
+constexpr lv_coord_t kLabelDy = kTileTopY + kTileSize + 10;
+// Page dots *below* the tiles, centred -- where a page indicator is
+// conventionally read, and it leaves the top of the screen to the
+// wordmark. Above the mini-bar zone (y>=272) so the menu never jumps when
+// playback starts. Never a corner (ux-guidelines §7).
 constexpr lv_coord_t kDotSize = 6;
 constexpr lv_coord_t kDotSpacing = 14;
-constexpr lv_coord_t kDotsY = 62;
+constexpr lv_coord_t kDotsY = 252;
+
+// The wordmark, top-centre: a small red bullet and "knobify" in lowercase.
+// Home is the one screen with room for it -- it has no caption, title or
+// back button, and it is the screen the device boots into.
+constexpr lv_coord_t kWordmarkY = 44;
+constexpr lv_coord_t kBulletSize = 8;
+constexpr lv_coord_t kWordmarkGap = 7;
+constexpr const char *kWordmark = "knobify";
 
 // Which carousel slot a tile sits in. Stored in the cell's user data so
 // one click handler can tell "open this" from "rotate to this".
@@ -231,9 +253,15 @@ void ScreenManager::renderHome() {
 
   const std::vector<int> visible = visibleMenuEntries();
   const int count = static_cast<int>(visible.size());
-  if (homeSelection_ >= count) homeSelection_ = 0;
-  if (homeSelection_ < 0) homeSelection_ = 0;
   sleepTileLabel_ = nullptr;
+  renderWordmark();
+  // Nothing visible should be impossible (MenuVisibility pins Settings and
+  // refuses to hide the last entry), but this runs at boot on every
+  // power-on and the slot maths below divides by `count` -- a stored byte
+  // that somehow said "nothing" would hang the device before it ever
+  // reached a screen where the user could fix it.
+  if (count <= 0) return;
+  if (homeSelection_ >= count || homeSelection_ < 0) homeSelection_ = 0;
 
   // Dots first, so the tiles draw over them if anything ever overlaps.
   // One per destination: the carousel shows one at a time, so this is the
@@ -277,6 +305,45 @@ void ScreenManager::renderHome() {
   if (playback_.state() != playback::PlaybackState::Stopped) renderMiniBar();
 }
 
+// The wordmark: a red bullet and "knobify", centred as a pair. The text is
+// measured and both parts placed explicitly, rather than put in a flex
+// row -- every other screen here positions with lv_obj_align(), and the
+// screen the device boots into is the last place to introduce a layout
+// engine whose passes interact with the label clamping below.
+void ScreenManager::renderWordmark() {
+  const lv_font_t *font = &lv_font_montserrat_16;
+  lv_point_t textSize;
+  lv_txt_get_size(&textSize, kWordmark, font, 0, 0, LV_COORD_MAX,
+                  LV_TEXT_FLAG_NONE);
+  const lv_coord_t total =
+      static_cast<lv_coord_t>(kBulletSize + kWordmarkGap + textSize.x);
+  const lv_coord_t left = static_cast<lv_coord_t>(-total / 2);
+
+  lv_obj_t *bullet = lv_obj_create(tiles_);
+  lv_obj_set_size(bullet, kBulletSize, kBulletSize);
+  // Optically centred on the x-height rather than the full line box: a
+  // dot level with the baseline-to-cap middle reads as part of the word.
+  lv_obj_align(bullet, LV_ALIGN_TOP_MID,
+               static_cast<lv_coord_t>(left + kBulletSize / 2),
+               static_cast<lv_coord_t>(kWordmarkY + (textSize.y - kBulletSize) / 2 + 1));
+  lv_obj_set_style_radius(bullet, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_border_width(bullet, 0, 0);
+  lv_obj_set_style_pad_all(bullet, 0, 0);
+  lv_obj_set_style_bg_opa(bullet, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(bullet, theme::warning(), 0);
+  lv_obj_clear_flag(bullet, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(bullet, LV_OBJ_FLAG_CLICKABLE);
+
+  lv_obj_t *word = lv_label_create(tiles_);
+  lv_obj_set_style_text_font(word, font, 0);
+  lv_obj_set_style_text_color(word, theme::ink(), 0);
+  lv_label_set_text(word, kWordmark);
+  lv_obj_align(word, LV_ALIGN_TOP_MID,
+               static_cast<lv_coord_t>(left + kBulletSize + kWordmarkGap +
+                                       textSize.x / 2),
+               kWordmarkY);
+}
+
 // One carousel tile. The centre one is the ADR 0015 tile unchanged (84px,
 // labelled, selected-looking); a neighbour is smaller, dimmed and
 // unlabelled -- enough to say "there is more this way" without competing
@@ -294,7 +361,7 @@ void ScreenManager::makeMenuTile(int entryIndex, int slot) {
   // The cell (circle + label) is the tap target, so the label is
   // tappable too.
   lv_obj_t *cell = lv_obj_create(tiles_);
-  lv_obj_set_size(cell, size, centre ? kCellHeight : size);
+  lv_obj_set_size(cell, size, size);
   lv_obj_align(cell, LV_ALIGN_TOP_MID, dx, top);
   lv_obj_set_style_bg_opa(cell, LV_OPA_TRANSP, 0);
   lv_obj_set_style_border_width(cell, 0, 0);
@@ -330,11 +397,23 @@ void ScreenManager::makeMenuTile(int entryIndex, int slot) {
   lv_obj_center(glyph);
 
   if (centre) {
-    lv_obj_t *label = lv_label_create(cell);
+    // On tiles_, not the cell: a label inside a 96px cell is clipped to
+    // it. It sits below the neighbour tiles, so a full-width label
+    // overlaps nothing, and it opens the centre tile
+    // like the circle does -- the label has always been part of the
+    // target.
+    lv_obj_t *label = lv_label_create(tiles_);
     lv_obj_set_style_text_font(label, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(label, theme::ink(), 0);
-    lv_label_set_text(label, kMenuEntries[entryIndex].label);
-    lv_obj_align(label, LV_ALIGN_TOP_MID, 0, kTileSize + 8);
+    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_width(label, kLabelWidth);
+    setClampedText(label, kMenuEntries[entryIndex].label, 1);
+    lv_obj_align(label, LV_ALIGN_TOP_MID, 0, kLabelDy);
+    lv_obj_add_flag(label, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_user_data(
+        label, reinterpret_cast<void *>(static_cast<intptr_t>(kSlotCentre)));
+    lv_obj_add_event_cb(label, &ScreenManager::onHomeTileClicked,
+                        LV_EVENT_CLICKED, this);
     if (kMenuEntries[entryIndex].showsSleepTimer) sleepTileLabel_ = label;
   }
 

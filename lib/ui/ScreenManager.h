@@ -15,6 +15,7 @@
 #include "EdgeArc.h"
 #include "FolderBrowser.h"
 #include "InputRouter.h"
+#include "Bookmarks.h"
 #include "CollectionSet.h"
 #include "MenuVisibility.h"
 #include "LibraryScanner.h"
@@ -60,7 +61,8 @@ class ScreenManager : public input::ListMoveSink {
                 power::SleepTimer &sleepTimer,
                 input::TouchCalibrationFlow &touchCalibration,
                 usbdrive::UsbDriveSession &usbDrive,
-                ui_widgets::MessageArea &messages)
+                ui_widgets::MessageArea &messages,
+                resume::Bookmarks &bookmarks)
       : tabs_(tabs),
         collections_(collections),
         directoryReader_(directoryReader),
@@ -77,6 +79,7 @@ class ScreenManager : public input::ListMoveSink {
         touchCalibration_(touchCalibration),
         usbDrive_(usbDrive),
         messages_(messages),
+        bookmarks_(bookmarks),
         menuVisibility_(makeMenuVisibility()) {}
 
   void begin();
@@ -140,6 +143,7 @@ class ScreenManager : public input::ListMoveSink {
   void renderNowPlaying();
   // Main menu and settings -- ScreenManagerMenu.cpp (ADR 0010).
   void renderHome();
+  void renderWordmark();
   void renderBrightness();
   void renderSleepTimer();
   void renderTouchCalibration();
@@ -219,6 +223,15 @@ class ScreenManager : public input::ListMoveSink {
   // collections never do: shuffling an audiobook's chapters is never what
   // anyone wants (ADR 0018), so this asks the collection's profile as
   // well as the screen kind.
+  // Whether a Tracks list leads with a Continue row: a spoken-word title
+  // with a saved position somewhere in it (ADR 0018). Fills `out` with
+  // that bookmark.
+  bool hasContinueRow(const navigation::Screen &screen,
+                      resume::Bookmark &out) const;
+  // The folder holding an album's tracks -- the bookmark key for a title.
+  std::string titleKeyFor(library::AlbumId albumId) const;
+  void playFromBookmark(const resume::Bookmark &mark, library::AlbumId albumId);
+
   bool hasShuffleRow(navigation::ScreenKind kind) const {
     return profile().hasShuffleRow &&
            (kind == navigation::ScreenKind::Artists ||
@@ -255,6 +268,7 @@ class ScreenManager : public input::ListMoveSink {
   input::TouchCalibrationFlow &touchCalibration_;
   usbdrive::UsbDriveSession &usbDrive_;
   ui_widgets::MessageArea &messages_;
+  resume::Bookmarks &bookmarks_;
 
   static constexpr uint32_t kVolumeHudTimeoutMs = 3000;
 
@@ -299,6 +313,7 @@ class ScreenManager : public input::ListMoveSink {
       drivers::kLcdHorRes / 2, kCoverY + 48};
   // Item id of the Shuffle row -- real ids are unsigned indices.
   static constexpr int kShuffleItemId = -1;
+  static constexpr int kContinueItemId = -2;
   // Bit per main-menu entry, 1 = shown. NVS keys are limited to 15
   // characters. Default: everything visible, which is what a device that
   // has never opened this screen should look like.
@@ -388,6 +403,7 @@ class ScreenManager : public input::ListMoveSink {
     library::AlbumId albumId;
     bool isFolder;
     bool isShuffle = false;
+    bool isContinue = false;
     std::string path;
   };
   // unique_ptr so addresses stay stable across vector growth -- LVGL

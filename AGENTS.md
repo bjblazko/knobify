@@ -319,6 +319,16 @@ duplicating it.
     `UsbMscStorage::printEvents()` prints the drive's host events later.
   - Serial commands for driving the device without a hand on it:
     `TAP x y`, `KNOB n`, `INFO`, `SCREENSHOT`.
+  - **`SCREENSHOT` is no longer safe to rely on** since the TinyUSB switch:
+    it pushes a 259 KB framebuffer (360x360 RGB565) through the same CDC
+    that `Serial.write()` spins forever on when the endpoint can't drain.
+    Observed 2026-09-16: `scripts/screenshot.sh` died partway through the
+    pixel read and the board dropped off USB entirely until a hardware
+    power cycle (`INFO` afterwards showed reset reason 1, power-on, so the
+    firmware itself was fine). Not root-caused further. Until it is, check
+    UI layout by asking the person holding the device, and keep the bulk
+    transfer caveat above in mind -- USB drive mode is the reliable path
+    for anything large.
   - Bulk transfer over the old USB-Serial-JTAG CDC dropped bytes; TinyUSB
     CDC with an 8 KB ack per chunk was reliable but slow (0.14 MB/s) and
     stalled once after ~30 MB. Use USB drive mode for files.
