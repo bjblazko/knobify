@@ -1,6 +1,6 @@
 # knobify
 
-Offline music player built on a Waveshare ESP32-S3-Knob-Touch-LCD-1.8 — see [`device.md`](device.md) for full hardware specs (dual MCU, display, audio DAC, encoders, etc.), the official product page, and wiki links.
+Offline audio player built on a Waveshare ESP32-S3-Knob-Touch-LCD-1.8 — music, audiobooks and radio plays, each on its own shelf. See [`device.md`](device.md) for full hardware specs (dual MCU, display, audio DAC, encoders, etc.), the official product page, and wiki links.
 
 ## Goal
 
@@ -33,11 +33,18 @@ screens described below.
   [ADR 0009](docs/adr/0009-now-playing-spectrum-analyzer.md).
   No charging indicator: the board exposes no charge-status signal (no
   dedicated pin, no voltage change on plug/unplug, no status LED).
-- Shuffle and repeat: a Shuffle row at the top of the Artists, Albums and
-  Tracks lists shuffles the library, the artist or the album. Toggles
-  in Now Playing's options panel switch shuffle and repeat (off / all /
-  one) — see [ADR 0011](docs/adr/0011-shuffle-and-repeat.md).
-- Now Playing options panel: a handle at the bottom opens a panel with
+- Collections: Music, Audiobooks and Radio Plays are separate shelves,
+  each rooted at its own SD folder with its own index and browse
+  position. They are the same player parameterised by a table row, not
+  three players — spoken word simply has no shuffle, sorts by name and
+  remembers where each title was left. The main menu is a knob carousel,
+  and Settings > Main menu hides the shelves you do not have — see
+  [ADR 0018](docs/adr/0018-collections-and-menu-visibility.md).
+- Shuffle and repeat: a Shuffle row at the top of Music's Artists, Albums
+  and Tracks lists shuffles the collection, the artist or the album.
+  Toggles in Now Playing's options panel switch shuffle and repeat
+  (off / all / one) — see [ADR 0011](docs/adr/0011-shuffle-and-repeat.md).
+- Now Playing options panel: an ellipsis at the bottom opens a panel with
   shuffle, repeat, the cover/spectrum switch and lock, keeping the player
   itself uncluttered — see
   [ADR 0014](docs/adr/0014-now-playing-options-panel.md).
@@ -45,6 +52,11 @@ screens described below.
   the last track paused near where it was (no auto-play). State is saved
   periodically and power-cut safe — see
   [ADR 0012](docs/adr/0012-resume-session.md).
+- Per-title resume for spoken word: leave an audiobook for some music and
+  a Continue row at the top of its parts brings you back to the spot.
+  Several titles can be part-way through at once; tapping a part still
+  plays that part from its start — see
+  [ADR 0018](docs/adr/0018-collections-and-menu-visibility.md).
 - Jog/shuttle: hold the time readout on Now Playing and turn the knob to
   fast forward or rewind (five speeds each way, CD-style cue); letting go
   plays on from there — see [ADR 0013](docs/adr/0013-jog-shuttle.md).

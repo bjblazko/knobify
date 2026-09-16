@@ -13,10 +13,15 @@ likely to want one.
 
 ## 1. Introduction and Goals
 
-`knobify` is offline music player firmware for a Waveshare
-ESP32-S3-Knob-Touch-LCD-1.8 board. It plays music stored on an SD card
+`knobify` is offline audio player firmware for a Waveshare
+ESP32-S3-Knob-Touch-LCD-1.8 board. It plays audio stored on an SD card
 through the board's 3.5mm audio jack, controlled via the rotary encoder
 and touch display.
+
+It plays more than music: **collections** (ADR 0018) are separate
+shelves — Music, Audiobooks, Radio Plays — each rooted at its own SD
+folder with its own index, browse position and behaviour profile. They
+are one player parameterised by a table row, not three players.
 
 **v1 goals** (see [ADR 0002](../adr/0002-v1-format-and-mcu-scope.md)):
 play MP3/WAV/OGG files from an SD card, browse a library by artist/album
@@ -42,20 +47,23 @@ AAC/M4A native decoding, the secondary MCU.
 
 ## 3. Context and Scope
 
-The SD card holds only raw audio files (MP3/WAV/OGG) in whatever folder
-layout the user already has — the firmware does not require or enforce a
-particular folder structure. Everything the firmware derives from that —
-the tag-based Artist/Album/Track index and its on-disk cache
-(`/knobify/library.idx`) — is **derived state**, not authoritative: it can
-always be rebuilt from the SD card's actual files, and a mismatch between
-cache and card content is detected and repaired automatically on boot
-(see [ADR 0004](../adr/0004-navigation-library-and-index-architecture.md)).
+The SD card holds only raw audio files, one top-level folder per
+collection (`/Music`, `/Audiobooks`, `/RadioPlays`) and whatever layout
+the user already has underneath. Everything the firmware derives from
+that — each collection's tag-based Artist/Album/Track index and its own
+on-disk cache under `/knobify/` — is **derived state**, not
+authoritative: it can always be rebuilt from the card's actual files.
+Rebuilding is on demand (Settings > Rescan, or after a USB drive
+session), never at boot, so the device is usable the moment it powers on
+— a full walk took 17-19 s (see
+[ADR 0004](../adr/0004-navigation-library-and-index-architecture.md) and
+[ADR 0018](../adr/0018-collections-and-menu-visibility.md)).
 
 ```mermaid
 flowchart LR
-    SD[("SD card\n(raw audio files,\nany folder layout)")]
+    SD[("SD card\n(/Music, /Audiobooks,\n/RadioPlays)")]
     FW["knobify firmware\n(ESP32-S3R8)"]
-    Cache[("/knobify/library.idx\n(derived cache)")]
+    Cache[("/knobify/*.idx\n(one derived cache\nper collection)")]
     User(("User"))
     Jack(["3.5mm audio jack"])
 
@@ -79,24 +87,29 @@ touch, encoder, and audio output.
 
 ## 5. Building Block View
 
-Designed this session (see [ADR 0004](../adr/0004-navigation-library-and-index-architecture.md));
-implementation follows. Modules are organized by domain under `lib/`, per
-[`coding-guidelines.md`](../coding-guidelines.md#project-layout).
+Modules are organized by domain under `lib/`, per
+[`coding-guidelines.md`](../coding-guidelines.md#project-layout). The
+structure is [ADR 0004](../adr/0004-navigation-library-and-index-architecture.md)'s,
+with `lib/collection` added by
+[ADR 0018](../adr/0018-collections-and-menu-visibility.md) above
+`lib/library`: the library layer scans and indexes *a* root, and the
+collection layer says which roots there are and how each behaves.
 
 ```mermaid
 flowchart TB
     subgraph Logic["Host-testable logic (no hardware/LVGL deps)"]
-        Nav["lib/navigation\nNavigationStack, TabController"]
+        Coll["lib/collection\nCollectionProfile, CollectionSet"]
+        Nav["lib/navigation\nNavigationStack, TabController,\nMenuVisibility"]
         Lib["lib/library\nmodel, tags, scan, index"]
         Play["lib/playback\nPlaybackStateMachine, VolumePersistence"]
+        Resume["lib/resume\nResumeCodec, Bookmarks"]
         Input["lib/input\nGestureRecognizer, InputRouter"]
-        Power["lib/power\nIdleTimer, LockController"]
+        Power["lib/power\nIdleTimer, LockController, SleepTimer"]
         UsbDrv["lib/usbdrive\nUsbDriveSession"]
     end
     subgraph UI["lib/ui (hardware-facing, thin)"]
-        Screens["ArtistsScreen, AlbumsScreen, TracksScreen,\nFolderScreen, NowPlayingScreen, MiniBar"]
-        ScreenMgr["ScreenManager\n(transition animations)"]
-        Hint["GestureHintOverlay"]
+        Screens["Home carousel, Artists/Albums/Tracks,\nFolder, Settings, Now Playing, MiniBar"]
+        ScreenMgr["ScreenManager\n(renders whatever the active stack shows)"]
         LockUI["LockOverlay\n(lv_layer_top overlay)"]
     end
     subgraph Widgets["lib/ui-widgets (reusable LVGL widgets)"]
@@ -114,6 +127,7 @@ flowchart TB
     end
     Main["src/main.cpp\n(wiring)"]
 
+    Main --> Coll
     Main --> Nav
     Main --> Lib
     Main --> Play
@@ -133,28 +147,48 @@ flowchart TB
     Lib --> SdDrv
     Play --> AudioDrv
     Play --> NvsDrv
-    Hint --> NvsDrv
+    Resume --> NvsDrv
+    Coll --> Lib
     UI --> DispDrv
     UI --> TouchDrv
     Input --> EncDrv
     Main --> DispDrv
 ```
 
+- **`lib/collection`** (ADR 0018) — `CollectionProfile`, the table that
+  makes Music, Audiobooks and Radio Plays one player rather than three:
+  label, SD root, index cache path, and the behaviour switches (Shuffle
+  row, sort order, resume-within-title). `CollectionSet` is what the UI
+  sees — each collection's index, plus a rescan trigger — so `lib/ui`
+  needs nothing about the concrete SD types in `src/main.cpp`.
 - **`lib/navigation`** — `NavigationStack` (injectable-root screen
-  stack) and `TabController` (owns the Library/Files tabs, decides
-  pop-vs-tab-switch on a swipe).
+  stack), `TabController` (owns the Library/Files tabs *per collection*,
+  decides pop-vs-tab-switch on a swipe) and `MenuVisibility` (which Home
+  destinations the user has chosen to show, and the two rules that keep
+  the menu reachable).
 - **`lib/library`** — `model` (plain Artist/Album/Track structs), `tags`
   (hand-rolled ID3v2/Vorbis-comment/RIFF-INFO/MP4 parsers behind a
   `TagReader`/`RawFile` interface, `Mp4Parser` also yielding an M4A's
   exact duration and `mdat` range, ADR 0016), `scan` (`FileLister`
   interface, `LibraryScanner`, `FolderBrowser` for live Files-mode
   listing, `AudioFileTypes` for the one shared extension check),
-  `index` (`IndexCache` — the `/knobify/library.idx` format and
-  staleness-signature check), plus `SquareResampler` behind the cover
-  pipeline.
+  `index` (`IndexCache` — the `/knobify/*.idx` format and
+  staleness-signature check; the format carries no root identity, so one
+  collection's cache is simply the file it was written to), plus
+  `SquareResampler` behind the cover pipeline. Everything here works on
+  *a* root given a `FileLister`, which is why three collections needed no
+  changes in this module.
 - **`lib/playback`** — `PlaybackStateMachine` driving a `PlaybackDriver`
   interface (wraps `ESP32-audioI2S`), plus `VolumePersistence` over a
-  `KeyValueStore` interface (wraps NVS).
+  `KeyValueStore` interface (wraps NVS). There is exactly one of these:
+  a queue is a list of paths, so nothing here knows about collections.
+- **`lib/resume`** (ADR 0012, ADR 0018) — two different memories.
+  `ResumeCodec`/`ResumeScheduler` persist *the session*: the screen
+  stack and the one queue that was playing when the power went.
+  `Bookmarks`/`BookmarkKeeper` persist *per-title positions* for
+  collections whose profile sets `resumesWithinTitle`, so several
+  audiobooks can each be part-way through at once. Both write through a
+  `BlobStore` interface (NVS).
 - **`lib/input`** — `TouchCalibration` (raw CST816 → display
   coordinates), `TouchLatch` (keeps sub-frame taps from being missed by
   LVGL's periodic read), `GestureRecognizer` (raw touch points → tap/swipe
@@ -168,8 +202,7 @@ flowchart TB
   driven) and `LockController` (lock state + the hold-button-while-
   turning-encoder unlock gesture). Host-testable, no LVGL/hardware deps,
   same pattern as `lib/playback`/`lib/navigation`.
-- **`lib/ui`** — LVGL screens, `ScreenManager` (dispatch + transition
-  animation), `GestureHintOverlay` (one-time nudge), `LockOverlay` (ADR
+- **`lib/ui`** — LVGL screens, `ScreenManager` (dispatch), `LockOverlay` (ADR
   0005 — the locked-device UI, shown/hidden on LVGL's top layer,
   independent of `NavigationStack`). Hardware-facing but kept thin; not
   host-tested.
@@ -186,26 +219,45 @@ flowchart TB
 
 ## 6. Runtime View
 
-**Boot → library ready:**
+**Boot** reads each collection's cached index and nothing else — no
+directory walk, so the device is usable immediately even if a cache is
+stale (AGENTS.md; a full walk measured 17-19 s):
 
 ```mermaid
 sequenceDiagram
     participant Main as main.cpp
-    participant Scan as LibraryScanner
+    participant Cache as IndexCache
+    participant Marks as Bookmarks
+    participant Res as ResumeScheduler
+
+    loop each collection
+        Main->>Cache: decode(/knobify/<collection>.idx)
+        Cache-->>Main: LibraryIndex (or empty)
+    end
+    Main->>Marks: begin() -- per-title positions
+    Main->>Res: restore() -- screen stack + cued queue
+    Main->>Main: show Home (or the restored screen)
+```
+
+**Rescanning** is on demand only — Settings > Rescan picks a collection
+(or all), and a finished USB drive session rescans everything:
+
+```mermaid
+sequenceDiagram
+    participant UI as ScreenManager
+    participant Set as CollectionSet
     participant SD as SdFileLister
     participant Cache as IndexCache
 
-    Main->>Scan: scan(fileLister, tagReader)
-    Scan->>SD: stat-only walk (count, size, mtime)
-    Scan->>Cache: compare signature
+    UI->>Set: rescan(collection, progress)
+    Set->>SD: stat-only walk (count, size, mtime)
+    Set->>Cache: compare signature
     alt cache matches
-        Cache-->>Scan: load cached LibraryIndex
+        Cache-->>Set: keep the cached LibraryIndex
     else cache missing/stale
-        Scan->>SD: full walk + tag parse per file
-        Scan->>Cache: save(LibraryIndex)
+        Set->>SD: full walk + tag parse per file
+        Set->>Cache: save(LibraryIndex)
     end
-    Scan-->>Main: LibraryIndex ready
-    Main->>Main: show Artists (Library tab root)
 ```
 
 **Browsing to playback:**
@@ -223,6 +275,7 @@ sequenceDiagram
     U->>UI: tap Album
     UI->>Nav: push(Tracks, albumId)
     U->>UI: tap Track
+    Note over UI: ids are indices into *this collection's* index,\nso every push carries ScreenParams::collection
     UI->>PB: Play(trackId, filePath)
     PB->>Drv: playFile(filePath)
     UI->>Nav: push(NowPlaying)
@@ -232,6 +285,8 @@ sequenceDiagram
 A left-right swipe pops one level (`NavigationStack::pop`) at any depth,
 or switches the Library/Files tab when already at a tab root
 (`TabController`) — see [ADR 0004](../adr/0004-navigation-library-and-index-architecture.md).
+It never crosses collections: each has its own pair of stacks, so leaving
+one part-way in and coming back lands where it was left (ADR 0018).
 
 **Idle → display off → wake → locked → unlock** (ADR 0005):
 
