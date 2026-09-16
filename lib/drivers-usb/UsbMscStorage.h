@@ -28,6 +28,10 @@ class UsbMscStorage : public usbdrive::UsbStorage {
   // lines printed meanwhile are lost. Call every loop().
   void printEvents();
 
+  // Writes the buffered sectors when the host pauses (see the write
+  // coalescing note in the .cpp). Call every loop().
+  void tickWrites();
+
   // True while the card is exported. Nothing may print to Serial then:
   // Arduino-ESP32 2.0.x's USBCDC::write() spins without a timeout while
   // the CDC endpoint can't drain, and a busy drive starves it -- one log

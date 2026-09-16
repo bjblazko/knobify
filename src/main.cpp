@@ -640,6 +640,7 @@ void loop() {
   if (!displayOn || g_lockController.isLocked()) g_touchCalibration.cancel();
   g_screenManager.tickTouchCalibration(now);
   g_screenManager.tickUsbDrive(now);
+  g_usbStorage.tickWrites();
   g_usbStorage.printEvents();
   // Serial commands are read, not written, so they stay available while a
   // USB drive session runs.

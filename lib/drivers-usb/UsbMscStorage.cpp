@@ -7,6 +7,9 @@
 #include <esp_heap_caps.h>
 #include <sdmmc_cmd.h>
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+
 #include <atomic>
 #include <cstdio>
 #include <cstring>
@@ -44,7 +47,7 @@ struct InFlight {
 
 // Host events for printEvents(). Recorded as plain values: they happen on
 // TinyUSB's task, whose 4 KB stack has no room for printf.
-enum class Event : uint8_t { Export, Read, ReadRejected, ReadError, StartStop, CardBack, Host };
+enum class Event : uint8_t { Export, Read, ReadRejected, ReadError, StartStop, CardBack, Host, WriteError };
 struct EventRecord {
   uint32_t ms;
   Event event;
@@ -74,8 +77,12 @@ struct CardHandle : fs::SDMMCFS {
   }
 };
 
+// Defined with the rest of the write coalescing below.
+bool flushWrites();
+
 int32_t onRead(uint32_t lba, uint32_t offset, void *buffer, uint32_t size) {
   InFlight guard;
+  flushWrites();  // A read must see what the host just wrote.
   if (g_readsLogged < kReadsLogged) {
     ++g_readsLogged;
     noteEvent(Event::Read, lba, offset, size);
@@ -94,15 +101,67 @@ int32_t onRead(uint32_t lba, uint32_t offset, void *buffer, uint32_t size) {
   return static_cast<int32_t>(size);
 }
 
+// TinyUSB hands over 4 KB at a time, and an SD card is slow at writes that
+// small: writing each block before taking the next one measured 0.56 MB/s
+// against the ~1.2 MB/s this USB port can do (2026-09-16). Consecutive
+// blocks are collected here and written in one go instead. A write is
+// acknowledged to the host once buffered, so the buffer must reach the
+// card before the card goes back to the firmware, before any read, and
+// when the host pauses (tickWrites()).
+constexpr size_t kWriteBufSectors = 64;  // 32 KB.
+uint8_t *g_writeBuf = nullptr;
+uint32_t g_writeLba = 0;
+size_t g_writeSectors = 0;
+uint32_t g_lastWriteMs = 0;
+bool g_writeFailed = false;
+SemaphoreHandle_t g_writeMutex = nullptr;
+
+// Caller holds g_writeMutex.
+bool flushLocked() {
+  if (g_writeSectors == 0) return true;
+  const esp_err_t err =
+      sdmmc_write_sectors(g_card, g_writeBuf, g_writeLba, g_writeSectors);
+  if (err != ESP_OK) {
+    noteEvent(Event::WriteError, g_writeLba, g_writeSectors, err);
+    g_writeFailed = true;
+  }
+  g_writeSectors = 0;
+  return err == ESP_OK;
+}
+
+bool flushWrites() {
+  if (!g_writeMutex) return true;
+  xSemaphoreTake(g_writeMutex, portMAX_DELAY);
+  const bool ok = flushLocked();
+  xSemaphoreGive(g_writeMutex);
+  return ok;
+}
+
 int32_t onWrite(uint32_t lba, uint32_t offset, uint8_t *buffer, uint32_t size) {
   InFlight guard;
-  if (!guard.ok || offset != 0 || size > kBounceBytes || size % 512 != 0) {
+  const size_t sectors = size / 512;
+  if (!guard.ok || offset != 0 || size > kBounceBytes || size % 512 != 0 ||
+      sectors > kWriteBufSectors) {
     return -1;
   }
-  memcpy(g_bounce, buffer, size);
-  if (sdmmc_write_sectors(g_card, g_bounce, lba, size / 512) != ESP_OK) {
-    return -1;
+  xSemaphoreTake(g_writeMutex, portMAX_DELAY);
+  // Anything else than the next sectors of what's buffered starts over.
+  const bool contiguous = g_writeSectors != 0 &&
+                          lba == g_writeLba + g_writeSectors &&
+                          g_writeSectors + sectors <= kWriteBufSectors;
+  bool ok = true;
+  if (!contiguous) {
+    ok = flushLocked();
+    g_writeLba = lba;
   }
+  memcpy(g_writeBuf + g_writeSectors * 512, buffer, size);
+  g_writeSectors += sectors;
+  g_lastWriteMs = millis();
+  if (g_writeSectors == kWriteBufSectors) ok = flushLocked() && ok;
+  const bool failed = g_writeFailed;
+  g_writeFailed = false;
+  xSemaphoreGive(g_writeMutex);
+  if (!ok || failed) return -1;
   g_bytesWritten += size;
   return static_cast<int32_t>(size);
 }
@@ -118,6 +177,7 @@ void reenumerate() {
 }
 
 bool onStartStop(uint8_t powerCondition, bool start, bool loadEject) {
+  flushWrites();
   noteEvent(Event::StartStop, powerCondition, start, loadEject);
   if (loadEject && !start) g_ejectRequested = true;
   return true;
@@ -130,6 +190,10 @@ namespace knobify::drivers {
 void UsbMscStorage::begin() {
   g_bounce = static_cast<uint8_t *>(
       heap_caps_malloc(kBounceBytes, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
+  // DMA-capable, or the SDMMC driver copies it sector by sector.
+  g_writeBuf = static_cast<uint8_t *>(heap_caps_malloc(
+      kWriteBufSectors * 512, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
+  g_writeMutex = xSemaphoreCreateMutex();
   g_msc.vendorID("knobify");
   g_msc.productID("Music");
   g_msc.productRevision("1.0");
@@ -141,7 +205,9 @@ void UsbMscStorage::begin() {
 
 bool UsbMscStorage::startExport() {
   g_card = CardHandle::of(SD_MMC);
-  if (!g_bounce || !g_card) return false;
+  if (!g_bounce || !g_writeBuf || !g_writeMutex || !g_card) return false;
+  g_writeSectors = 0;
+  g_writeFailed = false;
   g_ejectRequested = false;
   g_exported = true;
   g_msc.begin(g_card->csd.capacity, 512);
@@ -155,6 +221,7 @@ bool UsbMscStorage::startExport() {
 }
 
 void UsbMscStorage::stopExport() {
+  flushWrites();
   g_msc.mediaPresent(false);
   g_exported = false;
   while (g_inFlight.load() > 0) delay(1);
@@ -181,6 +248,15 @@ bool UsbMscStorage::takeEjectRequest() { return g_ejectRequested.exchange(false)
 
 bool UsbMscStorage::exporting() { return g_exported.load(); }
 
+void UsbMscStorage::tickWrites() {
+  // Hosts write in bursts; a pause means the burst is over. 50 ms is far
+  // longer than the gap between two blocks of one transfer.
+  constexpr uint32_t kIdleMs = 50;
+  if (!g_exported || g_writeSectors == 0) return;
+  if (millis() - g_lastWriteMs < kIdleMs) return;
+  flushWrites();
+}
+
 void UsbMscStorage::printEvents() {
   if (g_eventCount == 0 || !Serial || g_exported) return;
   EventRecord copy[kMaxEvents];
@@ -200,6 +276,7 @@ void UsbMscStorage::printEvents() {
       case Event::StartStop: Serial.printf("START STOP UNIT power=%u start=%u eject=%u\n", r.a, r.b, r.c); break;
       case Event::CardBack: Serial.printf("card back (read %u KB, written %u KB), remount %s\n", r.a, r.b, r.c ? "OK" : "FAILED"); break;
       case Event::Host: Serial.printf("host %s\n", r.a ? "attached" : "gone"); break;
+      case Event::WriteError: Serial.printf("write ERROR lba=%u sectors=%u err=0x%x\n", r.a, r.b, r.c); break;
     }
   }
 }

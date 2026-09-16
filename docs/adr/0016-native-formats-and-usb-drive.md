@@ -43,10 +43,13 @@ Throwaway firmware on branch `experiment/format-feasibility`:
   4.2 MB of PSRAM and runs out above ~1000 px. JPEGDEC's DC-only 1/8
   decode takes 19 ms / 11 KB (600 px) and 234 ms (3000 px); at the
   96 px cover size it looks almost the same as a full decode.
-- **USB mass storage**: TinyUSB MSC over raw SD sectors works at
-  ~0.87 MB/s (USB full speed). macOS reads the whole FAT when mounting:
-  the 32 GB card's 4 KB clusters mean a 31 MB FAT, the mount times out;
-  a simulated volume with 32 KB clusters (3.9 MB FAT) mounted in 6 s.
+- **USB mass storage**: TinyUSB MSC over raw SD sectors reads at
+  ~0.89 MB/s (USB full speed, practical ceiling ~1.2 MB/s). macOS reads
+  the whole FAT when mounting: the 32 GB card's 4 KB clusters mean a
+  31 MB FAT, the mount times out; a simulated volume with 32 KB clusters
+  (3.9 MB FAT) mounted in 6 s. Writing 4 KB per USB block straight to the
+  card gave 0.56 MB/s; collecting blocks into 32 KB writes gave
+  **0.82 MB/s** (64 MB verified byte-identical, 2026-09-16).
 
 ## Decision
 
@@ -76,6 +79,9 @@ Throwaway firmware on branch `experiment/format-feasibility`:
   (small allocation bitmap) would avoid this but isn't in the prebuilt
   ESP-IDF FatFs, and the project decided earlier to stay on FAT32.
 - A first fill of 30 GB over USB takes ~10 h; a card reader is faster.
+- Writes are acknowledged to the host once buffered, so the buffer is
+  flushed before any read, before the card goes back to the firmware, on
+  START STOP UNIT, and after 50 ms without a write (`tickWrites()`).
 - Flashing needs a 1200-baud touch (done by `flash-primary-mcu.sh`), and
   a crash's output is no longer visible over USB: use the `INFO` serial
   command and `scripts/read-coredump.sh`.

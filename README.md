@@ -51,7 +51,59 @@ screens described below.
 - M4A (AAC) plays natively with tags, exact durations and embedded covers;
   progressive JPEG covers decode too. Settings > USB drive exposes the
   SD card to a computer over the USB cable — see
-  [ADR 0016](docs/adr/0016-native-formats-and-usb-drive.md) (proposed).
+  [ADR 0016](docs/adr/0016-native-formats-and-usb-drive.md).
+
+## Preparing an SD card
+
+The card must be **FAT32 with 32 KB clusters** inside an **MBR partition**.
+Both matter, and both were found the hard way (ADR 0016):
+
+- **32 KB clusters** (`-c 64` = 64 sectors of 512 bytes). macOS reads the
+  entire file allocation table when it mounts a drive, and does so at the
+  USB cable's ~0.9 MB/s. With the usual 4 KB clusters a 32 GB card has a
+  31 MB table, which takes longer than macOS waits: the card never
+  mounts. At 32 KB the table is 3.9 MB and it mounts in a few seconds.
+- **Don't use macOS Disk Utility's defaults.** A card formatted that way
+  mounted but failed almost every file read on this board (see
+  [AGENTS.md](AGENTS.md)). Format the partition directly with the
+  commands below.
+- Cards up to 32 GB are safest; 64 GB works too. Much larger cards push
+  the table back into timeout territory even at 32 KB clusters.
+
+Replace `diskN` / `sdX` with your card — **check twice, this erases it.**
+
+**macOS** (`diskutil list` to find the disk):
+
+```bash
+diskutil partitionDisk /dev/diskN MBR "MS-DOS FAT32" KNOBIFY 100%
+diskutil unmount /dev/diskNs1
+sudo newfs_msdos -F 32 -c 64 -v KNOBIFY /dev/rdiskNs1
+```
+
+The first command creates the partition, the third replaces the
+filesystem with one that has 32 KB clusters (`diskutil` alone can't set
+the cluster size).
+
+**Linux** (`lsblk` to find the device):
+
+```bash
+sudo parted /dev/sdX mklabel msdos
+sudo parted -a optimal /dev/sdX mkpart primary fat32 4MiB 100%
+sudo mkfs.vfat -F 32 -s 64 -n KNOBIFY /dev/sdX1
+```
+
+**Windows**: use [Rufus](https://rufus.ie) — Windows' own formatter
+refuses FAT32 on cards above 32 GB, and its GUI doesn't offer 32 KB
+clusters everywhere. In Rufus pick the card, "Non bootable", partition
+scheme **MBR**, file system **FAT32**, cluster size **32 kilobytes**, then
+Start. (On a card of 32 GB or less, `format F: /FS:FAT32 /A:32K /Q` in an
+Administrator command prompt does the same.)
+
+Then copy music as `Music/<Artist>/<Album>/<tracks>` — either with a card
+reader (much faster for a first fill) or over the cable via
+Settings > USB drive, at about 0.8 MB/s writing and 0.9 MB/s reading
+(the ESP32-S3 has USB full speed only, whose practical ceiling is
+~1.2 MB/s). That is roughly 2 minutes per album, or 9 hours for 26 GB.
 
 ## Explicitly out of scope for now
 
