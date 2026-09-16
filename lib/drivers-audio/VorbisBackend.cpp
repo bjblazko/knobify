@@ -45,6 +45,8 @@ bool VorbisBackend::open(const std::string &path, uint32_t startSample) {
     close();
     return false;
   }
+  // Exact here: resuming a track (ADR 0012) happens once and should land
+  // where the listener stopped, not up to 23 ms earlier.
   if (startSample != 0) stb_vorbis_seek(stream_, startSample);
   currentSample_.store(startSample, std::memory_order_relaxed);
   stopRequested_.store(false, std::memory_order_relaxed);
@@ -112,7 +114,13 @@ void VorbisBackend::decodeLoop() {
   auto &stage = audioOutputStage();
   while (!stopRequested_.load(std::memory_order_relaxed)) {
     const uint32_t seekTo = seekRequest_.exchange(kNoSeek, std::memory_order_relaxed);
-    if (seekTo != kNoSeek && stb_vorbis_seek(stream_, seekTo)) {
+    // seek_frame, not seek: the exact-sample version decodes and discards
+    // audio until it lands on the requested sample, which during a shuttle
+    // cue (a seek every ~300 ms, ADR 0013) costs more than the audio
+    // between two seeks -- on the device that made winding nearly silent.
+    // A frame boundary is at most 1024 samples (23 ms) away, which nobody
+    // hears while cueing.
+    if (seekTo != kNoSeek && stb_vorbis_seek_frame(stream_, seekTo)) {
       currentSample_.store(seekTo, std::memory_order_relaxed);
     }
     if (paused_.load(std::memory_order_relaxed)) {

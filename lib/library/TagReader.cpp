@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <vector>
 
 #include "Id3v2Parser.h"
 #include "Mp4Parser.h"
@@ -46,9 +47,41 @@ std::string parentFolderName(const std::string &path) {
   return path.substr(start, lastSlash - start);
 }
 
+uint16_t parseLeadingYearValue(const std::string &text);
+
+// The folder names between the library root and the file itself, for a
+// path like "/Music/Air/1998 Moon Safari/02 Sexy Boy.mp3" -> {"Air",
+// "1998 Moon Safari"}. The first component is the scan root and carries
+// no meaning about the music, so it is dropped.
+std::vector<std::string> foldersBelowRoot(const std::string &path) {
+  std::vector<std::string> parts;
+  size_t start = 0;
+  while (start < path.size()) {
+    size_t slash = path.find('/', start);
+    if (slash == std::string::npos) break;  // The rest is the file name.
+    if (slash > start) parts.push_back(path.substr(start, slash - start));
+    start = slash + 1;
+  }
+  if (!parts.empty()) parts.erase(parts.begin());  // The scan root.
+  return parts;
+}
+
+// "1998 Moon Safari" -> "Moon Safari"; text without a leading year is
+// returned unchanged. The year itself is read separately by
+// parseLeadingYearValue().
+std::string withoutLeadingYear(const std::string &text) {
+  if (parseLeadingYearValue(text) == 0) return text;
+  size_t start = 4;
+  while (start < text.size() &&
+         (text[start] == ' ' || text[start] == '-' || text[start] == '_')) {
+    ++start;
+  }
+  return start < text.size() ? text.substr(start) : text;
+}
+
 // A plausible 4-digit year at the very start of `text` (e.g. the "1998"
 // in "1998 Two Pages"), or 0 if it doesn't start with one.
-uint16_t parseLeadingYear(const std::string &text) {
+uint16_t parseLeadingYearValue(const std::string &text) {
   if (text.size() < 4) return 0;
   for (int i = 0; i < 4; ++i) {
     if (!std::isdigit(static_cast<unsigned char>(text[i]))) return 0;
@@ -109,6 +142,20 @@ TagResult TagReader::read(RawFile &file, const std::string &filePath) {
     result = RiffInfoParser::parse(file);
   }
 
+  // Untagged files still sit in a folder tree that says what they are, so
+  // borrow those names rather than filling the library with "Unknown
+  // Artist" (user request, 2026-09-16 -- audio dramas and home recordings
+  // often carry no tags at all). Two folders below the root read as
+  // Artist/Album; a single folder names both, so one untagged series
+  // folder becomes one findable album rather than a pile of unknowns.
+  const std::vector<std::string> folders = foldersBelowRoot(filePath);
+  if (result.artist.empty() && !folders.empty()) {
+    result.artist = folders.size() >= 2 ? folders[folders.size() - 2]
+                                        : withoutLeadingYear(folders.back());
+  }
+  if (result.album.empty() && !folders.empty()) {
+    result.album = withoutLeadingYear(folders.back());
+  }
   if (result.artist.empty()) {
     result.artist = "Unknown Artist";
   }
@@ -124,7 +171,7 @@ TagResult TagReader::read(RawFile &file, const std::string &filePath) {
     if (result.discNumber == 0) result.discNumber = numbers.disc;
   }
   if (result.year == 0) {
-    result.year = parseLeadingYear(parentFolderName(filePath));
+    result.year = parseLeadingYearValue(parentFolderName(filePath));
   }
   return result;
 }

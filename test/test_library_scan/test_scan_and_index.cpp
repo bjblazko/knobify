@@ -228,6 +228,65 @@ void test_albums_for_sorted_by_year() {
                             index.albums[albumIds[1]].title.c_str());
 }
 
+void test_untagged_files_fall_back_to_folder_names() {
+  // Laid out the way the player expects: Music/<Artist>/<Album>/track.
+  FakeFileLister lister(
+      {{"/Music/H\xC3\xB6rspiele/Der Herr der Ringe (WDR)/01 Kurztest.ogg", 10, 1},
+       {"/Music/Air/1998 Moon Safari/02 Sexy Boy.mp3", 10, 2}});
+  FakeFileOpener opener;
+  opener.put("/Music/H\xC3\xB6rspiele/Der Herr der Ringe (WDR)/01 Kurztest.ogg",
+             std::vector<uint8_t>{'n', 'o', 't', 'a', 'g', 's'});
+  opener.put("/Music/Air/1998 Moon Safari/02 Sexy Boy.mp3",
+             std::vector<uint8_t>{'n', 'o', 't', 'a', 'g', 's'});
+
+  LibraryIndex index = LibraryScanner::scan(lister, opener);
+
+  // The folders say what the missing tags don't: the album folder is the
+  // album (without its year prefix), the one above it is the artist.
+  bool foundHoerspiel = false;
+  bool foundAir = false;
+  for (const auto &album : index.albums) {
+    const std::string artist = index.artists[album.artistId].name;
+    if (album.title == "Der Herr der Ringe (WDR)") {
+      foundHoerspiel = true;
+      TEST_ASSERT_EQUAL_STRING("H\xC3\xB6rspiele", artist.c_str());
+    }
+    if (album.title == "Moon Safari") {
+      foundAir = true;
+      TEST_ASSERT_EQUAL_STRING("Air", artist.c_str());
+      TEST_ASSERT_EQUAL_UINT16(1998, album.year);
+    }
+  }
+  TEST_ASSERT_TRUE(foundHoerspiel);
+  TEST_ASSERT_TRUE(foundAir);
+}
+
+void test_a_single_untagged_folder_names_both_artist_and_album() {
+  // One folder under the library root, no tags -- e.g. an audio drama
+  // dropped in as Music/dhdr/*.ogg. It should be findable under that
+  // name, not buried in Unknown Artist.
+  FakeFileLister lister({{"/Music/dhdr/01 Teil.ogg", 10, 1}});
+  FakeFileOpener opener;
+  opener.put("/Music/dhdr/01 Teil.ogg", std::vector<uint8_t>{'n', 'o', 'n', 'e'});
+
+  LibraryIndex index = LibraryScanner::scan(lister, opener);
+
+  TEST_ASSERT_EQUAL_STRING("dhdr", index.artists[0].name.c_str());
+  TEST_ASSERT_EQUAL_STRING("dhdr", index.albums[0].title.c_str());
+}
+
+void test_files_outside_an_artist_album_layout_stay_unknown() {
+  // Nothing above the file to borrow a name from.
+  FakeFileLister lister({{"/loose.mp3", 10, 1}});
+  FakeFileOpener opener;
+  opener.put("/loose.mp3", std::vector<uint8_t>{'n', 'o', 't', 'a', 'g', 's'});
+
+  LibraryIndex index = LibraryScanner::scan(lister, opener);
+
+  TEST_ASSERT_EQUAL_STRING("Unknown Artist", index.artists[0].name.c_str());
+  TEST_ASSERT_EQUAL_STRING("Unknown Album", index.albums[0].title.c_str());
+}
+
 void test_artists_sorted_alphabetically_ignoring_case_the_and_accents() {
   // Listed in an order no reader would want them in.
   FakeFileLister lister({{"/1.mp3", 10, 1},
@@ -425,6 +484,9 @@ int main(int argc, char **argv) {
   RUN_TEST(test_tracks_for_sorted_by_disc_then_track);
   RUN_TEST(test_tag_reader_falls_back_to_filename_disc_and_track);
   RUN_TEST(test_albums_for_sorted_by_year);
+  RUN_TEST(test_untagged_files_fall_back_to_folder_names);
+  RUN_TEST(test_a_single_untagged_folder_names_both_artist_and_album);
+  RUN_TEST(test_files_outside_an_artist_album_layout_stay_unknown);
   RUN_TEST(test_artists_sorted_alphabetically_ignoring_case_the_and_accents);
   RUN_TEST(test_artist_named_only_the_keeps_its_name_as_key);
   RUN_TEST(test_tag_reader_falls_back_to_filename_track_and_folder_year);
