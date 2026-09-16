@@ -98,7 +98,6 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
   void setVolume(uint8_t volume) override {
     MutexGuard guard(mutex_);
     audio_.setVolume(volume);
-    volume_.store(volume);
     audioOutputStage().setVolumeStep(volume);
   }
 
@@ -257,10 +256,6 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
   // Of the current track (set in playFileAt(), read by durationSeconds() and
   // seekByMs() -- all on the main task).
   TrackTiming timing_;
-  // Mirrors the last setVolume() so readRecentSamples() can report the
-  // gain without taking mutex_ at spectrum frame rate.
-  std::atomic<uint8_t> volume_{0};
-  uint32_t lastSampleCount_ = 0;
   SemaphoreHandle_t mutex_ = nullptr;
   TaskHandle_t taskHandle_ = nullptr;
 };
