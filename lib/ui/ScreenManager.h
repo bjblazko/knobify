@@ -15,7 +15,9 @@
 #include "EdgeArc.h"
 #include "FolderBrowser.h"
 #include "InputRouter.h"
-#include "LibraryRescanner.h"
+#include "Bookmarks.h"
+#include "CollectionSet.h"
+#include "MenuVisibility.h"
 #include "LibraryScanner.h"
 #include "KeyValueStore.h"
 #include "LockController.h"
@@ -45,12 +47,11 @@ namespace knobify::ui {
 class ScreenManager : public input::ListMoveSink {
  public:
   ScreenManager(navigation::TabController &tabs,
-                library::LibraryIndex &library,
+                collection::CollectionSet &collections,
                 library::DirectoryReader &directoryReader,
                 playback::PlaybackStateMachine &playback,
                 playback::Shuttle &shuttle,
                 power::LockController &lockController,
-                library::LibraryRescanner &rescanner,
                 library::CoverArtReader &coverReader,
                 library::FileOpener &fileOpener,
                 library::JpegDecoder &jpegDecoder,
@@ -60,14 +61,14 @@ class ScreenManager : public input::ListMoveSink {
                 power::SleepTimer &sleepTimer,
                 input::TouchCalibrationFlow &touchCalibration,
                 usbdrive::UsbDriveSession &usbDrive,
-                ui_widgets::MessageArea &messages)
+                ui_widgets::MessageArea &messages,
+                resume::Bookmarks &bookmarks)
       : tabs_(tabs),
-        library_(library),
+        collections_(collections),
         directoryReader_(directoryReader),
         playback_(playback),
         shuttle_(shuttle),
         lockController_(lockController),
-        rescanner_(rescanner),
         coverReader_(coverReader),
         fileOpener_(fileOpener),
         jpegDecoder_(jpegDecoder),
@@ -77,7 +78,9 @@ class ScreenManager : public input::ListMoveSink {
         sleepTimer_(sleepTimer),
         touchCalibration_(touchCalibration),
         usbDrive_(usbDrive),
-        messages_(messages) {}
+        messages_(messages),
+        bookmarks_(bookmarks),
+        menuVisibility_(makeMenuVisibility()) {}
 
   void begin();
 
@@ -140,6 +143,7 @@ class ScreenManager : public input::ListMoveSink {
   void renderNowPlaying();
   // Main menu and settings -- ScreenManagerMenu.cpp (ADR 0010).
   void renderHome();
+  void renderWordmark();
   void renderBrightness();
   void renderSleepTimer();
   void renderTouchCalibration();
@@ -147,7 +151,33 @@ class ScreenManager : public input::ListMoveSink {
   void startUsbDrive();
   void renderUsbDrive();
   static void onUsbDriveDoneClicked(lv_event_t *e);
-  void runRescan();
+  // Rebuilds one collection's index, or every one in turn, behind a
+  // blocking progress overlay. Both are multi-second and synchronous --
+  // see runRescan()'s comment in ScreenManager.cpp.
+  void runRescan(collection::CollectionId id);
+  void runRescanAll();
+  // Settings > Main menu (ADR 0018): which destinations Home shows.
+  void appendMenuVisibilityRows(
+      std::vector<std::pair<std::string, int>> &items) const;
+  void toggleMenuEntryVisible(int entryIndex);
+  bool menuEntryVisible(int entryIndex) const;
+  const char *menuVisibilityValue(int entryIndex) const;
+  void loadMenuVisibility();
+  // Built from the menu table, which lives in ScreenManagerMenu.cpp.
+  static navigation::MenuVisibility makeMenuVisibility();
+  // Indices into the menu table, filtered by the visibility setting -- the
+  // carousel's order (ADR 0018).
+  std::vector<int> visibleMenuEntries() const;
+  void moveHomeSelection(int delta);
+
+  // One Settings row. A table rather than a chain of index comparisons,
+  // so adding a row never silently renumbers the ones after it.
+  struct SettingsRow {
+    const char *label;
+    void (*open)(ScreenManager &self);
+  };
+  static constexpr int kSettingsRowCount = 5;
+  static const SettingsRow kSettingsRows[kSettingsRowCount];
   void renderBackButtonIfNeeded();
   void renderContextCaption();
   void setProgressRingVisible(bool visible);
@@ -175,7 +205,9 @@ class ScreenManager : public input::ListMoveSink {
   static void onPlayPauseClicked(lv_event_t *e);
   static void onNextClicked(lv_event_t *e);
   static void onLockClicked(lv_event_t *e);
-  static void onHomeTilePressed(lv_event_t *e);
+  // `slot` is a TileSlot (ScreenManagerMenu.cpp, where the carousel's
+  // geometry lives): -1 left, 0 centre, 1 right.
+  void makeMenuTile(int entryIndex, int slot);
   static void onHomeTileClicked(lv_event_t *e);
   // Options panel on Now Playing (ADR 0014).
   void renderOptionsPanel(bool animate);
@@ -187,19 +219,46 @@ class ScreenManager : public input::ListMoveSink {
   void showRepeatMessage();
   static void onShuffleClicked(lv_event_t *e);
   static void onRepeatClicked(lv_event_t *e);
-  static bool hasShuffleRow(navigation::ScreenKind kind) {
-    return kind == navigation::ScreenKind::Artists ||
-           kind == navigation::ScreenKind::Albums ||
-           kind == navigation::ScreenKind::Tracks;
+  // Whether a list screen leads with a Shuffle row. Spoken-word
+  // collections never do: shuffling an audiobook's chapters is never what
+  // anyone wants (ADR 0018), so this asks the collection's profile as
+  // well as the screen kind.
+  // Whether a Tracks list leads with a Continue row: a spoken-word title
+  // with a saved position somewhere in it (ADR 0018). Fills `out` with
+  // that bookmark.
+  bool hasContinueRow(const navigation::Screen &screen,
+                      resume::Bookmark &out) const;
+  // The folder holding an album's tracks -- the bookmark key for a title.
+  std::string titleKeyFor(library::AlbumId albumId) const;
+  void playFromBookmark(const resume::Bookmark &mark, library::AlbumId albumId);
+
+  bool hasShuffleRow(navigation::ScreenKind kind) const {
+    return profile().hasShuffleRow &&
+           (kind == navigation::ScreenKind::Artists ||
+            kind == navigation::ScreenKind::Albums ||
+            kind == navigation::ScreenKind::Tracks);
   }
 
   navigation::TabController &tabs_;
-  library::LibraryIndex &library_;
+  // The collection the active screen belongs to, its profile, and its
+  // index. Every browse screen carries its collection in ScreenParams, so
+  // these three follow the navigation stack rather than any mode state
+  // ScreenManager would have to keep in sync (ADR 0018). On screens with
+  // no collection of their own (Home, Settings) they answer for Music,
+  // which nothing on those screens reads.
+  collection::CollectionId currentCollection() const;
+  const collection::CollectionProfile &profile() const;
+  const collection::CollectionProfile &playingProfile() const;
+  library::LibraryIndex &library();
+  const library::LibraryIndex &library() const {
+    return const_cast<ScreenManager *>(this)->library();
+  }
+
+  collection::CollectionSet &collections_;
   library::DirectoryReader &directoryReader_;
   playback::PlaybackStateMachine &playback_;
   playback::Shuttle &shuttle_;
   power::LockController &lockController_;
-  library::LibraryRescanner &rescanner_;
   library::CoverArtReader &coverReader_;
   library::FileOpener &fileOpener_;
   library::JpegDecoder &jpegDecoder_;
@@ -210,6 +269,7 @@ class ScreenManager : public input::ListMoveSink {
   input::TouchCalibrationFlow &touchCalibration_;
   usbdrive::UsbDriveSession &usbDrive_;
   ui_widgets::MessageArea &messages_;
+  resume::Bookmarks &bookmarks_;
 
   static constexpr uint32_t kVolumeHudTimeoutMs = 3000;
 
@@ -254,6 +314,14 @@ class ScreenManager : public input::ListMoveSink {
       drivers::kLcdHorRes / 2, kCoverY + 48};
   // Item id of the Shuffle row -- real ids are unsigned indices.
   static constexpr int kShuffleItemId = -1;
+  static constexpr int kContinueItemId = -2;
+  // Bit per main-menu entry, 1 = shown. NVS keys are limited to 15
+  // characters. Default: everything visible, which is what a device that
+  // has never opened this screen should look like.
+  static constexpr char kMenuVisibilityKey[] = "menuVis";
+  // Constructed in ScreenManagerMenu.cpp, where the menu table (and so the
+  // entry count and which entry is pinned) lives.
+  navigation::MenuVisibility menuVisibility_;
 
   lv_obj_t *screen_ = nullptr;
   lv_obj_t *list_ = nullptr;
@@ -336,6 +404,7 @@ class ScreenManager : public input::ListMoveSink {
     library::AlbumId albumId;
     bool isFolder;
     bool isShuffle = false;
+    bool isContinue = false;
     std::string path;
   };
   // unique_ptr so addresses stay stable across vector growth -- LVGL

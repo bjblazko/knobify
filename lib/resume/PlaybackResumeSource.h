@@ -4,34 +4,43 @@
 #include <string>
 #include <vector>
 
-#include "LibraryScanner.h"
+#include "CollectionSet.h"
 #include "PlaybackStateMachine.h"
 #include "PlaylistBuilder.h"
 #include "ResumeSource.h"
 
 namespace knobify::resume {
 
-// Resumes the music queue (ADR 0012). Only the current track's path and the
-// scope are saved, not the queue: the queue is rebuilt from the library the
-// same way a tap builds it, so a rescan in between can't leave stale paths.
-// With shuffle on, the rest of the queue is reshuffled after the track.
-class MusicResumeSource : public ResumeSource {
+// Resumes the play queue (ADR 0012). Only the current track's path, the
+// scope and the collection it came from are saved, not the queue: the queue
+// is rebuilt from that collection's index the same way a tap builds it, so a
+// rescan in between can't leave stale paths. With shuffle on, the rest of
+// the queue is reshuffled after the track.
+class PlaybackResumeSource : public ResumeSource {
  public:
   // `fileExists` checks a Files-tab path still exists (SD on the device).
   using FileExists = bool (*)(const std::string &path);
 
-  MusicResumeSource(playback::PlaybackStateMachine &playback,
-                    const library::LibraryIndex &library, FileExists fileExists)
-      : playback_(playback), library_(library), fileExists_(fileExists) {}
+  PlaybackResumeSource(playback::PlaybackStateMachine &playback,
+                       const collection::CollectionSet &collections,
+                       FileExists fileExists)
+      : playback_(playback),
+        collections_(collections),
+        fileExists_(fileExists) {}
 
   void capture(ResumeRecord &record, uint32_t nowMs) override {
     if (!playback_.hasQueue()) {
       record.music.reset();
       return;
     }
-    MusicSnapshot music;
+    PlaybackSnapshot music;
     music.scope = static_cast<uint8_t>(playback_.scope());
     music.trackPath = playback_.currentPath();
+    // Derived from the track's own path rather than tracked alongside
+    // playback: nothing can then forget to update it.
+    collection::CollectionId playing = collection::CollectionId::Music;
+    collections_.findByPath(music.trackPath, playing);
+    music.collection = static_cast<uint8_t>(playing);
     music.shuffle = playback_.shuffle();
     music.filePosition = playback_.filePosition();
     music.elapsedSeconds = playback_.elapsedMs(nowMs) / 1000;
@@ -40,11 +49,14 @@ class MusicResumeSource : public ResumeSource {
 
   void restore(const ResumeRecord &record, uint32_t nowMs) override {
     if (!record.music) return;
-    const MusicSnapshot &music = *record.music;
+    const PlaybackSnapshot &music = *record.music;
     if (music.scope > static_cast<uint8_t>(playback::PlayScope::Library)) return;
+    if (!collection::isValidCollection(music.collection)) return;
     auto scope = static_cast<playback::PlayScope>(music.scope);
+    auto collectionId = static_cast<collection::CollectionId>(music.collection);
 
-    std::vector<std::string> playlist = playlistFor(scope, music.trackPath);
+    std::vector<std::string> playlist =
+        playlistFor(collectionId, scope, music.trackPath);
     auto it = std::find(playlist.begin(), playlist.end(), music.trackPath);
     if (it == playlist.end()) return;
     auto index = static_cast<size_t>(it - playlist.begin());
@@ -58,31 +70,34 @@ class MusicResumeSource : public ResumeSource {
  private:
   static constexpr uint32_t kMaxElapsedSeconds = 24 * 60 * 60;
 
-  std::vector<std::string> playlistFor(playback::PlayScope scope,
+  std::vector<std::string> playlistFor(collection::CollectionId collectionId,
+                                       playback::PlayScope scope,
                                        const std::string &path) const {
     using library::PlaylistBuilder;
     if (scope == playback::PlayScope::File) {
       if (path.empty() || !fileExists_(path)) return {};
       return {path};
     }
-    auto track = std::find_if(library_.tracks.begin(), library_.tracks.end(),
+    const library::LibraryIndex &library = collections_.index(collectionId);
+    const library::SortOrder order = collections_.profile(collectionId).sort;
+    auto track = std::find_if(library.tracks.begin(), library.tracks.end(),
                               [&](const library::Track &t) { return t.filePath == path; });
-    if (track == library_.tracks.end() || track->albumId >= library_.albums.size()) {
+    if (track == library.tracks.end() || track->albumId >= library.albums.size()) {
       return {};
     }
-    const library::Album &album = library_.albums[track->albumId];
+    const library::Album &album = library.albums[track->albumId];
     switch (scope) {
       case playback::PlayScope::Album:
-        return PlaylistBuilder::forAlbum(library_, album.id);
+        return PlaylistBuilder::forAlbum(library, album.id);
       case playback::PlayScope::Artist:
-        return PlaylistBuilder::forArtist(library_, album.artistId);
+        return PlaylistBuilder::forArtist(library, order, album.artistId);
       default:
-        return PlaylistBuilder::forLibrary(library_);
+        return PlaylistBuilder::forLibrary(library, order);
     }
   }
 
   playback::PlaybackStateMachine &playback_;
-  const library::LibraryIndex &library_;
+  const collection::CollectionSet &collections_;
   FileExists fileExists_;
 };
 

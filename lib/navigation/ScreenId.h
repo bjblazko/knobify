@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <string>
 
+#include "CollectionId.h"
+
 namespace knobify::navigation {
 
 // Which screen is showing. Deliberately open-ended (not "Artists is the
@@ -27,6 +29,12 @@ enum class ScreenKind {
   SleepTimer,
   // Past NowPlaying: a USB drive session ends with the power (ADR 0016).
   UsbDrive,
+  // Past NowPlaying too (ADR 0018): both are Settings sub-screens, and a
+  // resume record that lands mid-configuration is not worth restoring.
+  // Appended rather than placed next to Settings for the same reason
+  // TouchCalibration was -- resume records store kinds by value.
+  RescanPicker,
+  MenuVisibility,
 };
 
 // Parameters a screen needs to render itself. Only the fields relevant
@@ -38,6 +46,11 @@ struct ScreenParams {
   uint32_t artistId = 0;
   uint32_t albumId = 0;
   std::string folderPath;
+  // Which collection's index the ids above are indices into, and whose
+  // root a Folder path sits under (ADR 0018). Every push carries the
+  // pushing screen's value along, so a whole browse stack stays inside
+  // one collection.
+  collection::CollectionId collection = collection::CollectionId::Music;
 };
 
 struct Screen {

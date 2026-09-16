@@ -14,7 +14,7 @@ namespace knobify::resume {
 // adds a section without touching the others.
 //
 // Library screens are identified by names, not ids: ids are indices into the
-// library index and change on a rescan.
+// collection's index and change on a rescan.
 
 // Mirrors navigation::Tab and ScreenKind by value; the codec only checks
 // ranges, NavigationResumeSource checks what makes sense where.
@@ -34,34 +34,45 @@ struct NavigationSnapshot {
   static constexpr std::size_t kMaxDepth = 8;
 
   uint8_t activeTab = 0;
-  uint8_t lastMusicTab = 1;
+  uint8_t lastBrowseTab = 1;
+  // Which collection the browse stacks below belong to
+  // (collection::CollectionId). Only the active one is saved: three
+  // collections' worth of stacks would not fit kMaxEncodedSize, and coming
+  // back to the shelf you left is what matters (ADR 0018).
+  uint8_t collection = 0;
   // Per tab, root first.
   std::array<std::vector<NavEntry>, kTabCount> stacks;
 
   bool operator==(const NavigationSnapshot &other) const {
-    return activeTab == other.activeTab && lastMusicTab == other.lastMusicTab &&
-           stacks == other.stacks;
+    return activeTab == other.activeTab &&
+           lastBrowseTab == other.lastBrowseTab &&
+           collection == other.collection && stacks == other.stacks;
   }
 };
 
-struct MusicSnapshot {
+// What was playing. There is only ever one player, so there is only ever
+// one of these -- `collection` says which shelf the queue was built from,
+// not that several are playing at once.
+struct PlaybackSnapshot {
   uint8_t scope = 0;  // playback::PlayScope
   std::string trackPath;
   bool shuffle = false;
   // Driver byte offset and the readout's elapsed time, both approximate.
   uint32_t filePosition = 0;
   uint32_t elapsedSeconds = 0;
+  uint8_t collection = 0;  // collection::CollectionId
 
-  bool operator==(const MusicSnapshot &other) const {
+  bool operator==(const PlaybackSnapshot &other) const {
     return scope == other.scope && trackPath == other.trackPath &&
            shuffle == other.shuffle && filePosition == other.filePosition &&
-           elapsedSeconds == other.elapsedSeconds;
+           elapsedSeconds == other.elapsedSeconds &&
+           collection == other.collection;
   }
 };
 
 struct ResumeRecord {
   std::optional<NavigationSnapshot> navigation;
-  std::optional<MusicSnapshot> music;
+  std::optional<PlaybackSnapshot> music;
 
   bool operator==(const ResumeRecord &other) const {
     return navigation == other.navigation && music == other.music;

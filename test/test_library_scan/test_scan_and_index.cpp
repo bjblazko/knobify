@@ -229,12 +229,14 @@ void test_albums_for_sorted_by_year() {
 }
 
 void test_untagged_files_fall_back_to_folder_names() {
-  // Laid out the way the player expects: Music/<Artist>/<Album>/track.
+  // Laid out the way the player expects: <root>/<Artist>/<Album>/track. A
+  // radio play lives in its own collection now (ADR 0018), so its artist
+  // level is the series, not a "Hörspiele" folder inside Music.
   FakeFileLister lister(
-      {{"/Music/H\xC3\xB6rspiele/Der Herr der Ringe (WDR)/01 Kurztest.ogg", 10, 1},
+      {{"/RadioPlays/Der Herr der Ringe (WDR)/Teil 1/01 Kurztest.ogg", 10, 1},
        {"/Music/Air/1998 Moon Safari/02 Sexy Boy.mp3", 10, 2}});
   FakeFileOpener opener;
-  opener.put("/Music/H\xC3\xB6rspiele/Der Herr der Ringe (WDR)/01 Kurztest.ogg",
+  opener.put("/RadioPlays/Der Herr der Ringe (WDR)/Teil 1/01 Kurztest.ogg",
              std::vector<uint8_t>{'n', 'o', 't', 'a', 'g', 's'});
   opener.put("/Music/Air/1998 Moon Safari/02 Sexy Boy.mp3",
              std::vector<uint8_t>{'n', 'o', 't', 'a', 'g', 's'});
@@ -247,9 +249,9 @@ void test_untagged_files_fall_back_to_folder_names() {
   bool foundAir = false;
   for (const auto &album : index.albums) {
     const std::string artist = index.artists[album.artistId].name;
-    if (album.title == "Der Herr der Ringe (WDR)") {
+    if (album.title == "Teil 1") {
       foundHoerspiel = true;
-      TEST_ASSERT_EQUAL_STRING("H\xC3\xB6rspiele", artist.c_str());
+      TEST_ASSERT_EQUAL_STRING("Der Herr der Ringe (WDR)", artist.c_str());
     }
     if (album.title == "Moon Safari") {
       foundAir = true;
@@ -475,6 +477,53 @@ void test_index_cache_rejects_truncated_buffer() {
   TEST_ASSERT_FALSE(ok);
 }
 
+// --- Collections (ADR 0018) ---
+
+void test_two_roots_build_two_independent_indexes() {
+  // Same scanner, two listers: nothing about a scan is tied to one root,
+  // which is what lets three collections share this code.
+  FakeFileLister music({{"/Music/Air/Moon Safari/02 Sexy Boy.mp3", 10, 1}});
+  FakeFileLister books(
+      {{"/Audiobooks/Douglas Adams/Hitchhiker/01 One.mp3", 10, 2}});
+  FakeFileOpener opener;
+  opener.put("/Music/Air/Moon Safari/02 Sexy Boy.mp3",
+             std::vector<uint8_t>{'n', 'o', 't', 'a', 'g', 's'});
+  opener.put("/Audiobooks/Douglas Adams/Hitchhiker/01 One.mp3",
+             std::vector<uint8_t>{'n', 'o', 't', 'a', 'g', 's'});
+
+  LibraryIndex musicIndex = LibraryScanner::scan(music, opener);
+  LibraryIndex booksIndex = LibraryScanner::scan(books, opener);
+
+  TEST_ASSERT_EQUAL(1, musicIndex.tracks.size());
+  TEST_ASSERT_EQUAL(1, booksIndex.tracks.size());
+  TEST_ASSERT_EQUAL_STRING("Air", musicIndex.artists[0].name.c_str());
+  TEST_ASSERT_EQUAL_STRING("Douglas Adams", booksIndex.artists[0].name.c_str());
+  // Ids are indices into each index's own vectors, so the same id means
+  // different things in each -- exactly why a screen carries its
+  // collection alongside its ids.
+  TEST_ASSERT_EQUAL(0, musicIndex.artists[0].id);
+  TEST_ASSERT_EQUAL(0, booksIndex.artists[0].id);
+}
+
+void test_by_name_sorting_ignores_the_tag_folding_rules() {
+  LibraryIndex index;
+  index.artists = {{0, "The Beatles"}, {1, "\xC3\x84rzte"}, {2, "Zappa"}};
+
+  // ByTag: "The " is stripped and the umlaut folded, so Ärzte -> "arzte",
+  // The Beatles -> "beatles", Zappa -> "zappa".
+  auto byTag = index.artistsSorted(knobify::library::SortOrder::ByTag);
+  TEST_ASSERT_EQUAL(1, byTag[0]);
+  TEST_ASSERT_EQUAL(0, byTag[1]);
+  TEST_ASSERT_EQUAL(2, byTag[2]);
+
+  // ByName: plain byte order, so "The Beatles" sorts under T and the
+  // multi-byte umlaut sorts last -- a shelf order, not a tag order.
+  auto byName = index.artistsSorted(knobify::library::SortOrder::ByName);
+  TEST_ASSERT_EQUAL(0, byName[0]);
+  TEST_ASSERT_EQUAL(2, byName[1]);
+  TEST_ASSERT_EQUAL(1, byName[2]);
+}
+
 int main(int argc, char **argv) {
   UNITY_BEGIN();
   RUN_TEST(test_scanner_groups_tagged_files_by_artist_and_album);
@@ -485,6 +534,8 @@ int main(int argc, char **argv) {
   RUN_TEST(test_tag_reader_falls_back_to_filename_disc_and_track);
   RUN_TEST(test_albums_for_sorted_by_year);
   RUN_TEST(test_untagged_files_fall_back_to_folder_names);
+  RUN_TEST(test_two_roots_build_two_independent_indexes);
+  RUN_TEST(test_by_name_sorting_ignores_the_tag_folding_rules);
   RUN_TEST(test_a_single_untagged_folder_names_both_artist_and_album);
   RUN_TEST(test_files_outside_an_artist_album_layout_stay_unknown);
   RUN_TEST(test_artists_sorted_alphabetically_ignoring_case_the_and_accents);

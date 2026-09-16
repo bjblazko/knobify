@@ -5,6 +5,13 @@
 
 namespace knobify::library {
 
+// How a browse list is ordered. Music is tagged well enough to sort
+// artists by their tag (ignoring a leading "The", folding accents) and
+// albums chronologically; spoken-word folders rarely carry usable tags,
+// so their lists follow the plain name instead -- see
+// docs/adr/0018-collections-and-menu-visibility.md.
+enum class SortOrder : uint8_t { ByTag = 0, ByName = 1 };
+
 using ArtistId = uint32_t;
 using AlbumId = uint32_t;
 using TrackId = uint32_t;

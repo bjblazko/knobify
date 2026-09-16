@@ -81,7 +81,8 @@ apart (22 px gaps), at y=96 — unchanged whether the mini-bar shows.
 ## Consequences
 
 - Waking takes a boot (a few seconds) rather than an instant.
-- A fourth destination needs another layout decision.
+- A fourth destination needs another layout decision. *(Made 2026-09-16 in
+  ADR 0018: the row becomes a carousel.)*
 - The CST816 wake settings come from its datasheet. Confirmed on the
   device 2026-09-15: fade, cancel, deep sleep, wake by touch and resume
   all work. Build with `-DKNOBIFY_SLEEP_DEBUG` for a 1-minute preset to

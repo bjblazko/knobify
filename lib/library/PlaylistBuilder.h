@@ -20,17 +20,23 @@ class PlaylistBuilder {
     return paths;
   }
 
+  // `order` must match what the list screen showed, so a shuffle row and
+  // the rows under it agree on what "this artist, in order" means.
   static std::vector<std::string> forArtist(const LibraryIndex &index,
+                                            SortOrder order,
                                             ArtistId artistId) {
     std::vector<std::string> paths;
-    appendArtist(index, artistId, paths);
+    appendArtist(index, order, artistId, paths);
     return paths;
   }
 
-  static std::vector<std::string> forLibrary(const LibraryIndex &index) {
+  static std::vector<std::string> forLibrary(const LibraryIndex &index,
+                                             SortOrder order) {
     std::vector<std::string> paths;
     paths.reserve(index.tracks.size());
-    for (const auto &artist : index.artists) appendArtist(index, artist.id, paths);
+    for (ArtistId id : index.artistsSorted(order)) {
+      appendArtist(index, order, id, paths);
+    }
     return paths;
   }
 
@@ -42,9 +48,12 @@ class PlaylistBuilder {
     }
   }
 
-  static void appendArtist(const LibraryIndex &index, ArtistId artistId,
+  static void appendArtist(const LibraryIndex &index, SortOrder order,
+                           ArtistId artistId,
                            std::vector<std::string> &paths) {
-    for (AlbumId id : index.albumsFor(artistId)) appendAlbum(index, id, paths);
+    for (AlbumId id : index.albumsFor(artistId, order)) {
+      appendAlbum(index, id, paths);
+    }
   }
 };
 

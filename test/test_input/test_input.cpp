@@ -130,7 +130,7 @@ void test_encoder_scrolls_list_on_browse_screen() {
   VolumePersistence volume(store);
   PlaybackStateMachine playback(driver, volume);
   TabController tabs;
-  tabs.openMusic();  // Library/Artists.
+  tabs.openCollection(knobify::collection::CollectionId::Music);  // Library/Artists.
   RecordingListSink sink;
   BrightnessSetting brightness(store);
   Shuttle shuttle(playback);
@@ -273,7 +273,7 @@ void test_swipe_pops_when_possible() {
   VolumePersistence volume(store);
   PlaybackStateMachine playback(driver, volume);
   TabController tabs;
-  tabs.openMusic();
+  tabs.openCollection(knobify::collection::CollectionId::Music);
   tabs.activeStack().push(Screen{ScreenKind::Albums, {}});
   RecordingListSink sink;
   BrightnessSetting brightness(store);
@@ -295,7 +295,7 @@ void test_swipe_switches_tab_at_root() {
   VolumePersistence volume(store);
   PlaybackStateMachine playback(driver, volume);
   TabController tabs;
-  tabs.openMusic();
+  tabs.openCollection(knobify::collection::CollectionId::Music);
   RecordingListSink sink;
   BrightnessSetting brightness(store);
   Shuttle shuttle(playback);
@@ -316,7 +316,7 @@ void test_tap_is_not_routed_by_input_router() {
   VolumePersistence volume(store);
   PlaybackStateMachine playback(driver, volume);
   TabController tabs;
-  tabs.openMusic();
+  tabs.openCollection(knobify::collection::CollectionId::Music);
   RecordingListSink sink;
   BrightnessSetting brightness(store);
   Shuttle shuttle(playback);

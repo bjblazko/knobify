@@ -1,6 +1,6 @@
 # knobify
 
-Offline music player built on a Waveshare ESP32-S3-Knob-Touch-LCD-1.8 — see [`device.md`](device.md) for full hardware specs (dual MCU, display, audio DAC, encoders, etc.), the official product page, and wiki links.
+Offline audio player built on a Waveshare ESP32-S3-Knob-Touch-LCD-1.8 — music, audiobooks and radio plays, each on its own shelf. See [`device.md`](device.md) for full hardware specs (dual MCU, display, audio DAC, encoders, etc.), the official product page, and wiki links.
 
 ## Goal
 
@@ -33,11 +33,18 @@ screens described below.
   [ADR 0009](docs/adr/0009-now-playing-spectrum-analyzer.md).
   No charging indicator: the board exposes no charge-status signal (no
   dedicated pin, no voltage change on plug/unplug, no status LED).
-- Shuffle and repeat: a Shuffle row at the top of the Artists, Albums and
-  Tracks lists shuffles the library, the artist or the album. Toggles
-  in Now Playing's options panel switch shuffle and repeat (off / all /
-  one) — see [ADR 0011](docs/adr/0011-shuffle-and-repeat.md).
-- Now Playing options panel: a handle at the bottom opens a panel with
+- Collections: Music, Audiobooks and Radio Plays are separate shelves,
+  each rooted at its own SD folder with its own index and browse
+  position. They are the same player parameterised by a table row, not
+  three players — spoken word simply has no shuffle, sorts by name and
+  remembers where each title was left. The main menu is a knob carousel,
+  and Settings > Main menu hides the shelves you do not have — see
+  [ADR 0018](docs/adr/0018-collections-and-menu-visibility.md).
+- Shuffle and repeat: a Shuffle row at the top of Music's Artists, Albums
+  and Tracks lists shuffles the collection, the artist or the album.
+  Toggles in Now Playing's options panel switch shuffle and repeat
+  (off / all / one) — see [ADR 0011](docs/adr/0011-shuffle-and-repeat.md).
+- Now Playing options panel: an ellipsis at the bottom opens a panel with
   shuffle, repeat, the cover/spectrum switch and lock, keeping the player
   itself uncluttered — see
   [ADR 0014](docs/adr/0014-now-playing-options-panel.md).
@@ -45,6 +52,11 @@ screens described below.
   the last track paused near where it was (no auto-play). State is saved
   periodically and power-cut safe — see
   [ADR 0012](docs/adr/0012-resume-session.md).
+- Per-title resume for spoken word: leave an audiobook for some music and
+  a Continue row at the top of its parts brings you back to the spot.
+  Several titles can be part-way through at once; tapping a part still
+  plays that part from its start — see
+  [ADR 0018](docs/adr/0018-collections-and-menu-visibility.md).
 - Jog/shuttle: hold the time readout on Now Playing and turn the knob to
   fast forward or rewind (five speeds each way, CD-style cue); letting go
   plays on from there — see [ADR 0013](docs/adr/0013-jog-shuttle.md).
@@ -158,6 +170,9 @@ Settings > USB drive, at about 0.8 MB/s writing and 0.9 MB/s reading
 - A "recently played" / "recently added" quick-access list
 - Resume support for future sources (podcasts, web radio, video) — each
   adds its own section to the resume record, see ADR 0012
+- Marking a spoken-word title finished, so its Continue row stops
+  offering the end of the last part (`Bookmarks::forget()` is there,
+  nothing calls it — ADR 0018)
 - M3U playlist file import
 - Gapless playback (for live albums, concept albums, etc.)
 - On-device firmware updates from a file on the SD card (no Wi-Fi
@@ -175,16 +190,36 @@ Arduino, native + esp32-s3 environments) are in place — see
 [`docs/adr/`](docs/adr/README.md) and [`docs/arc42/arc42.md`](docs/arc42/arc42.md)
 for what was decided and why.
 
-v1 works on real hardware: browsing by artist/album (or raw folders),
+v1 works on real hardware: browsing by artist/album (or by folder),
 playback with cover art, jog/shuttle, lock, sleep timer, resume, and
-copying music over the USB cable. Formats are **MP3, M4A (AAC), WAV,
+copying files over the USB cable. Formats are **MP3, M4A (AAC), WAV,
 FLAC (16-bit) and Ogg Vorbis**. See
 [ADR 0004](docs/adr/0004-navigation-library-and-index-architecture.md)
 for the navigation/library architecture and the bring-up history,
 [ADR 0016](docs/adr/0016-native-formats-and-usb-drive.md) for formats,
-cover decoding and USB drive mode, and
+cover decoding and USB drive mode,
 [ADR 0017](docs/adr/0017-two-audio-decode-paths.md) for the Vorbis decode
-path.
+path, and
+[ADR 0018](docs/adr/0018-collections-and-menu-visibility.md) for
+collections and the main menu.
+
+### What goes on the SD card
+
+Each collection is its own top-level folder, laid out
+`<root>/<Artist>/<Album>/track` (for spoken word: `<series>/<title>/part`
+— tags win where they exist, folder names are the fallback):
+
+```
+/Music/…         Music
+/Audiobooks/…    Audiobooks
+/RadioPlays/…    Radio Plays
+/knobify/        indexes and cached covers (written by the device)
+```
+
+A collection whose folder is missing simply shows up empty; hide it in
+Settings > Main menu if you do not want it on the home screen. Indexes are
+built on demand — Settings > Rescan, or automatically after a USB drive
+session — never at boot, so the device is usable the moment it powers on.
 
 ## License
 

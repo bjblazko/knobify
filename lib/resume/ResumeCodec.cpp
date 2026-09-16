@@ -1,5 +1,7 @@
 #include "ResumeCodec.h"
 
+#include "CollectionId.h"
+
 #include <string>
 
 namespace knobify::resume {
@@ -97,9 +99,13 @@ void writeSection(Writer &payload, uint8_t tag, const Writer &body) {
 }
 
 bool readNavigation(Reader &in, NavigationSnapshot &out) {
-  if (!in.u8(out.activeTab) || !in.u8(out.lastMusicTab)) return false;
+  if (!in.u8(out.activeTab) || !in.u8(out.lastBrowseTab) ||
+      !in.u8(out.collection)) {
+    return false;
+  }
   if (out.activeTab >= NavigationSnapshot::kTabCount ||
-      out.lastMusicTab >= NavigationSnapshot::kTabCount) {
+      out.lastBrowseTab >= NavigationSnapshot::kTabCount ||
+      !collection::isValidCollection(out.collection)) {
     return false;
   }
   for (auto &stack : out.stacks) {
@@ -115,13 +121,15 @@ bool readNavigation(Reader &in, NavigationSnapshot &out) {
   return true;
 }
 
-bool readMusic(Reader &in, MusicSnapshot &out) {
+bool readMusic(Reader &in, PlaybackSnapshot &out) {
   uint8_t shuffle;
   if (!in.u8(out.scope) || !in.str(out.trackPath) || !in.u8(shuffle) ||
-      !in.u32(out.filePosition) || !in.u32(out.elapsedSeconds)) {
+      !in.u32(out.filePosition) || !in.u32(out.elapsedSeconds) ||
+      !in.u8(out.collection)) {
     return false;
   }
   if (shuffle > 1) return false;
+  if (!collection::isValidCollection(out.collection)) return false;
   out.shuffle = shuffle == 1;
   return true;
 }
@@ -134,7 +142,8 @@ std::vector<uint8_t> ResumeCodec::encode(const ResumeRecord &record) {
     const NavigationSnapshot &nav = *record.navigation;
     Writer body;
     body.u8(nav.activeTab);
-    body.u8(nav.lastMusicTab);
+    body.u8(nav.lastBrowseTab);
+    body.u8(nav.collection);
     for (const auto &stack : nav.stacks) {
       if (stack.size() > NavigationSnapshot::kMaxDepth) return {};
       body.u8(static_cast<uint8_t>(stack.size()));
@@ -147,13 +156,14 @@ std::vector<uint8_t> ResumeCodec::encode(const ResumeRecord &record) {
     writeSection(payload, kTagNavigation, body);
   }
   if (record.music) {
-    const MusicSnapshot &music = *record.music;
+    const PlaybackSnapshot &music = *record.music;
     Writer body;
     body.u8(music.scope);
     body.str(music.trackPath);
     body.u8(music.shuffle ? 1 : 0);
     body.u32(music.filePosition);
     body.u32(music.elapsedSeconds);
+    body.u8(music.collection);
     writeSection(payload, kTagMusic, body);
   }
   if (!payload.ok || kHeaderSize + payload.bytes.size() > kMaxEncodedSize) {
@@ -202,7 +212,7 @@ bool ResumeCodec::decode(const std::vector<uint8_t> &bytes, ResumeRecord &out) {
       if (record.navigation || !readNavigation(body, nav)) return false;
       record.navigation = std::move(nav);
     } else if (tag == kTagMusic) {
-      MusicSnapshot music;
+      PlaybackSnapshot music;
       if (record.music || !readMusic(body, music)) return false;
       record.music = std::move(music);
     }

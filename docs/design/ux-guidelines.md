@@ -143,6 +143,15 @@ on a monitor.
    restraint — is why they differ (§6).
 4. **No noise** — neutrals stay matte/desaturated; no shadows or
    gradients.
+5. **The brand mark carries no signal colour either.** Home's "knobify"
+   wordmark is led by a small dial — an `ink` disc with the surface colour
+   notched out as its indicator. A coloured bullet was tried first and was
+   wrong for exactly the reason rule 2 gives: a logo means nothing in the
+   functional sense, so it may not borrow a colour that does (the red it
+   used is `warning`, which elsewhere means a flat battery). The mark
+   earns its place through form instead — a knob seen from above, echoing
+   the round display and the rotary encoder the way the circular transport
+   buttons do.
 
 ### Why a light theme
 
@@ -217,19 +226,40 @@ Full architecture: [ADR 0004](../adr/0004-navigation-library-and-index-architect
 - **Injectable-root screen stack.** The navigation stack never hardcodes
   a particular screen as "the" permanent root, which is how the Home menu
   was added above the music tabs without restructuring navigation.
-- **The device boots into the main menu** — a grid of large round tiles
-  (icon + label), today Music and Settings ([ADR 0010](../adr/0010-main-menu-and-settings.md)).
-  All options are visible at once; the knob moves the selection, touch
-  selects on press and opens on release, and the last-used tile stays
-  selected. Adding a destination is one table row; beyond four tiles the
-  layout needs a new decision.
+- **Home is the one screen with the wordmark.** It has no caption, title
+  or back button, and it is the screen the device boots into — so it is
+  where the product gets to say its name, and the only screen that does.
+- **The device boots into the main menu** — a carousel of large round
+  tiles (icon + label): Music, Audiobooks, Radio Plays, Settings, Sleep
+  ([ADR 0010](../adr/0010-main-menu-and-settings.md),
+  [ADR 0018](../adr/0018-collections-and-menu-visibility.md)). The selected
+  destination sits in the middle at full size with its two neighbours
+  shrunk and dimmed either side; a row of dots above says how many there
+  are. The knob rotates, a tap on the centre opens, a tap on a neighbour
+  rotates it in. The last-used destination stays selected. Adding one is
+  one table row. Five destinations no longer all fit at once, which is why
+  the dots are there — and why the user can hide the ones they do not
+  have.
+- **Which destinations Home shows is the user's choice.** Settings > Main
+  menu toggles each one on or off. Settings itself can never be hidden
+  (it is the only way back to that screen) and neither can the last
+  visible entry; both refusals say why rather than leaving the row looking
+  dead.
+- **A collection is a shelf, not a mode.** Music, Audiobooks and Radio
+  Plays are the same player pointed at a different SD folder, each with
+  its own index, its own browse position and a small behaviour profile:
+  spoken word has no Shuffle row, sorts by name, and resumes where a title
+  was left. Nothing anywhere asks the user to "switch mode" — you open a
+  shelf from Home and everything below it belongs to that shelf.
 - **Settings is a list; each setting has its own screen** when it's set by
   the knob. A row ends in its current value as plain text. Brightness
   applies live while turning, with no confirm step. Maintenance actions
   (Rescan library) live here, not in content headers.
-- **Two swipeable music tabs** — Library (tag-based Artist → Album →
-  Track) and Files (raw folder browse) — rather than a separate picker
-  screen.
+- **Two swipeable browse tabs per collection** — Library (tag-based
+  Artist → Album → Track) and Files (folder browse within that
+  collection's own root) — rather than a separate picker screen. A swipe
+  never crosses collections: it means "the other view of what I am
+  browsing", not "a different shelf".
 - **One gesture, two meanings by context.** A left-right swipe pops the
   current screen if there's somewhere to go back to; otherwise (already
   at a tab root) the same gesture switches tabs. This avoids adding a
@@ -241,14 +271,20 @@ Full architecture: [ADR 0004](../adr/0004-navigation-library-and-index-architect
   Home it moves the tile selection; on Brightness it sets brightness. The
   mapping is unambiguous per screen since no mode button exists to switch
   it explicitly.
-- **Scope comes from where you start.** Artists, Albums and Tracks lists
-  begin with a Shuffle row that shuffles the whole library, the artist or
-  the album. Tapping a track plays its album in order and turns shuffle
+- **Scope comes from where you start.** In Music, Artists, Albums and
+  Tracks lists begin with a Shuffle row that shuffles the whole
+  collection, the artist or the album. Spoken-word collections have no
+  Shuffle row at all — shuffling an audiobook's chapters is never what
+  anyone wants. Tapping a track plays its album in order and turns shuffle
   off. There is no scope setting ([ADR 0011](../adr/0011-shuffle-and-repeat.md)).
 - **Shuffle and repeat are toggles in Now Playing's options panel**
-  (the `︿` handle at the bottom, [ADR 0014](../adr/0014-now-playing-options-panel.md)):
+  (the `...` handle at the bottom, [ADR 0014](../adr/0014-now-playing-options-panel.md)
+  — an ellipsis, since a chevron there promised a direction and
+  contradicted the down chevron that closes the same panel):
   glyphs `confirm` green while active. Repeat cycles off → all →
-  one; only repeat is remembered across reboots. A glyph alone didn't say
+  one; only repeat is remembered across reboots. Spoken-word collections
+  get no Shuffle toggle at all, judged by what is playing rather than by
+  what is on screen behind the panel. A glyph alone didn't say
   which mode was active, so every tap also shows a message naming what now
   happens ("Shuffle on - album", "Repeat this track").
 - **The cover slot switches from the options panel.** Its Cover /
@@ -362,9 +398,12 @@ Full architecture: [ADR 0005](../adr/0005-power-lock-and-round-edge-indicators.m
   sliding under the back button collided with it visually.
 - **List screens say where you are.** A small caption under the top
   control names the current context (artist, album, folder), since the
-  top of a round screen is too narrow to be useful for rows anyway.
+  top of a round screen is too narrow to be useful for rows anyway. At a
+  collection's root that caption is the collection's own name — with
+  three shelves, "Library" no longer says which one you are on.
 - **Secondary facts are plain text, never badges.** Album rows end in the
-  release year, the Brightness row in its percentage (14px, `structure`;
+  release year, the Brightness row in its percentage, a Main menu row in
+  "On"/"Off" (14px, `structure`;
   `surfaceAlt` on the `ink` selected row). The year explains the
   chronological sort. The row's own text color at reduced opacity was
   tried first and came out barely readable on the selected row. No pills or overlays: they cost width

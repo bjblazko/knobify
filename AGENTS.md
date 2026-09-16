@@ -319,6 +319,16 @@ duplicating it.
     `UsbMscStorage::printEvents()` prints the drive's host events later.
   - Serial commands for driving the device without a hand on it:
     `TAP x y`, `KNOB n`, `INFO`, `SCREENSHOT`.
+  - **`SCREENSHOT` is no longer safe to rely on** since the TinyUSB switch:
+    it pushes a 259 KB framebuffer (360x360 RGB565) through the same CDC
+    that `Serial.write()` spins forever on when the endpoint can't drain.
+    Observed 2026-09-16: `scripts/screenshot.sh` died partway through the
+    pixel read and the board dropped off USB entirely until a hardware
+    power cycle (`INFO` afterwards showed reset reason 1, power-on, so the
+    firmware itself was fine). Not root-caused further. Until it is, check
+    UI layout by asking the person holding the device, and keep the bulk
+    transfer caveat above in mind -- USB drive mode is the reliable path
+    for anything large.
   - Bulk transfer over the old USB-Serial-JTAG CDC dropped bytes; TinyUSB
     CDC with an 8 KB ack per chunk was reliable but slow (0.14 MB/s) and
     stalled once after ~30 MB. Use USB drive mode for files.
@@ -369,6 +379,26 @@ duplicating it.
   ~80 ms (measured with a sample-gap log in `audio_process_i2s`). See ADR
   0012 and ADR 0013.
 
+- **The player is parameterised by a "collection", not hardcoded to
+  music** (ADR 0018). `lib/collection/CollectionProfile.h` is the table:
+  Music `/Music`, Audiobooks `/Audiobooks`, Radio Plays `/RadioPlays`,
+  each with its own `/knobify/*.idx`. Two things bite when editing it:
+  `CollectionId` and `ScreenManagerMenu.cpp`'s `kMenuEntries` are both
+  **append-only** (their order is a stored resume value and the bit order
+  of the `menuVis` NVS byte), and a screen's `artistId`/`albumId` are
+  indices into *its own* collection's index — always carry
+  `ScreenParams::collection` along when pushing, or ids silently resolve
+  against Music.
+- **`lv_font_conv` needs `@latest` from npm**: the pinned older version in
+  some caches lacks `--lv-font-name`, and without it the generated font's
+  symbol won't match `IconFont.h`'s `LV_FONT_DECLARE`. The exact
+  invocation is in each `IconFont*.c` header comment — keep
+  `--no-compress` (see above).
+- **Don't name a member function `bit()`** (or any other Arduino.h macro:
+  `bit`, `_BV`, `abs`, `min`, `max`, `round`). A header that compiles fine
+  host-side in `pio test -e native` fails inside the firmware build with a
+  baffling error pointing at Arduino.h itself, not at your code. Found
+  2026-09-16 writing `navigation::MenuVisibility`.
 - **knobify decodes audio two ways**: ESP32-audioI2S for MP3/M4A/WAV/FLAC,
   and knobify's own stb_vorbis-based backend for Ogg Vorbis, dispatched by
   file extension in `Esp32AudioI2SDriver`. `AudioGain` and

@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include "BookmarkKeeper.h"
 #include "IconFont.h"
 #include "LvglButtonHelpers.h"
 #include "PlaylistBuilder.h"
@@ -57,12 +58,36 @@ class ScanProgressLabelListener : public knobify::library::ScanProgressListener 
 
 }  // namespace
 
+collection::CollectionId ScreenManager::currentCollection() const {
+  return tabs_.activeStack().current().params.collection;
+}
+
+const collection::CollectionProfile &ScreenManager::profile() const {
+  return collections_.profile(currentCollection());
+}
+
+library::LibraryIndex &ScreenManager::library() {
+  return collections_.index(currentCollection());
+}
+
+// The profile of whatever is *playing*, which is not always the
+// collection being browsed -- Now Playing and its options panel act on
+// the queue, and you can leave a book running and go browse Music.
+const collection::CollectionProfile &ScreenManager::playingProfile() const {
+  collection::CollectionId id = currentCollection();
+  if (playback_.hasQueue()) {
+    collections_.findByPath(playback_.currentPath(), id);
+  }
+  return collections_.profile(id);
+}
+
 void ScreenManager::begin() {
   uint8_t stored = 0;
   preferSpectrum_ = settings_.getU8(kSpectrumSettingKey, stored) && stored != 0;
   if (settings_.getU8(kRepeatSettingKey, stored) && stored <= 2) {
     playback_.setRepeat(static_cast<playback::RepeatMode>(stored));
   }
+  loadMenuVisibility();
   render();
 }
 
@@ -152,25 +177,35 @@ void ScreenManager::render() {
     if (hasShuffleRow(current.kind)) {
       items.emplace_back(LV_SYMBOL_SHUFFLE "  Shuffle", kShuffleItemId);
     }
+    // A spoken-word title you are part-way through leads with Continue,
+    // in the slot Shuffle occupies for music (ADR 0018). Tapping a part
+    // still plays that part from its start -- an explicit choice is never
+    // overridden by a remembered position.
+    resume::Bookmark bookmark;
+    if (hasContinueRow(current, bookmark)) {
+      items.emplace_back(LV_SYMBOL_PLAY "  Continue", kContinueItemId);
+    }
     switch (current.kind) {
       case ScreenKind::Artists:
-        // Alphabetically, like the tap handler below -- both go through
-        // artistsSorted() so a row's index means the same thing in each.
-        for (auto artistId : library_.artistsSorted()) {
-          items.emplace_back(library_.artists[artistId].name,
+        // In the collection's own order, like the tap handler below --
+        // both go through artistsSorted() so a row's index means the same
+        // thing in each.
+        for (auto artistId : library().artistsSorted(profile().sort)) {
+          items.emplace_back(library().artists[artistId].name,
                              static_cast<int>(artistId));
         }
         break;
       case ScreenKind::Albums:
-        for (auto albumId : library_.albumsFor(current.params.artistId)) {
-          for (const auto &album : library_.albums) {
+        for (auto albumId :
+             library().albumsFor(current.params.artistId, profile().sort)) {
+          for (const auto &album : library().albums) {
             if (album.id == albumId) items.emplace_back(album.title, albumId);
           }
         }
         break;
       case ScreenKind::Tracks:
-        for (auto trackId : library_.tracksFor(current.params.albumId)) {
-          for (const auto &track : library_.tracks) {
+        for (auto trackId : library().tracksFor(current.params.albumId)) {
+          for (const auto &track : library().tracks) {
             if (track.id == trackId) items.emplace_back(track.title, trackId);
           }
         }
@@ -186,10 +221,22 @@ void ScreenManager::render() {
         break;
       }
       case ScreenKind::Settings:
-        items.emplace_back("Brightness", 0);
-        items.emplace_back("Touch calibration", 1);
-        items.emplace_back("Rescan library", 2);
-        items.emplace_back("USB drive", 3);
+        for (int i = 0; i < kSettingsRowCount; ++i) {
+          items.emplace_back(kSettingsRows[i].label, i);
+        }
+        break;
+      case ScreenKind::RescanPicker:
+        // One row per collection, then "All" -- so the row index is the
+        // collection's own value, and one past it means every collection.
+        for (const auto &collectionProfile : collection::kCollections) {
+          items.emplace_back(
+              collectionProfile.label,
+              static_cast<int>(collection::indexOf(collectionProfile.id)));
+        }
+        items.emplace_back("All", static_cast<int>(collection::kCollectionCount));
+        break;
+      case ScreenKind::MenuVisibility:
+        appendMenuVisibilityRows(items);
         break;
       default:
         break;
@@ -210,6 +257,13 @@ void ScreenManager::render() {
 void ScreenManager::renderList(
     const std::vector<std::pair<std::string, int>> &items, bool showMiniBar) {
   Screen current = tabs_.activeStack().current();
+  // Rows that are actions rather than data (Shuffle, Continue) sit at the
+  // top, so every row below them is one further along than its index.
+  int leadingRows = 0;
+  for (const auto &item : items) {
+    if (item.second != kShuffleItemId && item.second != kContinueItemId) break;
+    ++leadingRows;
+  }
   list_ = lv_list_create(screen_);
   // Starts below the header zone (back button + context caption)
   // and ends above the mini-bar, rather than spanning the whole screen
@@ -247,7 +301,7 @@ void ScreenManager::renderList(
   bool multiDisc = false;
   if (current.kind == ScreenKind::Tracks) {
     uint16_t firstDisc = 0;
-    for (const auto &track : library_.tracks) {
+    for (const auto &track : library().tracks) {
       if (track.albumId != current.params.albumId) continue;
       uint16_t disc = track.discNumber == 0 ? 1 : track.discNumber;
       if (firstDisc == 0) {
@@ -284,7 +338,7 @@ void ScreenManager::renderList(
     // text, no pill/badge (ux-guidelines §7), and nothing at all when the
     // year is unknown. Colored per row state by applyHighlight().
     if (current.kind == ScreenKind::Albums) {
-      for (const auto &album : library_.albums) {
+      for (const auto &album : library().albums) {
         if (album.id != static_cast<library::AlbumId>(items[i].second) ||
             album.year == 0) {
           continue;
@@ -304,11 +358,12 @@ void ScreenManager::renderList(
     // tracks are sorted by it (LibraryIndex::tracksFor()). Nothing when
     // the number is unknown.
     if (current.kind == ScreenKind::Tracks &&
-        !(hasShuffleRow(current.kind) && i == 0)) {
+        items[i].second != kShuffleItemId &&
+        items[i].second != kContinueItemId) {
       const auto trackId = static_cast<library::TrackId>(items[i].second);
-      if (trackId < library_.tracks.size() &&
-          library_.tracks[trackId].trackNumber != 0) {
-        const library::Track &track = library_.tracks[trackId];
+      if (trackId < library().tracks.size() &&
+          library().tracks[trackId].trackNumber != 0) {
+        const library::Track &track = library().tracks[trackId];
         char numberText[12];
         if (multiDisc) {
           snprintf(numberText, sizeof(numberText), "%u-%02u",
@@ -328,13 +383,21 @@ void ScreenManager::renderList(
 
     // The Brightness row ends in its current value, styled like the album
     // year: a plain secondary fact, not a badge.
-    if (current.kind == ScreenKind::Settings && items[i].second == 0) {
-      char valueText[8];
+    char valueText[8] = {0};
+    const char *secondary = nullptr;
+    if (current.kind == ScreenKind::MenuVisibility) {
+      // "On"/"Off"/"Always" -- the row's own state, read the same way the
+      // Brightness row's percentage is (ADR 0018).
+      secondary = menuVisibilityValue(items[i].second);
+    } else if (current.kind == ScreenKind::Settings && items[i].second == 0) {
       snprintf(valueText, sizeof(valueText), "%u%%",
                static_cast<unsigned>(brightness_.percent()));
+      secondary = valueText;
+    }
+    if (secondary) {
       lv_obj_t *valueLabel = lv_label_create(btn);
       lv_obj_set_style_text_font(valueLabel, &lv_font_montserrat_14, 0);
-      lv_label_set_text(valueLabel, valueText);
+      lv_label_set_text(valueLabel, secondary);
       lv_obj_set_style_pad_column(btn, 10, 0);
     }
 
@@ -344,9 +407,11 @@ void ScreenManager::renderList(
 
     auto ctx = std::make_unique<ItemContext>();
     ctx->self = this;
-    ctx->isShuffle = hasShuffleRow(current.kind) && i == 0;
-    // Index into the screen's data (artists, albums, tracks), not the row.
-    ctx->index = static_cast<int>(i) - (hasShuffleRow(current.kind) ? 1 : 0);
+    ctx->isShuffle = items[i].second == kShuffleItemId;
+    ctx->isContinue = items[i].second == kContinueItemId;
+    // Index into the screen's data (artists, albums, tracks), not the row
+    // -- so a leading Shuffle or Continue row doesn't shift everything.
+    ctx->index = static_cast<int>(i) - (leadingRows > 0 ? leadingRows : 0);
     ctx->albumId = current.params.albumId;
     if (current.kind == ScreenKind::Tracks && !ctx->isShuffle) {
       ctx->trackId = static_cast<library::TrackId>(items[i].second);
@@ -442,10 +507,18 @@ void ScreenManager::renderContextCaption() {
   std::string caption;
   switch (current.kind) {
     case ScreenKind::Artists:
-      caption = "Library";
+      // The collection's own name -- with three of them, "Library" no
+      // longer says which one you are in (ADR 0018).
+      caption = profile().label;
       break;
     case ScreenKind::Settings:
       caption = "Settings";
+      break;
+    case ScreenKind::RescanPicker:
+      caption = "Rescan";
+      break;
+    case ScreenKind::MenuVisibility:
+      caption = "Main menu";
       break;
     case ScreenKind::Brightness:
       caption = "Brightness";
@@ -454,12 +527,12 @@ void ScreenManager::renderContextCaption() {
       caption = "Sleep timer";
       break;
     case ScreenKind::Albums:
-      for (const auto &artist : library_.artists) {
+      for (const auto &artist : library().artists) {
         if (artist.id == current.params.artistId) caption = artist.name;
       }
       break;
     case ScreenKind::Tracks:
-      for (const auto &album : library_.albums) {
+      for (const auto &album : library().albums) {
         if (album.id == current.params.albumId) caption = album.title;
       }
       break;
@@ -470,6 +543,7 @@ void ScreenManager::renderContextCaption() {
       caption = (path.empty() || path == "/")
                     ? "Files"
                     : (slash == std::string::npos ? path : path.substr(slash + 1));
+      if (path == profile().rootPath) caption = profile().label;
       break;
     }
     default:
@@ -515,13 +589,13 @@ ScreenManager::TrackInfo ScreenManager::trackInfoFor(
   // Tags, not filenames (ux-guidelines §7) -- "08 Seeing Out the Angel"
   // is a filename, "Seeing Out the Angel" is the song.
   TrackInfo info;
-  for (const auto &track : library_.tracks) {
+  for (const auto &track : library().tracks) {
     if (track.filePath != path) continue;
     info.title = track.title;
-    for (const auto &album : library_.albums) {
+    for (const auto &album : library().albums) {
       if (album.id != track.albumId) continue;
       info.album = album.title;
-      for (const auto &artist : library_.artists) {
+      for (const auto &artist : library().artists) {
         if (artist.id == album.artistId) info.artist = artist.name;
       }
     }
@@ -731,7 +805,13 @@ void ScreenManager::renderNowPlaying() {
   // rows below the title (transport, time, lock) had no gap left between
   // them (user feedback 2026-09-15). Created before the time pill so the
   // pill wins where the handle's slop reaches up to it.
-  makeIconButton(screen_, LV_SYMBOL_UP, kHeaderButtonW, kOptionsHandleH,
+  //
+  // An ellipsis, not an up chevron (user feedback 2026-09-16): a chevron
+  // promises a direction -- and this one sat at the bottom of a screen
+  // whose back control is a *down* chevron, so the pair read as a
+  // contradiction. "..." is the conventional "more options" mark and says
+  // what is behind it rather than which way it moves.
+  makeIconButton(screen_, "...", kHeaderButtonW, kOptionsHandleH,
                  LV_ALIGN_BOTTOM_MID, 0, -kOptionsHandleBottom,
                  &ScreenManager::onOptionsHandleClicked, this,
                  ButtonRole::Quiet, &lv_font_montserrat_20);
@@ -842,20 +922,30 @@ void ScreenManager::renderOptionsPanel(bool animate) {
   };
   playback::RepeatMode repeat = playback_.repeat();
   bool showingSpectrum = preferSpectrum_ || !coverImg_;
-  const Option options[] = {
-      {KNOBIFY_ICON_SHUFFLE, "Shuffle", playback_.shuffle(), true,
-       &ScreenManager::onShuffleClicked},
-      {repeat == playback::RepeatMode::One ? KNOBIFY_ICON_REPEAT_ONE
-                                           : KNOBIFY_ICON_REPEAT,
-       "Repeat", repeat != playback::RepeatMode::Off, true,
-       &ScreenManager::onRepeatClicked},
-      // Shows what a tap switches to; only switchable when there is a cover.
-      {showingSpectrum ? KNOBIFY_ICON_IMAGE : KNOBIFY_ICON_EQUALIZER,
-       showingSpectrum ? "Cover" : "Spectrum", false, coverImg_ != nullptr,
-       &ScreenManager::onCoverSwitchClicked},
-      {KNOBIFY_ICON_LOCK, "Lock", false, true, &ScreenManager::onLockClicked},
-  };
-  constexpr int kCount = sizeof(options) / sizeof(options[0]);
+  Option options[4];
+  int kCount = 0;
+  // No Shuffle for spoken word (ADR 0018). The lists already drop their
+  // Shuffle row; leaving the toggle here was the one way left to shuffle
+  // an audiobook's chapters, which is never what anyone wants. Judged by
+  // what is *playing*, not by the screen behind the panel -- you can be
+  // browsing Music while a book plays, and these buttons act on playback.
+  if (playingProfile().hasShuffleRow) {
+    options[kCount++] = {KNOBIFY_ICON_SHUFFLE, "Shuffle", playback_.shuffle(),
+                         true, &ScreenManager::onShuffleClicked};
+  }
+  options[kCount++] = {repeat == playback::RepeatMode::One
+                           ? KNOBIFY_ICON_REPEAT_ONE
+                           : KNOBIFY_ICON_REPEAT,
+                       "Repeat", repeat != playback::RepeatMode::Off, true,
+                       &ScreenManager::onRepeatClicked};
+  // Shows what a tap switches to; only switchable when there is a cover.
+  options[kCount++] = {showingSpectrum ? KNOBIFY_ICON_IMAGE
+                                       : KNOBIFY_ICON_EQUALIZER,
+                       showingSpectrum ? "Cover" : "Spectrum", false,
+                       coverImg_ != nullptr,
+                       &ScreenManager::onCoverSwitchClicked};
+  options[kCount++] = {KNOBIFY_ICON_LOCK, "Lock", false, true,
+                       &ScreenManager::onLockClicked};
   for (int i = 0; i < kCount; ++i) {
     const Option &option = options[i];
     lv_coord_t x = static_cast<lv_coord_t>((2 * i - (kCount - 1)) * kPitch / 2);
@@ -894,19 +984,10 @@ void ScreenManager::renderOptionsPanel(bool animate) {
 }
 
 void ScreenManager::applyHighlight() {
-  if (tiles_) {
-    // Home: the selected tile's circle (each cell's first child) turns ink.
-    uint32_t count = lv_obj_get_child_cnt(tiles_);
-    for (uint32_t i = 0; i < count; ++i) {
-      lv_obj_t *circle = lv_obj_get_child(lv_obj_get_child(tiles_, i), 0);
-      if (static_cast<int>(i) == highlightedIndex_) {
-        lv_obj_add_state(circle, LV_STATE_CHECKED);
-      } else {
-        lv_obj_clear_state(circle, LV_STATE_CHECKED);
-      }
-    }
-    return;
-  }
+  // Home has no highlight to move: the carousel's selection decides which
+  // entries are on screen at all, so moveHomeSelection() re-renders (ADR
+  // 0018) rather than restyling existing children.
+  if (tiles_) return;
   if (!list_) return;
   // Toggling LV_STATE_CHECKED and letting the theme render it (rather
   // than overriding bg_color by hand) guarantees the theme's own
@@ -1121,12 +1202,7 @@ std::string ScreenManager::friendlyName(const std::string &path) {
 
 void ScreenManager::onListMove(int16_t delta) {
   if (tiles_) {
-    int count = static_cast<int>(lv_obj_get_child_cnt(tiles_));
-    if (count == 0) return;
-    highlightedIndex_ =
-        std::clamp(highlightedIndex_ + static_cast<int>(delta), 0, count - 1);
-    homeSelection_ = highlightedIndex_;
-    applyHighlight();
+    moveHomeSelection(static_cast<int>(delta));
     return;
   }
   if (!list_) return;
@@ -1145,8 +1221,55 @@ void ScreenManager::onListMove(int16_t delta) {
 }
 
 void ScreenManager::goToNowPlaying() {
-  tabs_.activeStack().push(Screen{ScreenKind::NowPlaying, {}});
+  tabs_.activeStack().push(
+      Screen{ScreenKind::NowPlaying,
+             ScreenParams{.collection = currentCollection()}});
   render();
+}
+
+std::string ScreenManager::titleKeyFor(library::AlbumId albumId) const {
+  const auto trackIds = library().tracksFor(albumId);
+  if (trackIds.empty()) return "";
+  return resume::BookmarkKeeper::titleKeyFor(
+      library().tracks[trackIds[0]].filePath);
+}
+
+bool ScreenManager::hasContinueRow(const navigation::Screen &screen,
+                                   resume::Bookmark &out) const {
+  if (screen.kind != ScreenKind::Tracks) return false;
+  if (!profile().resumesWithinTitle) return false;
+  const std::string key = titleKeyFor(screen.params.albumId);
+  if (key.empty()) return false;
+  if (!bookmarks_.lookup(key, out)) return false;
+  // A bookmark whose part is no longer in the album (renamed, deleted,
+  // rescanned away) would resume nothing -- don't offer it.
+  for (library::TrackId id : library().tracksFor(screen.params.albumId)) {
+    if (library().tracks[id].filePath == out.trackPath) return true;
+  }
+  return false;
+}
+
+// Cue at the saved position, then start -- the same two steps the session
+// resume takes when the user presses play, so the seek behaviour is
+// identical rather than a second way of doing it.
+void ScreenManager::playFromBookmark(const resume::Bookmark &mark,
+                                     library::AlbumId albumId) {
+  std::vector<std::string> playlist =
+      library::PlaylistBuilder::forAlbum(library(), albumId);
+  size_t index = 0;
+  bool found = false;
+  for (size_t i = 0; i < playlist.size(); ++i) {
+    if (playlist[i] != mark.trackPath) continue;
+    index = i;
+    found = true;
+    break;
+  }
+  if (!found) return;
+  playback_.cue(std::move(playlist), index, /*shuffle=*/false,
+                playback::PlayScope::Album, mark.filePosition,
+                mark.elapsedSeconds, millis());
+  playback_.togglePlayPause(millis());
+  goToNowPlaying();
 }
 
 void ScreenManager::onListItemClicked(lv_event_t *e) {
@@ -1154,23 +1277,31 @@ void ScreenManager::onListItemClicked(lv_event_t *e) {
   ScreenManager *self = ctx->self;
   Screen current = self->tabs_.activeStack().current();
 
+  if (ctx->isContinue) {
+    resume::Bookmark mark;
+    if (self->hasContinueRow(current, mark)) {
+      self->playFromBookmark(mark, current.params.albumId);
+    }
+    return;
+  }
+
   if (ctx->isShuffle) {
     std::vector<std::string> playlist;
     std::string name = "library";
     playback::PlayScope scope;
     if (current.kind == ScreenKind::Artists) {
-      playlist = library::PlaylistBuilder::forLibrary(self->library_);
+      playlist = library::PlaylistBuilder::forLibrary(self->library(), self->profile().sort);
       scope = playback::PlayScope::Library;
     } else if (current.kind == ScreenKind::Albums) {
-      playlist = library::PlaylistBuilder::forArtist(self->library_,
+      playlist = library::PlaylistBuilder::forArtist(self->library(), self->profile().sort,
                                                      current.params.artistId);
       scope = playback::PlayScope::Artist;
-      name = self->library_.artists[current.params.artistId].name;
+      name = self->library().artists[current.params.artistId].name;
     } else {
-      playlist = library::PlaylistBuilder::forAlbum(self->library_,
+      playlist = library::PlaylistBuilder::forAlbum(self->library(),
                                                     current.params.albumId);
       scope = playback::PlayScope::Album;
-      name = self->library_.albums[current.params.albumId].title;
+      name = self->library().albums[current.params.albumId].title;
     }
     if (playlist.empty()) return;
     self->playback_.play(std::move(playlist), 0, millis(), /*shuffle=*/true,
@@ -1186,21 +1317,26 @@ void ScreenManager::onListItemClicked(lv_event_t *e) {
       self->tabs_.activeStack().push(
           Screen{ScreenKind::Albums,
                  ScreenParams{.artistId = static_cast<uint32_t>(
-                                  self->library_.artistsSorted()[ctx->index])}});
+                                  self->library().artistsSorted(
+                                      self->profile().sort)[ctx->index]),
+                              .collection = current.params.collection}});
       self->render();
       break;
     case ScreenKind::Albums:
       self->tabs_.activeStack().push(Screen{
           ScreenKind::Tracks,
           ScreenParams{.albumId = static_cast<uint32_t>(
-                           self->library_.albumsFor(current.params.artistId)[ctx->index])}});
+                           self->library().albumsFor(
+                               current.params.artistId,
+                               self->profile().sort)[ctx->index]),
+                       .collection = current.params.collection}});
       self->render();
       break;
     case ScreenKind::Tracks: {
       // Rows follow tracksFor() order, so the row index is the start index.
       // In order, shuffle off: a tapped track always plays its album as listed.
       self->playback_.play(
-          library::PlaylistBuilder::forAlbum(self->library_,
+          library::PlaylistBuilder::forAlbum(self->library(),
                                              current.params.albumId),
           static_cast<size_t>(ctx->index), millis(), /*shuffle=*/false,
           playback::PlayScope::Album);
@@ -1210,7 +1346,9 @@ void ScreenManager::onListItemClicked(lv_event_t *e) {
     case ScreenKind::Folder:
       if (ctx->isFolder) {
         self->tabs_.activeStack().push(
-            Screen{ScreenKind::Folder, ScreenParams{.folderPath = ctx->path}});
+            Screen{ScreenKind::Folder,
+                   ScreenParams{.folderPath = ctx->path,
+                                .collection = current.params.collection}});
         self->render();
       } else {
         self->playback_.play({ctx->path}, 0, millis());
@@ -1218,18 +1356,20 @@ void ScreenManager::onListItemClicked(lv_event_t *e) {
       }
       break;
     case ScreenKind::Settings:
-      if (ctx->index == 0) {
-        self->tabs_.activeStack().push(Screen{ScreenKind::Brightness, {}});
-        self->render();
-      } else if (ctx->index == 1) {
-        self->touchCalibration_.start(millis());
-        self->tabs_.activeStack().push(Screen{ScreenKind::TouchCalibration, {}});
-        self->render();
-      } else if (ctx->index == 2) {
-        self->runRescan();
-      } else {
-        self->startUsbDrive();
+      if (ctx->index >= 0 && ctx->index < kSettingsRowCount) {
+        kSettingsRows[ctx->index].open(*self);
       }
+      break;
+    case ScreenKind::RescanPicker:
+      if (ctx->index >= 0 &&
+          collection::isValidCollection(static_cast<uint8_t>(ctx->index))) {
+        self->runRescan(static_cast<collection::CollectionId>(ctx->index));
+      } else {
+        self->runRescanAll();
+      }
+      break;
+    case ScreenKind::MenuVisibility:
+      self->toggleMenuEntryVisible(ctx->index);
       break;
     default:
       break;
@@ -1347,9 +1487,9 @@ void ScreenManager::onLockClicked(lv_event_t *e) {
   // screen.
 }
 
-// Runs from a tap on Settings' "Rescan library" row -- the only way to pick
-// up new/changed music, since boot only loads the cached index.
-void ScreenManager::runRescan() {
+// Runs from a tap on a Settings > Rescan row -- the only way to pick up
+// new/changed files, since boot only loads the cached indexes.
+void ScreenManager::runRescan(collection::CollectionId id) {
   // A one-shot full-screen overlay on LVGL's top layer, same technique as
   // LockOverlay -- but built and torn down here rather than a persistent
   // begin()/tick() class, since a rescan is a single blocking call, not
@@ -1367,7 +1507,10 @@ void ScreenManager::runRescan() {
   lv_obj_clear_flag(overlay, LV_OBJ_FLAG_SCROLLABLE);
 
   lv_obj_t *label = lv_label_create(overlay);
-  lv_label_set_text(label, "Scanning for changes\nin music library...");
+  char scanning[64];
+  snprintf(scanning, sizeof(scanning), "Scanning for changes\nin %s...",
+           collections_.profile(id).label);
+  lv_label_set_text(label, scanning);
   lv_obj_set_style_text_color(label, theme::ink(), 0);
   lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
@@ -1377,7 +1520,7 @@ void ScreenManager::runRescan() {
   lv_refr_now(nullptr);
 
   ScanProgressLabelListener progress(label);
-  rescanner_.rescan(&progress);
+  collections_.rescan(id, &progress);
 
   // Async, not lv_obj_del() -- we're still inside the click event that
   // LVGL's own (outer) lv_timer_handler() is currently dispatching;
@@ -1385,6 +1528,15 @@ void ScreenManager::runRescan() {
   // ScreenManager::render() already guards against for screen_ below.
   lv_obj_del_async(overlay);
   render();
+}
+
+void ScreenManager::runRescanAll() {
+  // Each one puts up (and tears down) its own overlay, so the label names
+  // whichever collection is actually being walked rather than a single
+  // "Scanning..." that sits there for minutes saying nothing.
+  for (const auto &collectionProfile : collection::kCollections) {
+    runRescan(collectionProfile.id);
+  }
 }
 
 }  // namespace knobify::ui
