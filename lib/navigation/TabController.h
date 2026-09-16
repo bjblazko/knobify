@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CollectionProfile.h"
 #include "NavigationStack.h"
 #include "ScreenId.h"
 
@@ -7,23 +8,26 @@ namespace knobify::navigation {
 
 // Menu is the main menu's own stack (Home -> Settings -> Brightness, or
 // Now Playing opened from its mini-bar); Library and Files are the two
-// music tabs.
+// browse tabs every collection has.
 enum class Tab { Menu, Library, Files };
 
 // Owns the top-level browsing modes as separate NavigationStacks, plus
-// which one is active: the main menu (ADR 0010) and the two swipeable
-// music tabs (decision 10 in ADR 0004). A left-right swipe means "pop" if
-// the active stack can go back, otherwise "switch music tab" --
-// handleSwipeBack() implements exactly that rule so InputRouter doesn't
-// need to know about tabs at all.
+// which one is active: the main menu (ADR 0010) and, per collection, the
+// two swipeable browse tabs (decision 10 in ADR 0004, one set per
+// collection since ADR 0018). A left-right swipe means "pop" if the active
+// stack can go back, otherwise "switch tab" -- handleSwipeBack()
+// implements exactly that rule so InputRouter doesn't need to know about
+// tabs at all.
 class TabController {
  public:
   TabController()
-      : menu_(Screen{ScreenKind::Home, {}}),
-        library_(Screen{ScreenKind::Artists, {}}),
-        files_(Screen{ScreenKind::Folder, ScreenParams{.folderPath = "/"}}),
+      : collections_{makeCollectionTabs(collection::CollectionId::Music),
+                     makeCollectionTabs(collection::CollectionId::Audiobooks),
+                     makeCollectionTabs(collection::CollectionId::RadioPlays)},
+        menu_(Screen{ScreenKind::Home, {}}),
         active_(Tab::Menu),
-        lastMusicTab_(Tab::Library) {}
+        activeCollection_(collection::CollectionId::Music),
+        lastBrowseTab_(Tab::Library) {}
 
   NavigationStack &activeStack() { return stackFor(active_); }
 
@@ -32,36 +36,47 @@ class TabController {
   }
 
   Tab activeTab() const { return active_; }
-  // The music tab openMusic() returns to.
-  Tab lastMusicTab() const { return lastMusicTab_; }
+  // The browse tab openCollection() returns to.
+  Tab lastBrowseTab() const { return lastBrowseTab_; }
+  collection::CollectionId activeCollection() const { return activeCollection_; }
 
   NavigationStack &stack(Tab tab) { return stackFor(tab); }
   const NavigationStack &stack(Tab tab) const {
     return const_cast<TabController *>(this)->stackFor(tab);
   }
 
-  // Restores which tab is active after a reboot (ADR 0012). A
-  // `lastMusicTab` that isn't a music tab is ignored.
-  void restoreTabs(Tab active, Tab lastMusicTab) {
+  // Restores which collection and tab are active after a reboot (ADR
+  // 0012). A `lastBrowseTab` that isn't a browse tab is ignored.
+  void restoreTabs(Tab active, Tab lastBrowseTab,
+                   collection::CollectionId collectionId =
+                       collection::CollectionId::Music) {
     active_ = active;
-    if (lastMusicTab != Tab::Menu) lastMusicTab_ = lastMusicTab;
+    activeCollection_ = collectionId;
+    if (lastBrowseTab != Tab::Menu) lastBrowseTab_ = lastBrowseTab;
   }
 
-  bool isMusicTab() const { return active_ != Tab::Menu; }
+  bool isBrowseTab() const { return active_ != Tab::Menu; }
 
-  // Enters Music on whichever tab was used last, with its stack intact.
-  void openMusic() { active_ = lastMusicTab_; }
+  // Enters a collection on whichever tab was used last, with that
+  // collection's own stacks intact -- leaving Audiobooks halfway into a
+  // series and coming back later lands where you left (ADR 0018).
+  void openCollection(collection::CollectionId collectionId) {
+    activeCollection_ = collectionId;
+    active_ = lastBrowseTab_;
+  }
 
   void goHome() { active_ = Tab::Menu; }
 
-  // Toggles between the two music tabs; does nothing in the menu.
+  // Toggles between the active collection's two browse tabs; does nothing
+  // in the menu. Never crosses collections: a swipe is "the other view of
+  // what I am browsing", not "a different shelf".
   void switchTab() {
-    if (!isMusicTab()) return;
+    if (!isBrowseTab()) return;
     active_ = (active_ == Tab::Library) ? Tab::Files : Tab::Library;
-    lastMusicTab_ = active_;
+    lastBrowseTab_ = active_;
   }
 
-  // Pops the active stack if possible, otherwise switches music tabs (a
+  // Pops the active stack if possible, otherwise switches browse tabs (a
   // no-op on Home). Returns true if it popped, false otherwise -- callers
   // (e.g. the UI transition animation) use this to pick the right visual
   // treatment.
@@ -74,38 +89,58 @@ class TabController {
     return false;
   }
 
-  // The on-screen back button: pops if possible, otherwise leaves a music
+  // The on-screen back button: pops if possible, otherwise leaves a browse
   // tab's root for the main menu.
   void back() {
     if (activeStack().canGoBack()) {
       activeStack().pop();
-    } else if (isMusicTab()) {
+    } else if (isBrowseTab()) {
       goHome();
     }
   }
 
   // Whether back() would do anything, i.e. whether to show a back button.
   bool canGoBackOrHome() const {
-    return activeStack().canGoBack() || isMusicTab();
+    return activeStack().canGoBack() || isBrowseTab();
   }
 
  private:
+  // One collection's two browse stacks, each rooted inside that
+  // collection: the tag-based Library root carries the collection so every
+  // screen pushed from it inherits it, and the Files root starts at the
+  // collection's own folder rather than the card's root.
+  struct CollectionTabs {
+    NavigationStack library;
+    NavigationStack files;
+  };
+
+  static CollectionTabs makeCollectionTabs(collection::CollectionId id) {
+    return CollectionTabs{
+        NavigationStack(
+            Screen{ScreenKind::Artists, ScreenParams{.collection = id}}),
+        NavigationStack(Screen{
+            ScreenKind::Folder,
+            ScreenParams{.folderPath = collection::profileOf(id).rootPath,
+                         .collection = id}})};
+  }
+
   NavigationStack &stackFor(Tab tab) {
+    CollectionTabs &tabs = collections_[collection::indexOf(activeCollection_)];
     switch (tab) {
       case Tab::Library:
-        return library_;
+        return tabs.library;
       case Tab::Files:
-        return files_;
+        return tabs.files;
       default:
         return menu_;
     }
   }
 
+  CollectionTabs collections_[collection::kCollectionCount];
   NavigationStack menu_;
-  NavigationStack library_;
-  NavigationStack files_;
   Tab active_;
-  Tab lastMusicTab_;
+  collection::CollectionId activeCollection_;
+  Tab lastBrowseTab_;
 };
 
 }  // namespace knobify::navigation

@@ -158,6 +158,11 @@ Settings > USB drive, at about 0.8 MB/s writing and 0.9 MB/s reading
 - A "recently played" / "recently added" quick-access list
 - Resume support for future sources (podcasts, web radio, video) — each
   adds its own section to the resume record, see ADR 0012
+- Per-title bookmarks for spoken word: `CollectionProfile::
+  resumesWithinTitle` is set for Audiobooks and Radio Plays but nothing
+  reads it yet. Leaving an audiobook to play music and coming back should
+  return to the spot, not the start (ADR 0018). Session resume across a
+  power cut already works.
 - M3U playlist file import
 - Gapless playback (for live albums, concept albums, etc.)
 - On-device firmware updates from a file on the SD card (no Wi-Fi
@@ -175,16 +180,36 @@ Arduino, native + esp32-s3 environments) are in place — see
 [`docs/adr/`](docs/adr/README.md) and [`docs/arc42/arc42.md`](docs/arc42/arc42.md)
 for what was decided and why.
 
-v1 works on real hardware: browsing by artist/album (or raw folders),
+v1 works on real hardware: browsing by artist/album (or by folder),
 playback with cover art, jog/shuttle, lock, sleep timer, resume, and
-copying music over the USB cable. Formats are **MP3, M4A (AAC), WAV,
+copying files over the USB cable. Formats are **MP3, M4A (AAC), WAV,
 FLAC (16-bit) and Ogg Vorbis**. See
 [ADR 0004](docs/adr/0004-navigation-library-and-index-architecture.md)
 for the navigation/library architecture and the bring-up history,
 [ADR 0016](docs/adr/0016-native-formats-and-usb-drive.md) for formats,
-cover decoding and USB drive mode, and
+cover decoding and USB drive mode,
 [ADR 0017](docs/adr/0017-two-audio-decode-paths.md) for the Vorbis decode
-path.
+path, and
+[ADR 0018](docs/adr/0018-collections-and-menu-visibility.md) for
+collections and the main menu.
+
+### What goes on the SD card
+
+Each collection is its own top-level folder, laid out
+`<root>/<Artist>/<Album>/track` (for spoken word: `<series>/<title>/part`
+— tags win where they exist, folder names are the fallback):
+
+```
+/Music/…         Music
+/Audiobooks/…    Audiobooks
+/RadioPlays/…    Radio Plays
+/knobify/        indexes and cached covers (written by the device)
+```
+
+A collection whose folder is missing simply shows up empty; hide it in
+Settings > Main menu if you do not want it on the home screen. Indexes are
+built on demand — Settings > Rescan, or automatically after a USB drive
+session — never at boot, so the device is usable the moment it powers on.
 
 ## License
 

@@ -38,11 +38,15 @@ struct LibraryIndex {
   // letter, so "Die Ärzte" sorts with A instead of after Z. Scan order
   // (which is SD directory order) is meaningless to a listener --
   // unsorted artists were unusable on a real library of ~100 of them.
-  std::vector<ArtistId> artistsSorted() const {
+  // SortOrder::ByName skips the tag-oriented folding entirely: a
+  // spoken-word folder called "Die drei ???" should sit under D, where
+  // its shelf and its cover say it belongs, not under "drei" (ADR 0018).
+  std::vector<ArtistId> artistsSorted(SortOrder order = SortOrder::ByTag) const {
     std::vector<ArtistId> result;
     result.reserve(artists.size());
     for (const auto &artist : artists) result.push_back(artist.id);
-    std::sort(result.begin(), result.end(), [this](ArtistId a, ArtistId b) {
+    std::sort(result.begin(), result.end(), [this, order](ArtistId a, ArtistId b) {
+      if (order == SortOrder::ByName) return artists[a].name < artists[b].name;
       const std::string left = artistSortKey(artists[a].name);
       const std::string right = artistSortKey(artists[b].name);
       if (left != right) return left < right;
@@ -84,16 +88,21 @@ struct LibraryIndex {
     return out;
   }
 
-  // Sorted by year (ascending), unknown-year (0) albums last, title as a
-  // stable tie-break -- so an artist's albums read chronologically.
-  std::vector<AlbumId> albumsFor(ArtistId artistId) const {
+  // ByTag: sorted by year (ascending), unknown-year (0) albums last,
+  // title as a stable tie-break -- so an artist's albums read
+  // chronologically. ByName: title order, because a spoken-word series is
+  // followed by its episode names, and its release years are usually
+  // missing anyway (ADR 0018).
+  std::vector<AlbumId> albumsFor(ArtistId artistId,
+                                 SortOrder order = SortOrder::ByTag) const {
     std::vector<AlbumId> result;
     for (const auto &album : albums) {
       if (album.artistId == artistId) result.push_back(album.id);
     }
-    std::sort(result.begin(), result.end(), [this](AlbumId a, AlbumId b) {
+    std::sort(result.begin(), result.end(), [this, order](AlbumId a, AlbumId b) {
       const Album &left = albums[a];
       const Album &right = albums[b];
+      if (order == SortOrder::ByName) return left.title < right.title;
       uint32_t leftYear = left.year == 0 ? UINT32_MAX : left.year;
       uint32_t rightYear = right.year == 0 ? UINT32_MAX : right.year;
       if (leftYear != rightYear) return leftYear < rightYear;

@@ -20,7 +20,10 @@ namespace knobify::resume {
 // sections and fields can be appended without a version bump.
 class ResumeCodec {
  public:
-  static constexpr uint8_t kVersion = 1;
+  // v2 (ADR 0018) added a collection byte to both sections. The layout of
+  // the navigation section changed mid-record, so v1 blobs can't be read
+  // -- decode() rejects them, which callers already treat as "no record".
+  static constexpr uint8_t kVersion = 2;
   // Well inside one NVS page; a record this big would be a bug anyway.
   static constexpr std::size_t kMaxEncodedSize = 3072;
   static constexpr std::size_t kMaxStringLength = 512;

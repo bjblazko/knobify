@@ -5,6 +5,12 @@
 Accepted — 2026-09-15. Replaces the README backlog item "resuming playback
 position after a restart or power loss".
 
+*Amended 2026-09-16 by [ADR 0018](0018-collections-and-menu-visibility.md):
+`MusicSnapshot` is `PlaybackSnapshot` and carries the collection its queue
+came from; the navigation snapshot saves only the active collection's
+stacks, plus that collection's id. `ResumeCodec::kVersion` is 2 and v1
+records are dropped.*
+
 ## Context
 
 Every boot started on Home with nothing loaded. The user wanted the device to

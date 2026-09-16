@@ -369,6 +369,26 @@ duplicating it.
   ~80 ms (measured with a sample-gap log in `audio_process_i2s`). See ADR
   0012 and ADR 0013.
 
+- **The player is parameterised by a "collection", not hardcoded to
+  music** (ADR 0018). `lib/collection/CollectionProfile.h` is the table:
+  Music `/Music`, Audiobooks `/Audiobooks`, Radio Plays `/RadioPlays`,
+  each with its own `/knobify/*.idx`. Two things bite when editing it:
+  `CollectionId` and `ScreenManagerMenu.cpp`'s `kMenuEntries` are both
+  **append-only** (their order is a stored resume value and the bit order
+  of the `menuVis` NVS byte), and a screen's `artistId`/`albumId` are
+  indices into *its own* collection's index — always carry
+  `ScreenParams::collection` along when pushing, or ids silently resolve
+  against Music.
+- **`lv_font_conv` needs `@latest` from npm**: the pinned older version in
+  some caches lacks `--lv-font-name`, and without it the generated font's
+  symbol won't match `IconFont.h`'s `LV_FONT_DECLARE`. The exact
+  invocation is in each `IconFont*.c` header comment — keep
+  `--no-compress` (see above).
+- **Don't name a member function `bit()`** (or any other Arduino.h macro:
+  `bit`, `_BV`, `abs`, `min`, `max`, `round`). A header that compiles fine
+  host-side in `pio test -e native` fails inside the firmware build with a
+  baffling error pointing at Arduino.h itself, not at your code. Found
+  2026-09-16 writing `navigation::MenuVisibility`.
 - **knobify decodes audio two ways**: ESP32-audioI2S for MP3/M4A/WAV/FLAC,
   and knobify's own stb_vorbis-based backend for Ogg Vorbis, dispatched by
   file extension in `Esp32AudioI2SDriver`. `AudioGain` and

@@ -35,6 +35,12 @@ LV_FONT_DECLARE(knobify_icon_font_48);
 #define KNOBIFY_ICON_SETTINGS "\xEE\xA2\xB8"    // U+E8B8
 #define KNOBIFY_ICON_LIGHT_MODE "\xEE\x94\x98"  // U+E518
 #define KNOBIFY_ICON_BEDTIME "\xEE\xBD\x84"     // U+EF44
+// Audiobooks ("menu_book") and Radio Plays ("theater_comedy") -- the two
+// collections added in ADR 0018. A book and a pair of masks read as
+// "read to me" and "a play" without a label, which is what a carousel
+// tile seen out of the corner of the eye has to do.
+#define KNOBIFY_ICON_MENU_BOOK "\xEE\xA8\x99"      // U+EA19
+#define KNOBIFY_ICON_THEATER_COMEDY "\xEE\xA9\xA6"  // U+EA66
 
 // 16px fast_rewind/fast_forward for Now Playing's time pill shuttle marks
 // (ADR 0013) -- IconFont16.c, same source font. Only carries these two

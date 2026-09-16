@@ -23,12 +23,13 @@
 #include "IndexCache.h"
 #include "InputRouter.h"
 #include "JpegDecAdapter.h"
-#include "LibraryRescanner.h"
+#include "CollectionProfile.h"
+#include "CollectionSet.h"
 #include "LibraryScanner.h"
 #include "LockController.h"
 #include "LockOverlay.h"
 #include "LvglGlue.h"
-#include "MusicResumeSource.h"
+#include "PlaybackResumeSource.h"
 #include "NavigationResumeSource.h"
 #include "NvsKeyValueStore.h"
 #include "PlaybackStateMachine.h"
@@ -53,15 +54,15 @@
 
 namespace {
 
-// Where music lives on the SD card, and where the derived library index
-// cache is persisted -- see decision 2, ADR 0004. Both are assumptions
-// about SD card layout pending real-hardware verification.
-constexpr const char *kMusicRoot = "/Music";
-constexpr const char *kIndexCachePath = "/knobify/library.idx";
+// Where each collection lives on the SD card, and where its derived index
+// cache is persisted, both come from its profile now
+// (lib/collection/CollectionProfile.h) rather than from one pair of
+// constants here -- see decision 2, ADR 0004 and ADR 0018.
+constexpr const char *kCacheDir = "/knobify";
 
-std::vector<uint8_t> readIndexCacheFile() {
+std::vector<uint8_t> readIndexCacheFile(const char *cachePath) {
   std::vector<uint8_t> bytes;
-  fs::File file = SD_MMC.open(kIndexCachePath, FILE_READ);
+  fs::File file = SD_MMC.open(cachePath, FILE_READ);
   if (!file) return bytes;
   bytes.resize(file.size());
   file.read(bytes.data(), bytes.size());
@@ -69,16 +70,17 @@ std::vector<uint8_t> readIndexCacheFile() {
   return bytes;
 }
 
-void writeIndexCacheFile(const std::vector<uint8_t> &bytes) {
+void writeIndexCacheFile(const char *cachePath,
+                        const std::vector<uint8_t> &bytes) {
   // The SD_MMC/FATFS layer refuses to create a file inside a directory
-  // that doesn't exist yet -- kIndexCachePath's parent ("/knobify") is
+  // that doesn't exist yet -- every cache path's parent ("/knobify") is
   // never created anywhere else, so without this every single boot
   // silently failed to persist the cache and re-did the full scan from
   // scratch forever. mkdir() on an already-existing dir is a harmless
   // no-op. Found via live serial capture 2026-09-13 while investigating
   // slow boot -- see AGENTS.md.
-  SD_MMC.mkdir("/knobify");
-  fs::File file = SD_MMC.open(kIndexCachePath, FILE_WRITE);
+  SD_MMC.mkdir(kCacheDir);
+  fs::File file = SD_MMC.open(cachePath, FILE_WRITE);
   if (!file) {
     Serial.println("writeIndexCacheFile: could not open cache file for write");
     return;
@@ -135,7 +137,8 @@ class CoverArtScanListener : public knobify::library::ScanProgressListener {
 };
 
 knobify::library::LibraryIndex loadOrBuildLibraryIndex(
-    knobify::drivers::SdFileLister &lister, knobify::library::FileOpener &opener,
+    const char *cachePath, knobify::drivers::SdFileLister &lister,
+    knobify::library::FileOpener &opener,
     knobify::library::DirectoryReader &coverDirReader,
     knobify::library::JpegDecoder &coverDecoder,
     knobify::library::CoverWriter &coverWriter,
@@ -150,7 +153,7 @@ knobify::library::LibraryIndex loadOrBuildLibraryIndex(
 
   LibraryIndex cachedIndex;
   LibrarySignature cachedSignature;
-  std::vector<uint8_t> cacheBytes = readIndexCacheFile();
+  std::vector<uint8_t> cacheBytes = readIndexCacheFile(cachePath);
   if (!cacheBytes.empty() &&
       IndexCache::decode(cacheBytes, cachedIndex, cachedSignature) &&
       cachedSignature == currentSignature) {
@@ -166,24 +169,46 @@ knobify::library::LibraryIndex loadOrBuildLibraryIndex(
   CoverArtScanListener coverListener(progress, coverDirReader, opener,
                                       coverDecoder, coverWriter);
   LibraryIndex freshIndex = LibraryScanner::scan(lister, opener, &coverListener);
-  writeIndexCacheFile(IndexCache::encode(freshIndex, currentSignature));
+  writeIndexCacheFile(cachePath, IndexCache::encode(freshIndex, currentSignature));
   return freshIndex;
 }
 
-// Concrete LibraryRescanner: wraps the SD-backed lister/opener (file-scope
-// here, so ScreenManager/LibraryRescanner can't reference them directly)
-// and calls the existing signature-check-then-scan logic on demand, from
-// Settings' "Rescan library" row rather than at boot -- see AGENTS.md.
-// Defined out-of-line below, once g_libraryIndex/g_fileLister/g_fileOpener
-// exist.
-class SdLibraryRescanner : public knobify::library::LibraryRescanner {
- public:
-  void rescan(knobify::library::ScanProgressListener *progress) override;
+// One collection's SD-side state: where it is, and what was scanned from
+// there. Bundled so adding a collection is one table row in
+// CollectionProfile.h plus one element here, not another set of globals.
+struct CollectionState {
+  explicit CollectionState(const knobify::collection::CollectionProfile &p)
+      : profile(p), lister(p.rootPath) {}
+
+  const knobify::collection::CollectionProfile &profile;
+  knobify::drivers::SdFileLister lister;
+  knobify::library::LibraryIndex index;
 };
 
-knobify::drivers::SdFileLister g_fileLister(kMusicRoot);
+CollectionState g_collectionState[knobify::collection::kCollectionCount] = {
+    CollectionState(knobify::collection::kCollections[0]),
+    CollectionState(knobify::collection::kCollections[1]),
+    CollectionState(knobify::collection::kCollections[2]),
+};
+
+// Concrete CollectionSet: wraps the SD-backed listers/opener (file-scope
+// here, so ScreenManager can't reference them directly) and calls the
+// existing signature-check-then-scan logic on demand, from Settings'
+// Rescan rows rather than at boot -- see AGENTS.md. Defined out-of-line
+// below, once g_fileOpener and friends exist.
+class SdCollectionSet : public knobify::collection::CollectionSet {
+ public:
+  knobify::library::LibraryIndex &index(
+      knobify::collection::CollectionId id) override {
+    return g_collectionState[knobify::collection::indexOf(id)].index;
+  }
+
+  void rescan(knobify::collection::CollectionId id,
+              knobify::library::ScanProgressListener *progress) override;
+};
+
 knobify::drivers::SdFileOpener g_fileOpener;
-SdLibraryRescanner g_libraryRescanner;
+SdCollectionSet g_collections;
 knobify::drivers::SdDirectoryReader g_directoryReader;
 knobify::drivers::SdCoverWriter g_coverWriter;
 knobify::drivers::SdCoverReader g_coverReader;
@@ -205,15 +230,14 @@ knobify::usbdrive::UsbDriveSession g_usbDrive(g_usbStorage);
 knobify::drivers::St77916Driver g_display;
 knobify::drivers::Cst816Driver g_touch;
 knobify::ui::LvglGlue g_lvglGlue;
-knobify::library::LibraryIndex g_libraryIndex;
 knobify::power::IdleTimer g_idleTimer;
 knobify::power::LockController g_lockController;
 knobify::ui_widgets::MessageArea g_messageArea;
 knobify::ui::ScreenManager g_screenManager(
-    g_tabs, g_libraryIndex, g_directoryReader, g_playback, g_shuttle,
-    g_lockController, g_libraryRescanner, g_coverReader, g_fileOpener,
-    g_jpegDecoder, g_coverWriter, g_nvsStore, g_brightness, g_sleepTimer,
-    g_touchCalibration, g_usbDrive, g_messageArea);
+    g_tabs, g_collections, g_directoryReader, g_playback, g_shuttle,
+    g_lockController, g_coverReader, g_fileOpener, g_jpegDecoder,
+    g_coverWriter, g_nvsStore, g_brightness, g_sleepTimer, g_touchCalibration,
+    g_usbDrive, g_messageArea);
 knobify::ui::LockOverlay g_lockOverlay(g_lockController);
 knobify::drivers::BatteryAdcDriver g_batteryAdc;
 knobify::power::BatteryMonitor g_batteryMonitor;
@@ -227,12 +251,12 @@ bool sdFileExists(const std::string &path) { return SD_MMC.exists(path.c_str());
 
 // Where the device was before power went away (ADR 0012). Music restores
 // before navigation, which drops Now Playing if no queue came back.
-knobify::resume::MusicResumeSource g_musicResume(g_playback, g_libraryIndex,
-                                                 &sdFileExists);
-knobify::resume::NavigationResumeSource g_navigationResume(g_tabs, g_libraryIndex,
+knobify::resume::PlaybackResumeSource g_playbackResume(g_playback, g_collections,
+                                                       &sdFileExists);
+knobify::resume::NavigationResumeSource g_navigationResume(g_tabs, g_collections,
                                                            g_playback);
 knobify::resume::ResumeScheduler g_resumeScheduler(
-    g_nvsStore, {&g_musicResume, &g_navigationResume});
+    g_nvsStore, {&g_playbackResume, &g_navigationResume});
 
 bool g_wasPlaying = false;
 // Last duty written to the backlight PWM; LvglGlue::begin() leaves it at
@@ -247,10 +271,12 @@ uint32_t g_lastBatteryUpdateMs = 0;
 // loop() iteration like touch/encoder input does.
 constexpr uint32_t kBatteryUpdateIntervalMs = 5000;
 
-void SdLibraryRescanner::rescan(knobify::library::ScanProgressListener *progress) {
-  g_libraryIndex = loadOrBuildLibraryIndex(g_fileLister, g_fileOpener,
-                                            g_directoryReader, g_jpegDecoder,
-                                            g_coverWriter, progress);
+void SdCollectionSet::rescan(knobify::collection::CollectionId id,
+                             knobify::library::ScanProgressListener *progress) {
+  CollectionState &state = g_collectionState[knobify::collection::indexOf(id)];
+  state.index = loadOrBuildLibraryIndex(state.profile.cachePath, state.lister,
+                                        g_fileOpener, g_directoryReader,
+                                        g_jpegDecoder, g_coverWriter, progress);
 }
 
 // The sleep timer ran out (ADR 0015): keep what's worth keeping, then deep
@@ -344,24 +370,27 @@ void setup() {
       lv_timer_handler();
     }
   } else {
-    // Boot no longer scans the SD card at all -- just loads whatever
-    // library index was last cached (a single small file read, no
-    // directory walk), so the device is usable immediately. Change
-    // detection/full rescan now only happens on demand, via the scan
-    // button on the library screen (ScreenManager::onScanClicked ->
-    // SdLibraryRescanner::rescan()). If no cache exists yet (e.g. first
-    // boot after flashing), the library just starts empty -- see
-    // AGENTS.md.
-    std::vector<uint8_t> cacheBytes = readIndexCacheFile();
-    knobify::library::LibrarySignature ignoredSignature;
-    if (!cacheBytes.empty() && knobify::library::IndexCache::decode(
-                                    cacheBytes, g_libraryIndex, ignoredSignature)) {
-      Serial.printf("Library: %u artists, %u albums, %u tracks (from cache)\n",
-                     static_cast<unsigned>(g_libraryIndex.artists.size()),
-                     static_cast<unsigned>(g_libraryIndex.albums.size()),
-                     static_cast<unsigned>(g_libraryIndex.tracks.size()));
-    } else {
-      Serial.println("No library cache yet -- use Settings > Rescan library to build one.");
+    // Boot no longer scans the SD card at all -- just loads whatever index
+    // each collection last cached (a small file read each, no directory
+    // walk), so the device is usable immediately. Change detection/full
+    // rescan only happens on demand, from Settings > Rescan
+    // (SdCollectionSet::rescan()). A collection with no cache yet (e.g.
+    // first boot after flashing, or a card with no /Audiobooks folder)
+    // just starts empty -- see AGENTS.md.
+    for (CollectionState &state : g_collectionState) {
+      std::vector<uint8_t> cacheBytes = readIndexCacheFile(state.profile.cachePath);
+      knobify::library::LibrarySignature ignoredSignature;
+      if (!cacheBytes.empty() && knobify::library::IndexCache::decode(
+                                     cacheBytes, state.index, ignoredSignature)) {
+        Serial.printf("%s: %u artists, %u albums, %u tracks (from cache)\n",
+                       state.profile.label,
+                       static_cast<unsigned>(state.index.artists.size()),
+                       static_cast<unsigned>(state.index.albums.size()),
+                       static_cast<unsigned>(state.index.tracks.size()));
+      } else {
+        Serial.printf("%s: no cache yet -- use Settings > Rescan to build one.\n",
+                       state.profile.label);
+      }
     }
   }
 

@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "MusicResumeSource.h"
+#include "PlaybackResumeSource.h"
 #include "NavigationResumeSource.h"
 #include "ResumeCodec.h"
 #include "ResumeScheduler.h"
@@ -25,8 +25,8 @@ using knobify::playback::PlaybackStateMachine;
 using knobify::playback::PlayScope;
 using knobify::playback::VolumePersistence;
 using knobify::resume::BlobStore;
-using knobify::resume::MusicResumeSource;
-using knobify::resume::MusicSnapshot;
+using knobify::resume::PlaybackResumeSource;
+using knobify::resume::PlaybackSnapshot;
 using knobify::resume::NavEntry;
 using knobify::resume::NavigationResumeSource;
 using knobify::resume::NavigationSnapshot;
@@ -100,6 +100,23 @@ LibraryIndex makeLibrary() {
   return index;
 }
 
+// The three collections, with only Music populated -- the resume sources
+// resolve names against whichever one a record names (ADR 0018).
+class FakeCollections : public knobify::collection::CollectionSet {
+ public:
+  LibraryIndex &index(knobify::collection::CollectionId id) override {
+    return indexes[knobify::collection::indexOf(id)];
+  }
+
+  void rescan(knobify::collection::CollectionId,
+              knobify::library::ScanProgressListener *) override {
+    ++rescans;
+  }
+
+  LibraryIndex indexes[knobify::collection::kCollectionCount];
+  int rescans = 0;
+};
+
 bool alwaysExists(const std::string &) { return true; }
 bool neverExists(const std::string &) { return false; }
 
@@ -107,15 +124,15 @@ ResumeRecord sampleRecord() {
   ResumeRecord record;
   NavigationSnapshot nav;
   nav.activeTab = 1;
-  nav.lastMusicTab = 1;
+  nav.lastBrowseTab = 1;
   nav.stacks[0] = {NavEntry{static_cast<uint8_t>(ScreenKind::Home), "", ""}};
   nav.stacks[1] = {NavEntry{static_cast<uint8_t>(ScreenKind::Artists), "", ""},
                    NavEntry{static_cast<uint8_t>(ScreenKind::Albums), "B", ""},
                    NavEntry{static_cast<uint8_t>(ScreenKind::Tracks), "B", "Second"},
                    NavEntry{static_cast<uint8_t>(ScreenKind::NowPlaying), "", ""}};
-  nav.stacks[2] = {NavEntry{static_cast<uint8_t>(ScreenKind::Folder), "/", ""}};
+  nav.stacks[2] = {NavEntry{static_cast<uint8_t>(ScreenKind::Folder), "/Music", ""}};
   record.navigation = nav;
-  MusicSnapshot music;
+  PlaybackSnapshot music;
   music.scope = static_cast<uint8_t>(PlayScope::Album);
   music.trackPath = "/Music/B/Second/b2.mp3";
   music.shuffle = true;
@@ -133,14 +150,18 @@ void fixCrc(std::vector<uint8_t> &bytes) {
 }
 
 struct Rig {
+  Rig() { collections.indexes[0] = makeLibrary(); }
+
   FakeDriver driver;
   FakeStore store;
   VolumePersistence volume{store};
   PlaybackStateMachine playback{driver, volume};
-  LibraryIndex library = makeLibrary();
+  FakeCollections collections;
   TabController tabs;
-  MusicResumeSource music{playback, library, &alwaysExists};
-  NavigationResumeSource navigation{tabs, library, playback};
+  PlaybackResumeSource music{playback, collections, &alwaysExists};
+  NavigationResumeSource navigation{tabs, collections, playback};
+  // Most tests only look at Music's index.
+  LibraryIndex &library = collections.indexes[0];
 };
 
 }  // namespace
@@ -219,7 +240,7 @@ void test_codec_rejects_out_of_range_values_even_with_valid_crc() {
 
 void test_codec_refuses_to_encode_oversized_strings() {
   ResumeRecord record;
-  record.music = MusicSnapshot{};
+  record.music = PlaybackSnapshot{};
   record.music->trackPath = std::string(ResumeCodec::kMaxStringLength + 1, 'x');
   TEST_ASSERT_TRUE(ResumeCodec::encode(record).empty());
 }
@@ -242,7 +263,7 @@ class FakeSource : public ResumeSource {
 
 ResumeRecord musicAt(const std::string &path, uint32_t seconds) {
   ResumeRecord record;
-  record.music = MusicSnapshot{};
+  record.music = PlaybackSnapshot{};
   record.music->trackPath = path;
   record.music->elapsedSeconds = seconds;
   record.music->filePosition = seconds * 1000;
@@ -364,7 +385,7 @@ void test_scheduler_discard_removes_the_record() {
 
 void test_capture_then_restore_brings_back_screen_and_paused_track() {
   Rig before;
-  before.tabs.openMusic();
+  before.tabs.openCollection(knobify::collection::CollectionId::Music);
   before.tabs.activeStack().push(Screen{ScreenKind::Albums, ScreenParams{.artistId = 1}});
   before.tabs.activeStack().push(Screen{ScreenKind::Tracks, ScreenParams{.albumId = 1}});
   before.playback.play({"/Music/B/Second/b1.mp3", "/Music/B/Second/b2.mp3"}, 1, 0,
@@ -439,11 +460,11 @@ void test_restore_rejects_screens_in_the_wrong_tab() {
 
 void test_restore_of_a_missing_file_leaves_no_queue() {
   ResumeRecord record;
-  record.music = MusicSnapshot{};
+  record.music = PlaybackSnapshot{};
   record.music->scope = static_cast<uint8_t>(PlayScope::File);
   record.music->trackPath = "/Music/loose.mp3";
   Rig rig;
-  MusicResumeSource missing(rig.playback, rig.library, &neverExists);
+  PlaybackResumeSource missing(rig.playback, rig.collections, &neverExists);
   missing.restore(record, 0);
   TEST_ASSERT_FALSE(rig.playback.hasQueue());
   rig.music.restore(record, 0);

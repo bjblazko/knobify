@@ -30,12 +30,16 @@ Entries are one row in a table (`kMenuEntries`, `ScreenManagerMenu.cpp`).
 Up to four fit as a 2×2 grid inside the circle; anything beyond that needs
 a new layout decision, verified on the device. *(Superseded 2026-09-15 by
 ADR 0015: the grid didn't fit a third tile with the mini-bar, so Home is a
-single row of three 84 px tiles.)*
+single row of three 84 px tiles. Superseded again 2026-09-16 by ADR 0018:
+with five destinations no row fits, so Home is a knob carousel — one tile
+centred, its neighbours shrunk either side, dots above.)*
 
 A dial carousel (one big item, the knob rotating the next one in) was
 considered: it fits the round knob and scales to any count, but shows only
 one option clearly at a time. With few destinations, seeing all of them is
-more understandable (Rams #4).
+more understandable (Rams #4). *(Reversed 2026-09-16 by ADR 0018 once
+there were five destinations: a row of dots keeps the count visible, which
+was the part this argument was actually about.)*
 
 ### Navigation: a third stack
 
@@ -73,7 +77,9 @@ switches the backlight fully off and restores the chosen level on wake.
 
 Added 2026-09-15. The CST816's skew (ADR 0004) was fitted by hand over
 serial; Settings > Touch calibration now re-fits it on the device. Rows:
-Brightness, Touch calibration, Rescan library.
+Brightness, Touch calibration, Rescan library. *(ADR 0018: the rows are a
+table now — Brightness, Touch calibration, Rescan, Main menu, USB drive —
+and "Rescan library" opens a picker rather than rescanning immediately.)*
 
 - **Capture.** Four accent crosses, one at a time, at top (180,70), right
   (290,180), bottom (180,290) and left (70,180) — never corners, which the

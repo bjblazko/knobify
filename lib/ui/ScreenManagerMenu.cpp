@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <vector>
 
 #include "IconFont.h"
 #include "LvglButtonHelpers.h"
@@ -21,31 +22,48 @@ namespace knobify::ui {
 namespace {
 
 // One row per main-menu entry; adding a destination means adding a row
-// here (and, beyond three entries, revisiting the tile row below on the
-// device).
+// here. Since ADR 0018 the row order is also the carousel's order and the
+// bit order of the visibility setting, so rows are append-only: inserting
+// one in the middle would silently re-point a user's hidden entries.
 struct MenuEntry {
   const char *icon;
   const char *label;
   void (*open)(navigation::TabController &tabs);
   // The label shows the sleep timer's time left while it runs (ADR 0015).
   bool showsSleepTimer = false;
+  // Settings is the only way back to this screen, so it is the one entry
+  // the user may not hide.
+  bool alwaysVisible = false;
 };
 
 constexpr MenuEntry kMenuEntries[] = {
     {KNOBIFY_ICON_MUSIC_NOTE, "Music",
-     [](navigation::TabController &tabs) { tabs.openMusic(); }},
+     [](navigation::TabController &tabs) {
+       tabs.openCollection(collection::CollectionId::Music);
+     }},
+    {KNOBIFY_ICON_MENU_BOOK, "Audiobooks",
+     [](navigation::TabController &tabs) {
+       tabs.openCollection(collection::CollectionId::Audiobooks);
+     }},
+    {KNOBIFY_ICON_THEATER_COMEDY, "Radio Plays",
+     [](navigation::TabController &tabs) {
+       tabs.openCollection(collection::CollectionId::RadioPlays);
+     }},
     {KNOBIFY_ICON_SETTINGS, "Settings",
      [](navigation::TabController &tabs) {
        tabs.activeStack().push(Screen{ScreenKind::Settings, {}});
-     }},
+     },
+     /*showsSleepTimer=*/false, /*alwaysVisible=*/true},
     {KNOBIFY_ICON_BEDTIME, "Sleep",
      [](navigation::TabController &tabs) {
        tabs.activeStack().push(Screen{ScreenKind::SleepTimer, {}});
      },
-     true},
+     /*showsSleepTimer=*/true},
 };
 constexpr int kMenuEntryCount =
     static_cast<int>(sizeof(kMenuEntries) / sizeof(kMenuEntries[0]));
+static_assert(kMenuEntryCount <= 8,
+              "the visibility setting is one bit per entry in a uint8_t");
 
 // A solid mark the calibration screen draws at (cx, cy): a cross bar or a
 // dot, centered there.
@@ -62,17 +80,32 @@ lv_obj_t *makeMark(lv_obj_t *parent, lv_coord_t cx, lv_coord_t cy,
   return mark;
 }
 
-// Tile geometry (ADR 0015): one row of three, circles 22px apart -- more
-// than the 20px two touch-slop margins need (ux-guidelines §3a). They span
-// x=32..328 at y=96..180, where the bezel shows ~21..339 at the top edge
-// and ~5..355 at the middle; labels end above the mini-bar zone (y>=272).
-// The row doesn't move with the mini-bar, so the menu never jumps when
-// playback starts. A 2x2 grid of 112px tiles didn't fit three: the second
-// row ran into the mini-bar and its label behind the bezel.
+// Carousel geometry (ADR 0018). ADR 0015's row of three 84px tiles filled
+// the display exactly; five destinations do not fit any row, so Home shows
+// the selected tile at full size in the middle with its two neighbours
+// shrunk and dimmed either side, and the knob rotates through them.
+//
+// The centre tile keeps ADR 0015's 84px and y=96, so a device that only
+// ever shows Music/Settings/Sleep looks nearly unchanged. Neighbours are
+// 56px, centred on the same axis (dy keeps their middles level with the
+// centre tile's), 118px out -- their outer edge reaches x=32/328, the same
+// span ADR 0015 verified as inside the bezel. Only the centre tile is
+// labelled: three labels at this spacing overlapped.
 constexpr lv_coord_t kTileSize = 84;
-constexpr lv_coord_t kTileCenterDx = 106;
+constexpr lv_coord_t kSideTileSize = 56;
+constexpr lv_coord_t kSideTileDx = 118;
 constexpr lv_coord_t kTileTopY = 96;
 constexpr lv_coord_t kCellHeight = kTileSize + 34;
+// Page dots above the tiles, centred -- never a corner (ux-guidelines §7).
+constexpr lv_coord_t kDotSize = 6;
+constexpr lv_coord_t kDotSpacing = 14;
+constexpr lv_coord_t kDotsY = 62;
+
+// Which carousel slot a tile sits in. Stored in the cell's user data so
+// one click handler can tell "open this" from "rotate to this".
+constexpr int kSlotLeft = -1;
+constexpr int kSlotCentre = 0;
+constexpr int kSlotRight = 1;
 
 // "Off" or "25 min".
 void formatSleepMinutes(char *out, size_t size, uint32_t minutes) {
@@ -84,6 +117,105 @@ void formatSleepMinutes(char *out, size_t size, uint32_t minutes) {
 }
 
 }  // namespace
+
+// Settings' rows. A table, so adding one never renumbers the handler for
+// the rows after it -- which is exactly what the two ADR 0018 rows would
+// otherwise have done to USB drive.
+const ScreenManager::SettingsRow
+    ScreenManager::kSettingsRows[ScreenManager::kSettingsRowCount] = {
+        {"Brightness",
+         [](ScreenManager &self) {
+           self.tabs_.activeStack().push(Screen{ScreenKind::Brightness, {}});
+           self.render();
+         }},
+        {"Touch calibration",
+         [](ScreenManager &self) {
+           self.touchCalibration_.start(millis());
+           self.tabs_.activeStack().push(
+               Screen{ScreenKind::TouchCalibration, {}});
+           self.render();
+         }},
+        {"Rescan",
+         [](ScreenManager &self) {
+           self.tabs_.activeStack().push(Screen{ScreenKind::RescanPicker, {}});
+           self.render();
+         }},
+        {"Main menu",
+         [](ScreenManager &self) {
+           self.tabs_.activeStack().push(
+               Screen{ScreenKind::MenuVisibility, {}});
+           self.render();
+         }},
+        {"USB drive", [](ScreenManager &self) { self.startUsbDrive(); }},
+};
+
+
+// The main-menu entries the user has not hidden, in table order. Settings
+// is never hidden (MenuEntry::alwaysVisible), so this is never empty and
+// the carousel always has somewhere to go.
+std::vector<int> ScreenManager::visibleMenuEntries() const {
+  std::vector<int> visible;
+  for (int i = 0; i < kMenuEntryCount; ++i) {
+    if (menuEntryVisible(i)) visible.push_back(i);
+  }
+  return visible;
+}
+
+navigation::MenuVisibility ScreenManager::makeMenuVisibility() {
+  uint8_t pinned = 0;
+  for (int i = 0; i < kMenuEntryCount; ++i) {
+    if (kMenuEntries[i].alwaysVisible) pinned |= static_cast<uint8_t>(1u << i);
+  }
+  return navigation::MenuVisibility(kMenuEntryCount, pinned);
+}
+
+bool ScreenManager::menuEntryVisible(int entryIndex) const {
+  return menuVisibility_.visible(entryIndex);
+}
+
+void ScreenManager::loadMenuVisibility() {
+  uint8_t stored = navigation::MenuVisibility::kDefaultMask;
+  if (settings_.getU8(kMenuVisibilityKey, stored)) {
+    menuVisibility_.setMask(stored);
+  }
+}
+
+void ScreenManager::toggleMenuEntryVisible(int entryIndex) {
+  constexpr ui_widgets::MessageAnchor kAnchor{drivers::kLcdHorRes / 2,
+                                              drivers::kLcdVerRes / 2};
+  switch (menuVisibility_.toggle(entryIndex)) {
+    case navigation::MenuVisibility::ToggleResult::Pinned:
+      // Hiding Settings would hide this very screen. Say so rather than
+      // letting the row look broken (Rams #4).
+      messages_.show("Settings always shows", kAnchor, millis());
+      return;
+    case navigation::MenuVisibility::ToggleResult::WouldEmptyMenu:
+      messages_.show("Keep at least one", kAnchor, millis());
+      return;
+    case navigation::MenuVisibility::ToggleResult::Toggled:
+      break;
+  }
+  settings_.setU8(kMenuVisibilityKey, menuVisibility_.mask());
+  // The carousel is rebuilt from the filtered list, so a hidden entry
+  // must not leave the selection pointing past the end.
+  homeSelection_ = 0;
+  render();
+}
+
+void ScreenManager::appendMenuVisibilityRows(
+    std::vector<std::pair<std::string, int>> &items) const {
+  for (int i = 0; i < kMenuEntryCount; ++i) {
+    items.emplace_back(kMenuEntries[i].label, i);
+  }
+}
+
+// The trailing "On"/"Off" (or "Always") on a Main menu row -- plain text,
+// like the Brightness row's percentage (ux-guidelines §7).
+const char *ScreenManager::menuVisibilityValue(int entryIndex) const {
+  if (entryIndex < 0 || entryIndex >= kMenuEntryCount) return "";
+  if (menuVisibility_.pinned(entryIndex)) return "Always";
+  return menuEntryVisible(entryIndex) ? "On" : "Off";
+}
 
 void ScreenManager::renderHome() {
   // No caption, back button or title: the tiles say everything there is
@@ -97,83 +229,149 @@ void ScreenManager::renderHome() {
   lv_obj_clear_flag(tiles_, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_clear_flag(tiles_, LV_OBJ_FLAG_CLICKABLE);
 
-  for (int i = 0; i < kMenuEntryCount; ++i) {
-    // The cell (circle + label) is the tap target, so the label is
-    // tappable too.
-    lv_obj_t *cell = lv_obj_create(tiles_);
-    lv_obj_set_size(cell, kTileSize, kCellHeight);
-    lv_coord_t dx = static_cast<lv_coord_t>((2 * i - (kMenuEntryCount - 1)) *
-                                            kTileCenterDx / 2);
-    lv_obj_align(cell, LV_ALIGN_TOP_MID, dx, kTileTopY);
-    lv_obj_set_style_bg_opa(cell, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(cell, 0, 0);
-    lv_obj_set_style_pad_all(cell, 0, 0);
-    lv_obj_clear_flag(cell, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(cell, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_ext_click_area(cell, 10);
+  const std::vector<int> visible = visibleMenuEntries();
+  const int count = static_cast<int>(visible.size());
+  if (homeSelection_ >= count) homeSelection_ = 0;
+  if (homeSelection_ < 0) homeSelection_ = 0;
+  sleepTileLabel_ = nullptr;
 
-    // Unselected like a Secondary button, selected like a selected list
-    // row (ink) -- selection, not action, so never accent (ux-guidelines
-    // §3a). The glyph inherits the circle's text color in either state.
-    lv_obj_t *circle = lv_obj_create(cell);
-    lv_obj_set_size(circle, kTileSize, kTileSize);
-    lv_obj_align(circle, LV_ALIGN_TOP_MID, 0, 0);
-    lv_obj_set_style_radius(circle, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_border_width(circle, 0, 0);
-    lv_obj_set_style_shadow_width(circle, 0, 0);
-    lv_obj_set_style_pad_all(circle, 0, 0);
-    lv_obj_set_style_bg_opa(circle, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(circle, theme::surfaceAlt(), 0);
-    lv_obj_set_style_text_color(circle, theme::ink(), 0);
-    lv_obj_set_style_bg_color(circle, theme::ink(), LV_STATE_CHECKED);
-    lv_obj_set_style_text_color(circle, theme::surface(), LV_STATE_CHECKED);
-    lv_obj_clear_flag(circle, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_clear_flag(circle, LV_OBJ_FLAG_CLICKABLE);
-
-    // Font before text -- see makeIconButton()'s comment.
-    lv_obj_t *glyph = lv_label_create(circle);
-    lv_obj_set_style_text_font(glyph, &knobify_icon_font_48, 0);
-    lv_label_set_text(glyph, kMenuEntries[i].icon);
-    lv_obj_center(glyph);
-
-    lv_obj_t *label = lv_label_create(cell);
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(label, theme::ink(), 0);
-    lv_label_set_text(label, kMenuEntries[i].label);
-    lv_obj_align(label, LV_ALIGN_TOP_MID, 0, kTileSize + 8);
-    if (kMenuEntries[i].showsSleepTimer) sleepTileLabel_ = label;
-
-    // Touch selects on press and opens on release, so the finger and the
-    // knob drive the same visible selection.
-    lv_obj_add_event_cb(cell, &ScreenManager::onHomeTilePressed,
-                        LV_EVENT_PRESSED, this);
-    lv_obj_add_event_cb(cell, &ScreenManager::onHomeTileClicked,
-                        LV_EVENT_CLICKED, this);
+  // Dots first, so the tiles draw over them if anything ever overlaps.
+  // One per destination: the carousel shows one at a time, so this is the
+  // only thing saying how many there are (Rams #4). A single destination
+  // needs no dots -- there is nothing to page through.
+  if (count > 1) {
+    for (int i = 0; i < count; ++i) {
+      lv_coord_t dx =
+          static_cast<lv_coord_t>((2 * i - (count - 1)) * kDotSpacing / 2);
+      lv_obj_t *dot = lv_obj_create(tiles_);
+      lv_obj_set_size(dot, kDotSize, kDotSize);
+      lv_obj_align(dot, LV_ALIGN_TOP_MID, dx, kDotsY);
+      lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+      lv_obj_set_style_border_width(dot, 0, 0);
+      lv_obj_set_style_pad_all(dot, 0, 0);
+      lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+      // The current one in ink, the rest in the same grey the unselected
+      // tiles use -- selection, never accent (ux-guidelines §3a).
+      lv_obj_set_style_bg_color(
+          dot, i == homeSelection_ ? theme::ink() : theme::surfaceAlt(), 0);
+      lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
+      lv_obj_clear_flag(dot, LV_OBJ_FLAG_CLICKABLE);
+    }
   }
 
-  highlightedIndex_ = std::min(homeSelection_, kMenuEntryCount - 1);
-  applyHighlight();
+  // Centre tile last of the three, so it is on top of its neighbours if
+  // they ever overlap.
+  const int slots[] = {kSlotLeft, kSlotRight, kSlotCentre};
+  for (int slot : slots) {
+    const int offset = slot;
+    if (offset != 0 && count < 2) continue;
+    // Two destinations would otherwise show the same tile left and right.
+    if (offset > 0 && count == 2) continue;
+    const int entry =
+        visible[static_cast<size_t>((homeSelection_ + offset + count) % count)];
+    makeMenuTile(entry, slot);
+  }
 
   tickSleepTimer(millis());
 
   if (playback_.state() != playback::PlaybackState::Stopped) renderMiniBar();
 }
 
-void ScreenManager::onHomeTilePressed(lv_event_t *e) {
-  auto *self = static_cast<ScreenManager *>(lv_event_get_user_data(e));
-  lv_obj_t *cell = lv_event_get_current_target(e);
-  self->highlightedIndex_ = static_cast<int>(lv_obj_get_index(cell));
-  self->homeSelection_ = self->highlightedIndex_;
-  self->applyHighlight();
+// One carousel tile. The centre one is the ADR 0015 tile unchanged (84px,
+// labelled, selected-looking); a neighbour is smaller, dimmed and
+// unlabelled -- enough to say "there is more this way" without competing
+// with the destination you are actually on (Rams #5).
+void ScreenManager::makeMenuTile(int entryIndex, int slot) {
+  const bool centre = slot == kSlotCentre;
+  const lv_coord_t size = centre ? kTileSize : kSideTileSize;
+  const lv_coord_t dx =
+      static_cast<lv_coord_t>(slot * kSideTileDx);
+  // Neighbours sit level with the centre tile's circle, not its cell.
+  const lv_coord_t top =
+      centre ? kTileTopY
+             : static_cast<lv_coord_t>(kTileTopY + (kTileSize - size) / 2);
+
+  // The cell (circle + label) is the tap target, so the label is
+  // tappable too.
+  lv_obj_t *cell = lv_obj_create(tiles_);
+  lv_obj_set_size(cell, size, centre ? kCellHeight : size);
+  lv_obj_align(cell, LV_ALIGN_TOP_MID, dx, top);
+  lv_obj_set_style_bg_opa(cell, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(cell, 0, 0);
+  lv_obj_set_style_pad_all(cell, 0, 0);
+  lv_obj_clear_flag(cell, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(cell, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_ext_click_area(cell, 10);
+
+  // Centre: ink with a surface glyph, like a selected list row --
+  // selection, not action, so never accent (ux-guidelines §3a).
+  // Neighbours: the unselected Secondary look, at half opacity.
+  lv_obj_t *circle = lv_obj_create(cell);
+  lv_obj_set_size(circle, size, size);
+  lv_obj_align(circle, LV_ALIGN_TOP_MID, 0, 0);
+  lv_obj_set_style_radius(circle, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_border_width(circle, 0, 0);
+  lv_obj_set_style_shadow_width(circle, 0, 0);
+  lv_obj_set_style_pad_all(circle, 0, 0);
+  lv_obj_set_style_bg_opa(circle, centre ? LV_OPA_COVER : LV_OPA_50, 0);
+  lv_obj_set_style_bg_color(circle, centre ? theme::ink() : theme::surfaceAlt(),
+                            0);
+  lv_obj_set_style_text_color(circle, centre ? theme::surface() : theme::ink(),
+                              0);
+  lv_obj_set_style_text_opa(circle, centre ? LV_OPA_COVER : LV_OPA_50, 0);
+  lv_obj_clear_flag(circle, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(circle, LV_OBJ_FLAG_CLICKABLE);
+
+  // Font before text -- see makeIconButton()'s comment.
+  lv_obj_t *glyph = lv_label_create(circle);
+  lv_obj_set_style_text_font(
+      glyph, centre ? &knobify_icon_font_48 : &knobify_icon_font_28, 0);
+  lv_label_set_text(glyph, kMenuEntries[entryIndex].icon);
+  lv_obj_center(glyph);
+
+  if (centre) {
+    lv_obj_t *label = lv_label_create(cell);
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(label, theme::ink(), 0);
+    lv_label_set_text(label, kMenuEntries[entryIndex].label);
+    lv_obj_align(label, LV_ALIGN_TOP_MID, 0, kTileSize + 8);
+    if (kMenuEntries[entryIndex].showsSleepTimer) sleepTileLabel_ = label;
+  }
+
+  // A tap on the centre opens it; a tap on a neighbour rotates that one in
+  // rather than opening a destination the user cannot fully see.
+  lv_obj_set_user_data(
+      cell, reinterpret_cast<void *>(static_cast<intptr_t>(slot)));
+  lv_obj_add_event_cb(cell, &ScreenManager::onHomeTileClicked, LV_EVENT_CLICKED,
+                      this);
 }
 
 void ScreenManager::onHomeTileClicked(lv_event_t *e) {
   auto *self = static_cast<ScreenManager *>(lv_event_get_user_data(e));
-  int index = static_cast<int>(lv_obj_get_index(lv_event_get_current_target(e)));
-  if (index < 0 || index >= kMenuEntryCount) return;
-  self->homeSelection_ = index;
-  kMenuEntries[index].open(self->tabs_);
+  lv_obj_t *cell = lv_event_get_current_target(e);
+  const int offset = static_cast<int>(
+      reinterpret_cast<intptr_t>(lv_obj_get_user_data(cell)));
+  const std::vector<int> visible = self->visibleMenuEntries();
+  const int count = static_cast<int>(visible.size());
+  if (count == 0) return;
+  if (offset != 0) {
+    self->moveHomeSelection(offset);
+    return;
+  }
+  if (self->homeSelection_ < 0 || self->homeSelection_ >= count) return;
+  kMenuEntries[visible[static_cast<size_t>(self->homeSelection_)]].open(
+      self->tabs_);
   self->render();
+}
+
+// Rotates the carousel. Wraps in both directions: with one destination per
+// turn a hard stop at either end just feels broken on a knob that itself
+// turns forever.
+void ScreenManager::moveHomeSelection(int delta) {
+  const int count = static_cast<int>(visibleMenuEntries().size());
+  if (count <= 0) return;
+  homeSelection_ = ((homeSelection_ + delta) % count + count) % count;
+  render();
 }
 
 void ScreenManager::renderBrightness() {
@@ -466,7 +664,9 @@ void ScreenManager::tickUsbDrive(uint32_t nowMs) {
     const char *reason = kEndNames[static_cast<int>(usbDrive_.lastEnd())];
     if (onScreen) tabs_.back();
     render();
-    runRescan();
+    // Every collection: the computer could have written to any of them,
+    // and there is no way to tell which from here.
+    runRescanAll();
     // After the rescan: the USB serial port drops with the drive, so a line
     // printed right away never reaches a monitor.
     Serial.printf("[usbdrive] session ended (%s, %s)\n", reason,

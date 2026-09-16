@@ -3,7 +3,7 @@
 #include <optional>
 #include <string>
 
-#include "LibraryScanner.h"
+#include "CollectionSet.h"
 #include "PlaybackStateMachine.h"
 #include "ResumeSource.h"
 #include "TabController.h"
@@ -18,14 +18,18 @@ namespace knobify::resume {
 class NavigationResumeSource : public ResumeSource {
  public:
   NavigationResumeSource(navigation::TabController &tabs,
-                         const library::LibraryIndex &library,
+                         const collection::CollectionSet &collections,
                          const playback::PlaybackStateMachine &playback)
-      : tabs_(tabs), library_(library), playback_(playback) {}
+      : tabs_(tabs), collections_(collections), playback_(playback) {}
 
   void capture(ResumeRecord &record, uint32_t) override {
     NavigationSnapshot nav;
     nav.activeTab = static_cast<uint8_t>(tabs_.activeTab());
-    nav.lastMusicTab = static_cast<uint8_t>(tabs_.lastMusicTab());
+    nav.lastBrowseTab = static_cast<uint8_t>(tabs_.lastBrowseTab());
+    // Only the active collection's stacks are saved (ADR 0018): three
+    // collections' worth of full paths would not fit ResumeCodec's budget,
+    // and coming back to the shelf you left is what actually matters.
+    nav.collection = static_cast<uint8_t>(tabs_.activeCollection());
     for (std::size_t tab = 0; tab < NavigationSnapshot::kTabCount; ++tab) {
       const navigation::NavigationStack &stack =
           tabs_.stack(static_cast<navigation::Tab>(tab));
@@ -39,6 +43,13 @@ class NavigationResumeSource : public ResumeSource {
   void restore(const ResumeRecord &record, uint32_t) override {
     if (!record.navigation) return;
     const NavigationSnapshot &nav = *record.navigation;
+    // Stacks are per collection, and tabs_.stack() answers for whichever
+    // one is active -- so select it first, then fill its stacks.
+    const auto collectionId =
+        collection::isValidCollection(nav.collection)
+            ? static_cast<collection::CollectionId>(nav.collection)
+            : collection::CollectionId::Music;
+    tabs_.restoreTabs(tabs_.activeTab(), tabs_.lastBrowseTab(), collectionId);
     for (std::size_t tab = 0; tab < NavigationSnapshot::kTabCount; ++tab) {
       auto tabId = static_cast<navigation::Tab>(tab);
       navigation::NavigationStack &stack = tabs_.stack(tabId);
@@ -56,22 +67,29 @@ class NavigationResumeSource : public ResumeSource {
       }
     }
     tabs_.restoreTabs(static_cast<navigation::Tab>(nav.activeTab),
-                      static_cast<navigation::Tab>(nav.lastMusicTab));
+                      static_cast<navigation::Tab>(nav.lastBrowseTab),
+                      collectionId);
   }
 
  private:
   using ScreenKind = navigation::ScreenKind;
 
+  // The index a saved entry's names resolve against: the collection the
+  // stack being captured or restored belongs to.
+  const library::LibraryIndex &library() const {
+    return collections_.index(tabs_.activeCollection());
+  }
+
   NavEntry entryFor(const navigation::Screen &screen) const {
     NavEntry entry;
     entry.kind = static_cast<uint8_t>(screen.kind);
     const auto &p = screen.params;
-    if (screen.kind == ScreenKind::Albums && p.artistId < library_.artists.size()) {
-      entry.key = library_.artists[p.artistId].name;
-    } else if (screen.kind == ScreenKind::Tracks && p.albumId < library_.albums.size()) {
-      const library::Album &album = library_.albums[p.albumId];
-      if (album.artistId < library_.artists.size()) {
-        entry.key = library_.artists[album.artistId].name;
+    if (screen.kind == ScreenKind::Albums && p.artistId < library().artists.size()) {
+      entry.key = library().artists[p.artistId].name;
+    } else if (screen.kind == ScreenKind::Tracks && p.albumId < library().albums.size()) {
+      const library::Album &album = library().albums[p.albumId];
+      if (album.artistId < library().artists.size()) {
+        entry.key = library().artists[album.artistId].name;
       }
       entry.subKey = album.title;
     } else if (screen.kind == ScreenKind::Folder) {
@@ -83,6 +101,7 @@ class NavigationResumeSource : public ResumeSource {
   std::optional<navigation::Screen> resolve(const NavEntry &entry) const {
     if (entry.kind > static_cast<uint8_t>(ScreenKind::NowPlaying)) return std::nullopt;
     navigation::Screen screen{static_cast<ScreenKind>(entry.kind), {}};
+    screen.params.collection = tabs_.activeCollection();
     switch (screen.kind) {
       case ScreenKind::Albums: {
         auto artist = findArtist(entry.key);
@@ -93,7 +112,7 @@ class NavigationResumeSource : public ResumeSource {
       case ScreenKind::Tracks: {
         auto artist = findArtist(entry.key);
         if (!artist) return std::nullopt;
-        for (const auto &album : library_.albums) {
+        for (const auto &album : library().albums) {
           if (album.artistId == *artist && album.title == entry.subKey) {
             screen.params.albumId = album.id;
             return screen;
@@ -111,7 +130,7 @@ class NavigationResumeSource : public ResumeSource {
   }
 
   std::optional<library::ArtistId> findArtist(const std::string &name) const {
-    for (const auto &artist : library_.artists) {
+    for (const auto &artist : library().artists) {
       if (artist.name == name) return artist.id;
     }
     return std::nullopt;
@@ -132,7 +151,7 @@ class NavigationResumeSource : public ResumeSource {
   }
 
   navigation::TabController &tabs_;
-  const library::LibraryIndex &library_;
+  const collection::CollectionSet &collections_;
   const playback::PlaybackStateMachine &playback_;
 };
 
