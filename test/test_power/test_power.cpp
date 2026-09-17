@@ -56,10 +56,10 @@ void test_idle_timer_single_detents_below_threshold_keep_display_off() {
   IdleTimer timer;
   uint32_t t = sleepDisplay(timer);
   for (int i = 0; i < IdleTimer::kEncoderWakeDetents - 1; ++i) {
-    timer.noteEncoderDelta(1, t += 100);
+    timer.noteEncoderDelta(1, t += 100, /*requireDeliberateTurn=*/true);
   }
   TEST_ASSERT_FALSE(timer.isDisplayOn());
-  timer.noteEncoderDelta(1, t += 100);
+  timer.noteEncoderDelta(1, t += 100, /*requireDeliberateTurn=*/true);
   TEST_ASSERT_TRUE(timer.isDisplayOn());
 }
 
@@ -67,8 +67,8 @@ void test_idle_timer_back_and_forth_jiggle_does_not_wake() {
   IdleTimer timer;
   uint32_t t = sleepDisplay(timer);
   for (int i = 0; i < 10; ++i) {
-    timer.noteEncoderDelta(4, t += 50);
-    timer.noteEncoderDelta(-4, t += 50);
+    timer.noteEncoderDelta(4, t += 50, /*requireDeliberateTurn=*/true);
+    timer.noteEncoderDelta(-4, t += 50, /*requireDeliberateTurn=*/true);
   }
   TEST_ASSERT_FALSE(timer.isDisplayOn());
 }
@@ -76,22 +76,46 @@ void test_idle_timer_back_and_forth_jiggle_does_not_wake() {
 void test_idle_timer_pause_resets_encoder_wake_count() {
   IdleTimer timer;
   uint32_t t = sleepDisplay(timer);
-  timer.noteEncoderDelta(IdleTimer::kEncoderWakeDetents - 1, t += 100);
-  timer.noteEncoderDelta(1, t += IdleTimer::kEncoderWakeWindowMs + 1);
+  timer.noteEncoderDelta(IdleTimer::kEncoderWakeDetents - 1, t += 100,
+                         /*requireDeliberateTurn=*/true);
+  timer.noteEncoderDelta(1, t += IdleTimer::kEncoderWakeWindowMs + 1,
+                         /*requireDeliberateTurn=*/true);
   TEST_ASSERT_FALSE(timer.isDisplayOn());
 }
 
 void test_idle_timer_batched_quarter_turn_wakes() {
   IdleTimer timer;
   uint32_t t = sleepDisplay(timer);
-  timer.noteEncoderDelta(-IdleTimer::kEncoderWakeDetents, t + 100);
+  timer.noteEncoderDelta(-IdleTimer::kEncoderWakeDetents, t + 100,
+                         /*requireDeliberateTurn=*/true);
+  TEST_ASSERT_TRUE(timer.isDisplayOn());
+}
+
+// Unlocked, the display is merely dimmed on a table: the first detent
+// must light it, with no quarter-turn threshold to get past.
+void test_idle_timer_single_detent_wakes_when_unlocked() {
+  IdleTimer timer;
+  uint32_t t = sleepDisplay(timer);
+  timer.noteEncoderDelta(1, t + 100, /*requireDeliberateTurn=*/false);
+  TEST_ASSERT_TRUE(timer.isDisplayOn());
+}
+
+void test_idle_timer_unlocked_wake_does_not_need_window() {
+  IdleTimer timer;
+  uint32_t t = sleepDisplay(timer);
+  timer.noteEncoderDelta(1, t += 100, /*requireDeliberateTurn=*/false);
+  timer.tick(t += IdleTimer::kIdleTimeoutMs);
+  TEST_ASSERT_FALSE(timer.isDisplayOn());
+  timer.noteEncoderDelta(1, t += IdleTimer::kEncoderWakeWindowMs + 1,
+                         /*requireDeliberateTurn=*/false);
   TEST_ASSERT_TRUE(timer.isDisplayOn());
 }
 
 void test_idle_timer_encoder_detent_resets_timeout_while_on() {
   IdleTimer timer;
   timer.noteActivity(0);
-  timer.noteEncoderDelta(1, IdleTimer::kIdleTimeoutMs - 1);
+  timer.noteEncoderDelta(1, IdleTimer::kIdleTimeoutMs - 1,
+                         /*requireDeliberateTurn=*/false);
   TEST_ASSERT_TRUE(timer.tick(2 * IdleTimer::kIdleTimeoutMs - 2));
 }
 
@@ -237,6 +261,8 @@ int main(int argc, char **argv) {
   RUN_TEST(test_idle_timer_back_and_forth_jiggle_does_not_wake);
   RUN_TEST(test_idle_timer_pause_resets_encoder_wake_count);
   RUN_TEST(test_idle_timer_batched_quarter_turn_wakes);
+  RUN_TEST(test_idle_timer_single_detent_wakes_when_unlocked);
+  RUN_TEST(test_idle_timer_unlocked_wake_does_not_need_window);
   RUN_TEST(test_idle_timer_encoder_detent_resets_timeout_while_on);
   RUN_TEST(test_lock_controller_starts_unlocked);
   RUN_TEST(test_request_lock_locks);

@@ -37,12 +37,18 @@ on a table, the device is never locked, it just dims; in a pocket, the
 user locks it deliberately and it stays locked until manually unlocked
 (no auto-re-lock timer).
 
-A dark display wakes on any touch, but from the knob only after a
-deliberate turn of about a quarter revolution
-(`IdleTimer::kEncoderWakeDetents` = 8 of ~30 detents, net in one
-direction, with no pause over 1.5 s between detents). A single nudge in a
-pocket used to light the screen for a full minute and drained the battery
-over a day.
+A dark display wakes on any touch. From the knob it depends on lock
+state, because the two cases are different situations: **locked** is a
+pocket, so it wakes only after a deliberate turn of about a quarter
+revolution (`IdleTimer::kEncoderWakeDetents` = 8 of ~30 detents, net in
+one direction, with no pause over 1.5 s between detents) — a single nudge
+in a pocket used to light the screen for a full minute and drained the
+battery over a day. **Unlocked** is a device sitting on a table that has
+merely dimmed: the very first detent wakes it, and unlike the wake touch
+below that detent is *not* swallowed — it does whatever the current
+screen says it should (volume on Now Playing, moving the selection in a
+list). Making the user turn a quarter revolution before anything visibly
+happened there was just a dead knob.
 
 The very first touch after the display was off is **swallowed entirely**
 — not fed to LVGL, the gesture recognizer, or the lock's hold-to-unlock
