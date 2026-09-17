@@ -44,7 +44,7 @@ LV_FONT_DECLARE(knobify_icon_font_48);
 
 // 16px fast_rewind/fast_forward for Now Playing's time pill shuttle marks
 // (ADR 0013) -- IconFont16.c, same source font. Only carries these two
-// glyphs; its `.fallback` is lv_font_montserrat_14 so the pill's digits
+// glyphs; its `.fallback` is knobify_text_font_14 so the pill's digits
 // and "x" render normally in the same label/font.
 LV_FONT_DECLARE(knobify_icon_font_16);
 

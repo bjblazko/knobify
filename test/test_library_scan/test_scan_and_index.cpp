@@ -38,7 +38,10 @@ void appendSynchsafe(std::vector<uint8_t> &out, uint32_t v) {
 void appendFrame(std::vector<uint8_t> &frames, const char *id,
                   const std::string &text) {
   std::vector<uint8_t> data;
-  data.push_back(0);
+  // Encoding 3 (UTF-8): `text` literals in this file carry real UTF-8
+  // bytes (e.g. "\xC3\x84rzte" for "Ärzte") for the accent-handling
+  // tests, which would be misdecoded as ISO-8859-1 under encoding 0.
+  data.push_back(3);
   data.insert(data.end(), text.begin(), text.end());
   frames.insert(frames.end(), id, id + 4);
   appendU32BE(frames, static_cast<uint32_t>(data.size()));

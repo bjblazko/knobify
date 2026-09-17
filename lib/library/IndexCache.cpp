@@ -7,7 +7,13 @@ namespace knobify::library {
 namespace {
 
 constexpr char kMagic[4] = {'K', 'L', 'I', 'B'};
-constexpr uint16_t kFormatVersion = 3;  // v2 adds Album.year, v3 Track.discNumber.
+constexpr uint16_t kFormatVersion = 4;  // v2 adds Album.year, v3 Track.discNumber,
+                                         // v4: tag text is UTF-8 (previously
+                                         // UTF-16 tags lost non-ASCII text and
+                                         // Latin-1 bytes could be invalid
+                                         // UTF-8) -- bump forces a rescan so
+                                         // stale mangled text isn't served
+                                         // from an old cache.
 
 void appendU16(std::vector<uint8_t> &out, uint16_t v) {
   out.push_back(static_cast<uint8_t>(v & 0xFF));

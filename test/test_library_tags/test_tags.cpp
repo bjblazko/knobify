@@ -98,6 +98,83 @@ void test_id3v2_parses_title_artist_album_track() {
   TEST_ASSERT_EQUAL_UINT16(2, result.discNumber);
 }
 
+// UTF-16 with a BOM (encoding byte 1) is the shape every non-ASCII frame
+// takes in the user's real library: BOM + code units, no null
+// terminator required by this helper (the parser stops at one if
+// present).
+void appendFrameV3Utf16(std::vector<uint8_t> &frames, const char *id,
+                         std::initializer_list<uint16_t> units) {
+  std::vector<uint8_t> data;
+  data.push_back(1);  // encoding: UTF-16 with BOM
+  data.push_back(0xFF);
+  data.push_back(0xFE);  // BOM: little-endian
+  for (uint16_t u : units) {
+    data.push_back(static_cast<uint8_t>(u & 0xFF));
+    data.push_back(static_cast<uint8_t>((u >> 8) & 0xFF));
+  }
+
+  frames.insert(frames.end(), id, id + 4);
+  appendU32BE(frames, static_cast<uint32_t>(data.size()));
+  frames.push_back(0);
+  frames.push_back(0);
+  frames.insert(frames.end(), data.begin(), data.end());
+}
+
+void appendFrameV3Latin1Byte(std::vector<uint8_t> &frames, const char *id,
+                              const std::string &asciiPrefix, uint8_t rawByte,
+                              const std::string &asciiSuffix) {
+  std::vector<uint8_t> data;
+  data.push_back(0);  // encoding: ISO-8859-1
+  data.insert(data.end(), asciiPrefix.begin(), asciiPrefix.end());
+  data.push_back(rawByte);
+  data.insert(data.end(), asciiSuffix.begin(), asciiSuffix.end());
+
+  frames.insert(frames.end(), id, id + 4);
+  appendU32BE(frames, static_cast<uint32_t>(data.size()));
+  frames.push_back(0);
+  frames.push_back(0);
+  frames.insert(frames.end(), data.begin(), data.end());
+}
+
+void test_id3v2_decodes_utf16_bom_umlaut_to_utf8() {
+  // "Björk" as UTF-16LE code units, matching the real-world shape: every
+  // non-ASCII ID3v2 text frame in the user's library uses encoding 1
+  // (UTF-16 with BOM).
+  std::vector<uint8_t> frames;
+  appendFrameV3Utf16(frames, "TPE1", {'B', 'j', 0x00F6, 'r', 'k'});
+
+  std::vector<uint8_t> file;
+  file.insert(file.end(), {'I', 'D', '3', 3, 0, 0});
+  appendSynchsafe(file, static_cast<uint32_t>(frames.size()));
+  file.insert(file.end(), frames.begin(), frames.end());
+  FakeRawFile raw(file);
+
+  TagResult result = Id3v2Parser::parse(raw);
+
+  TEST_ASSERT_TRUE(result.found);
+  // UTF-8 for "Björk": B j 0xC3 0xB6 r k.
+  TEST_ASSERT_EQUAL_STRING("Bj\xC3\xB6rk", result.artist.c_str());
+}
+
+void test_id3v2_decodes_iso8859_1_byte_to_utf8() {
+  // Encoding 0 (ISO-8859-1): a raw 0xF6 byte ('ö') must come out as the
+  // two-byte UTF-8 sequence 0xC3 0xB6, not the raw byte (which would be
+  // invalid UTF-8 on its own).
+  std::vector<uint8_t> frames;
+  appendFrameV3Latin1Byte(frames, "TALB", "Bj", 0xF6, "rk");
+
+  std::vector<uint8_t> file;
+  file.insert(file.end(), {'I', 'D', '3', 3, 0, 0});
+  appendSynchsafe(file, static_cast<uint32_t>(frames.size()));
+  file.insert(file.end(), frames.begin(), frames.end());
+  FakeRawFile raw(file);
+
+  TagResult result = Id3v2Parser::parse(raw);
+
+  TEST_ASSERT_TRUE(result.found);
+  TEST_ASSERT_EQUAL_STRING("Bj\xC3\xB6rk", result.album.c_str());
+}
+
 void test_id3v2_missing_tag_returns_not_found() {
   std::vector<uint8_t> file(64, 0xAB);  // no "ID3" header, no v1 trailer
   FakeRawFile raw(file);
@@ -410,6 +487,8 @@ void test_tag_reader_uses_id3_when_present_for_mp3() {
 int main(int argc, char **argv) {
   UNITY_BEGIN();
   RUN_TEST(test_id3v2_parses_title_artist_album_track);
+  RUN_TEST(test_id3v2_decodes_utf16_bom_umlaut_to_utf8);
+  RUN_TEST(test_id3v2_decodes_iso8859_1_byte_to_utf8);
   RUN_TEST(test_id3v2_missing_tag_returns_not_found);
   RUN_TEST(test_id3v2_falls_back_to_v1_trailer);
   RUN_TEST(test_id3v2_truncated_frame_does_not_crash_and_yields_no_field);

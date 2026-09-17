@@ -5,6 +5,7 @@
 #include <cstdio>
 
 #include "BatteryMonitor.h"
+#include "TextFont.h"
 #include "Theme.h"
 
 namespace knobify::ui {
@@ -44,7 +45,7 @@ class BatteryIndicator {
   // Call once, after LVGL is initialized and after LockOverlay::begin().
   void begin() {
     label_ = lv_label_create(lv_layer_top());
-    lv_obj_set_style_text_font(label_, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(label_, &knobify_text_font_14, 0);
     lv_obj_set_style_bg_color(label_, theme::surface(), 0);
     lv_obj_set_style_bg_opa(label_, LV_OPA_COVER, 0);
     lv_obj_set_style_pad_hor(label_, 8, 0);

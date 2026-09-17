@@ -7,6 +7,7 @@
 #include "Id3v2Parser.h"
 #include "Mp4Parser.h"
 #include "RiffInfoParser.h"
+#include "Utf8.h"
 #include "VorbisCommentParser.h"
 
 namespace knobify::library {
@@ -173,6 +174,20 @@ TagResult TagReader::read(RawFile &file, const std::string &filePath) {
   if (result.year == 0) {
     result.year = parseLeadingYearValue(parentFolderName(filePath));
   }
+
+  // Single choke point for "is this actually UTF-8", run after every
+  // other source (tag parser, folder names, filename) has had a chance
+  // to fill in title/artist/album. Vorbis comments and MP4 atoms are
+  // supposed to already be UTF-8, but VorbisCommentParser and
+  // RiffInfoParser don't transcode (RIFF INFO text is conventionally
+  // CP1252/Latin-1-ish, never declared), and the SD-path fallbacks above
+  // copy folder/filename bytes verbatim -- so nothing upstream of here
+  // is guaranteed valid. repair() is a no-op for text that's already
+  // good UTF-8, and downgrades anything else from Latin-1 rather than
+  // ever handing LVGL invalid UTF-8.
+  result.title = utf8::repair(result.title);
+  result.artist = utf8::repair(result.artist);
+  result.album = utf8::repair(result.album);
   return result;
 }
 

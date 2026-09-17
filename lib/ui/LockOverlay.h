@@ -7,6 +7,7 @@
 #include "LockController.h"
 #include "LvglButtonHelpers.h"
 #include "St77916Driver.h"
+#include "TextFont.h"
 #include "Theme.h"
 
 namespace knobify::ui {
@@ -51,7 +52,7 @@ class LockOverlay {
     lv_obj_clear_flag(root_, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t *label = lv_label_create(root_);
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(label, &knobify_text_font_20, 0);
     lv_label_set_text(label, "Locked");
     // Set explicitly rather than inherited: this root lives on
     // lv_layer_top(), not a themed screen (same class of bug as ADR

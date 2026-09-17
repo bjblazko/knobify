@@ -47,6 +47,7 @@
 #include "SleepTimer.h"
 #include "St77916Driver.h"
 #include "TabController.h"
+#include "TextFont.h"
 #include "TouchCalibrator.h"
 #include "Theme.h"
 #include "UsbDriveSession.h"
@@ -363,7 +364,7 @@ void setup() {
     lv_scr_load(bootScreen);
     lv_obj_t *title = lv_label_create(bootScreen);
     lv_label_set_text(title, "knobify");
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(title, &knobify_text_font_20, 0);
     lv_obj_align(title, LV_ALIGN_CENTER, 0, -30);
     bootLabel = lv_label_create(bootScreen);
     lv_label_set_text(bootLabel, "Starting...");

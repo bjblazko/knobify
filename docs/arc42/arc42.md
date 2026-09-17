@@ -207,9 +207,12 @@ flowchart TB
   independent of `NavigationStack`). Hardware-facing but kept thin; not
   host-tested.
 - **`lib/ui-widgets`** (ADR 0005) — `EdgeArc` (reusable round-edge ring,
-  backs both the volume indicator and unlock progress) and `IconFont` (a
+  backs both the volume indicator and unlock progress), `IconFont` (a
   small custom LVGL font for the lock/unlock glyphs LVGL's built-in
-  symbol font doesn't have).
+  symbol font doesn't have), and `TextFont` (ADR 0019 — the project's
+  own Montserrat-derived label fonts, replacing LVGL's built-in
+  ASCII-only Montserrat so tag text in Latin-1/Latin Extended-A renders
+  correctly).
 - **`lib/drivers`** — one thin adapter per peripheral, each the sole
   place its hardware API (Arduino `SD`, LVGL flush callbacks, `CST816`
   reads, GPIO quadrature reads, `ESP32-audioI2S`, `Preferences`/NVS) is

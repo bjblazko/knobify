@@ -46,11 +46,12 @@ change it. The gesture is the same hold-and-turn as unlocking (ADR 0005).
 
 While held, the pill switches to its pressed state and the message area
 over the cover says what the knob does: "Turn knob to rewind or fast
-forward" until the first detent, then the speed, "Fast forward 8x" or
-"Rewind 8x" (ASCII `x`: the built-in font has no `×`). The arc alone can't
-show the exact step. (First built as `1:23 ▶▶ 8x` inside the pill; the
-message is bigger and easier to read, and the hold-and-turn wasn't obvious
-without a hint — user feedback on the device, 2026-09-15.)
+forward" until the first detent, then the speed, "Fast forward 8×" or
+"Rewind 8×" (the project's own text fonts cover `×`, U+00D7 — ADR 0019).
+The arc alone can't show the exact step. (First built as `1:23 ▶▶ 8x`
+inside the pill; the message is bigger and easier to read, and the
+hold-and-turn wasn't obvious without a hint — user feedback on the
+device, 2026-09-15.)
 
 For a track that can't seek (Ogg), the pill shows no ◀◀ ▶▶ marks and
 ignores the hold. It looks like the plain time readout it was before.
@@ -148,10 +149,11 @@ busier. The speed readout in the pill covers the exact step.
 - `EdgeArcConfig` gains a `mode` field for the symmetrical arc;
   `makeEdgeArcHost` an inset.
 - The pill's ◀◀ ▶▶ marks use `knobify_icon_font_16` (Material Symbols
-  `fast_rewind`/`fast_forward`), which has `lv_font_montserrat_14` as
-  fallback so digits render in the same label; `line_height` and
-  `base_line` are set to Montserrat 14's values (16/3) because LVGL labels
-  size and position by the primary font.
+  `fast_rewind`/`fast_forward`), which has `knobify_text_font_14` as
+  fallback (ADR 0019 -- originally `lv_font_montserrat_14`) so digits
+  render in the same label; `line_height` and `base_line` are set to that
+  font's values (16/3) because LVGL labels size and position by the
+  primary font.
 
 ## Consequences
 
