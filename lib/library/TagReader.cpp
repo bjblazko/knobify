@@ -188,6 +188,9 @@ TagResult TagReader::read(RawFile &file, const std::string &filePath) {
   result.title = utf8::repair(result.title);
   result.artist = utf8::repair(result.artist);
   result.album = utf8::repair(result.album);
+  // Genres come from the same untrusted sources -- and a genre shelf is
+  // built from these strings, so one bad byte would name a whole shelf.
+  result.genre = utf8::repair(result.genre);
   return result;
 }
 

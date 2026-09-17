@@ -120,6 +120,7 @@ void ScreenManager::render() {
   }
   list_ = nullptr;
   tiles_ = nullptr;
+  caption_ = nullptr;
   brightnessArcHost_ = nullptr;
   brightnessLabel_ = nullptr;
   sleepArcHost_ = nullptr;
@@ -175,6 +176,12 @@ void ScreenManager::render() {
     // Library lists start with a Shuffle row whose scope is the list itself:
     // the whole library, this artist, this album (ADR 0011). No scope
     // setting -- where you start is the scope.
+    // Music's shelf switch, above Shuffle: which shelf you are on is a
+    // property of the whole list, so it reads before anything in it
+    // (ADR 0021).
+    if (hasBrowseAxisRow(current)) {
+      items.emplace_back(LV_SYMBOL_LIST "  Browse by", kBrowseAxisItemId);
+    }
     if (hasShuffleRow(current.kind)) {
       items.emplace_back(LV_SYMBOL_SHUFFLE "  Shuffle", kShuffleItemId);
     }
@@ -239,6 +246,38 @@ void ScreenManager::render() {
       case ScreenKind::MenuVisibility:
         appendMenuVisibilityRows(items);
         break;
+      case ScreenKind::AlbumsFlat:
+        // Every album, or one year's, or one genre's -- shelfAlbums()
+        // reads the filter off the screen.
+        for (auto albumId : shelfAlbums(current)) {
+          items.emplace_back(library().albums[albumId].title,
+                             static_cast<int>(albumId));
+        }
+        break;
+      case ScreenKind::Songs:
+        for (auto trackId : library().tracksSorted()) {
+          items.emplace_back(library().tracks[trackId].title,
+                             static_cast<int>(trackId));
+        }
+        break;
+      case ScreenKind::Years:
+        // The year is its own row id: it is already a small number, and
+        // nothing else about a year needs looking up.
+        for (uint16_t year : library().yearsSorted()) {
+          items.emplace_back(std::to_string(year), static_cast<int>(year));
+        }
+        break;
+      case ScreenKind::Genres:
+        for (auto genreId : library().genresSorted()) {
+          items.emplace_back(library().genres[genreId].name,
+                             static_cast<int>(genreId));
+        }
+        break;
+      case ScreenKind::BrowseAxis:
+        for (int i = 0; i < kBrowseAxisCount; ++i) {
+          items.emplace_back(kBrowseAxes[i].label, i);
+        }
+        break;
       default:
         break;
     }
@@ -262,7 +301,10 @@ void ScreenManager::renderList(
   // top, so every row below them is one further along than its index.
   int leadingRows = 0;
   for (const auto &item : items) {
-    if (item.second != kShuffleItemId && item.second != kContinueItemId) break;
+    if (item.second != kShuffleItemId && item.second != kContinueItemId &&
+        item.second != kBrowseAxisItemId) {
+      break;
+    }
     ++leadingRows;
   }
   list_ = lv_list_create(screen_);
@@ -385,8 +427,15 @@ void ScreenManager::renderList(
     // The Brightness row ends in its current value, styled like the album
     // year: a plain secondary fact, not a badge.
     char valueText[8] = {0};
+    std::string secondaryText;
     const char *secondary = nullptr;
-    if (current.kind == ScreenKind::MenuVisibility) {
+    if (current.kind == ScreenKind::AlbumsFlat ||
+        current.kind == ScreenKind::Songs) {
+      // Flat shelves mix every artist together, so each row has to say
+      // whose it is -- the same quiet trailing fact the album year is.
+      secondaryText = artistNameForRow(current.kind, items[i].second);
+      if (!secondaryText.empty()) secondary = secondaryText.c_str();
+    } else if (current.kind == ScreenKind::MenuVisibility) {
       // "On"/"Off"/"Always" -- the row's own state, read the same way the
       // Brightness row's percentage is (ADR 0018).
       secondary = menuVisibilityValue(items[i].second);
@@ -410,6 +459,7 @@ void ScreenManager::renderList(
     ctx->self = this;
     ctx->isShuffle = items[i].second == kShuffleItemId;
     ctx->isContinue = items[i].second == kContinueItemId;
+    ctx->isBrowseAxis = items[i].second == kBrowseAxisItemId;
     // Index into the screen's data (artists, albums, tracks), not the row
     // -- so a leading Shuffle or Continue row doesn't shift everything.
     ctx->index = static_cast<int>(i) - (leadingRows > 0 ? leadingRows : 0);
@@ -431,9 +481,117 @@ void ScreenManager::renderList(
                          LV_EVENT_CLICKED, itemContexts_.back().get());
   }
 
+  // A list whose only rows are Browse by and Shuffle looks exactly like
+  // the picker it was opened from -- "no rows" and "wrong screen" are
+  // indistinguishable otherwise (found on the device 2026-09-17, on an
+  // empty shelf after the IndexCache v5 bump). One quiet line, in the
+  // list's own empty space: the exception to "no placeholder for absent
+  // data" is when the absence itself is the thing worth saying.
+  if (static_cast<int>(items.size()) == leadingRows) {
+    lv_obj_t *empty = lv_label_create(screen_);
+    lv_obj_set_style_text_font(empty, &knobify_text_font_14, 0);
+    lv_obj_set_style_text_color(empty, theme::structure(), 0);
+    lv_obj_set_style_text_align(empty, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_width(empty, 220);
+    setClampedText(empty, emptyListText(current), 2);
+    lv_obj_align(empty, LV_ALIGN_TOP_MID, 0,
+                 static_cast<lv_coord_t>(kListTopY + listHeight / 2 - 16));
+  }
+
   if (showMiniBar) renderMiniBar();
 
+  // Rebuilt with the list, which also closes any mode the previous
+  // screen left open (LetterJump::setBuckets).
+  letterJump_.setBuckets(
+      listIsNameOrdered()
+          ? navigation::LetterJump::buckets(letterKeysFor(items, leadingRows),
+                                            leadingRows)
+          : std::vector<navigation::LetterBucket>{});
+
   applyHighlight();
+}
+
+// The keys the rows are actually ordered by: an artist list in a
+// tag-sorted collection follows nameSortKey() (so "The Cure" sits under
+// C), every other shelf its plain folded label. Getting this wrong would
+// show a letter that disagrees with where the highlight lands.
+std::vector<std::string> ScreenManager::letterKeysFor(
+    const std::vector<std::pair<std::string, int>> &items,
+    int leadingRows) const {
+  const Screen current = tabs_.activeStack().current();
+  const bool byTag = current.kind == ScreenKind::Artists &&
+                     profile().sort == library::SortOrder::ByTag;
+  std::vector<std::string> keys;
+  keys.reserve(items.size());
+  for (size_t i = static_cast<size_t>(leadingRows); i < items.size(); ++i) {
+    keys.push_back(byTag ? library::LibraryIndex::nameSortKey(items[i].first)
+                         : library::LibraryIndex::foldAccents(items[i].first));
+  }
+  return keys;
+}
+
+// What an empty browse list says for itself. Nothing scanned yet is the
+// one worth acting on -- indexes are built on demand, never at boot, so
+// an empty shelf right after a firmware update means exactly that.
+const char *ScreenManager::emptyListText(const navigation::Screen &screen) const {
+  if (screen.kind == ScreenKind::Folder) return "Empty folder";
+  if (library().tracks.empty()) return "Nothing scanned yet\nSettings > Rescan";
+  switch (screen.kind) {
+    case ScreenKind::Genres:
+      return "No genres in these tags";
+    case ScreenKind::Years:
+      return "No years in these tags";
+    default:
+      return "Nothing here";
+  }
+}
+
+bool ScreenManager::listIsNameOrdered() const {
+  const Screen current = tabs_.activeStack().current();
+  switch (current.kind) {
+    case ScreenKind::Artists:
+    case ScreenKind::AlbumsFlat:
+    case ScreenKind::Songs:
+    case ScreenKind::Genres:
+    case ScreenKind::Folder:
+      return true;
+    case ScreenKind::Albums:
+      // Music's albums read chronologically, so their initials are in no
+      // order at all; a spoken-word collection's are by name.
+      return profile().sort == library::SortOrder::ByName;
+    default:
+      return false;
+  }
+}
+
+std::vector<library::AlbumId> ScreenManager::shelfAlbums(
+    const navigation::Screen &screen) const {
+  if (screen.params.year != 0) {
+    return library().albumsForYear(screen.params.year);
+  }
+  if (screen.params.genreId != 0) {
+    return library().albumsForGenre(screen.params.genreId);
+  }
+  return library().albumsSorted();
+}
+
+// The artist a flat shelf's row belongs to -- an album id on the Albums
+// shelf, a track id on Songs.
+std::string ScreenManager::artistNameForRow(navigation::ScreenKind kind,
+                                            int itemId) const {
+  if (itemId < 0) return "";
+  library::AlbumId albumId = 0;
+  if (kind == ScreenKind::Songs) {
+    const auto trackId = static_cast<library::TrackId>(itemId);
+    if (trackId >= library().tracks.size()) return "";
+    albumId = library().tracks[trackId].albumId;
+  } else {
+    albumId = static_cast<library::AlbumId>(itemId);
+  }
+  if (albumId >= library().albums.size()) return "";
+  const auto artistId = library().albums[albumId].artistId;
+  if (artistId >= library().artists.size()) return "";
+  return library().artists[artistId].name;
 }
 
 void ScreenManager::renderMiniBar() {
@@ -501,63 +659,195 @@ void ScreenManager::renderMiniBar() {
                        LV_EVENT_CLICKED, this);
 }
 
-void ScreenManager::renderContextCaption() {
-  // Tells you where you are in the hierarchy -- the top of a round screen
-  // is too narrow to be useful for list rows anyway (ux-guidelines §7).
-  Screen current = tabs_.activeStack().current();
-  std::string caption;
-  switch (current.kind) {
+std::string ScreenManager::captionTextFor(
+    const navigation::Screen &screen) const {
+  switch (screen.kind) {
     case ScreenKind::Artists:
       // The collection's own name -- with three of them, "Library" no
       // longer says which one you are in (ADR 0018).
-      caption = profile().label;
-      break;
+      return profile().label;
     case ScreenKind::Settings:
-      caption = "Settings";
-      break;
+      return "Settings";
     case ScreenKind::RescanPicker:
-      caption = "Rescan";
-      break;
+      return "Rescan";
     case ScreenKind::MenuVisibility:
-      caption = "Main menu";
-      break;
+      return "Main menu";
     case ScreenKind::Brightness:
-      caption = "Brightness";
-      break;
+      return "Brightness";
     case ScreenKind::SleepTimer:
-      caption = "Sleep timer";
-      break;
+      return "Sleep timer";
     case ScreenKind::Albums:
       for (const auto &artist : library().artists) {
-        if (artist.id == current.params.artistId) caption = artist.name;
+        if (artist.id == screen.params.artistId) return artist.name;
       }
-      break;
+      return "";
     case ScreenKind::Tracks:
       for (const auto &album : library().albums) {
-        if (album.id == current.params.albumId) caption = album.title;
+        if (album.id == screen.params.albumId) return album.title;
       }
-      break;
+      return "";
+    case ScreenKind::AlbumsFlat:
+      // A filtered shelf is named by what filters it: the year, or the
+      // genre. Unfiltered, it is simply every album.
+      if (screen.params.year != 0) return std::to_string(screen.params.year);
+      if (screen.params.genreId != 0 &&
+          screen.params.genreId < library().genres.size()) {
+        return library().genres[screen.params.genreId].name;
+      }
+      return "Albums";
+    case ScreenKind::Songs:
+      return "Songs";
+    case ScreenKind::Years:
+      return "Years";
+    case ScreenKind::Genres:
+      return "Genres";
+    case ScreenKind::BrowseAxis:
+      return "Browse by";
     case ScreenKind::Folder: {
-      std::string path = current.params.folderPath;
+      std::string path = screen.params.folderPath;
       while (path.size() > 1 && path.back() == '/') path.pop_back();
       auto slash = path.find_last_of('/');
-      caption = (path.empty() || path == "/")
-                    ? "Files"
-                    : (slash == std::string::npos ? path : path.substr(slash + 1));
-      if (path == profile().rootPath) caption = profile().label;
-      break;
+      std::string name =
+          (path.empty() || path == "/")
+              ? "Files"
+              : (slash == std::string::npos ? path : path.substr(slash + 1));
+      if (path == profile().rootPath) name = profile().label;
+      return name;
     }
     default:
-      return;
+      return "";
   }
-  lv_obj_t *label = lv_label_create(screen_);
-  lv_obj_set_style_text_font(label, &knobify_text_font_14, 0);
-  lv_obj_set_style_text_color(label, theme::structure(), 0);
-  lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_width(label, 200);
-  setClampedText(label, caption.c_str(), 1);
-  lv_obj_align(label, LV_ALIGN_TOP_MID, 0, kCaptionY);
 }
+
+void ScreenManager::renderContextCaption() {
+  // Tells you where you are in the hierarchy -- the top of a round screen
+  // is too narrow to be useful for list rows anyway (ux-guidelines §7).
+  const Screen current = tabs_.activeStack().current();
+  const std::string caption = captionTextFor(current);
+  if (caption.empty()) return;
+
+  // On a long, name-ordered list the caption doubles as the jump-by-letter
+  // control (ADR 0021): hold it (or tap it) and the knob moves by initial
+  // letter until the mode times out. Everywhere else it stays what it
+  // always was, a plain label -- the affordance only exists where it helps.
+  const size_t rowCount =
+      list_ ? static_cast<size_t>(lv_obj_get_child_cnt(list_)) : 0;
+  if (!letterJump_.eligible(rowCount)) {
+    caption_ = nullptr;
+    lv_obj_t *label = lv_label_create(screen_);
+    lv_obj_set_style_text_font(label, &knobify_text_font_14, 0);
+    lv_obj_set_style_text_color(label, theme::structure(), 0);
+    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_width(label, 200);
+    setClampedText(label, caption.c_str(), 1);
+    lv_obj_align(label, LV_ALIGN_TOP_MID, 0, kCaptionY);
+    return;
+  }
+
+  caption_ = makeHoldButton(screen_, "", kCaptionChipMaxW, kCaptionChipH,
+                            LV_ALIGN_TOP_MID, 0, kCaptionY,
+                            &ScreenManager::onCaptionPressed,
+                            &ScreenManager::onCaptionReleased, this,
+                            ButtonRole::Secondary, &knobify_text_font_14);
+  applyCaptionChip();
+}
+
+// Everything about the chip that changes while it stays on screen: the
+// text (caption or current letter), its font, its width and its
+// colours. Mutating the existing object rather than rebuilding it is not
+// an optimisation -- a press must not delete the object the touch is
+// tracking, or the release that ends the hold never arrives.
+void ScreenManager::applyCaptionChip() {
+  if (!caption_) return;
+  lv_obj_t *label = lv_obj_get_child(caption_, 0);
+  if (!label) return;
+
+  const bool active = letterJump_.active();
+  const char letter[2] = {letterJump_.letter(), '\0'};
+  const std::string text =
+      active ? std::string(letter)
+             : captionTextFor(tabs_.activeStack().current()) + "  A–Z";
+  const lv_font_t *font =
+      active ? &knobify_text_font_16 : &knobify_text_font_14;
+
+  lv_point_t textSize;
+  lv_txt_get_size(&textSize, text.c_str(), font, 0, 0, LV_COORD_MAX,
+                  LV_TEXT_FLAG_NONE);
+  lv_coord_t width = static_cast<lv_coord_t>(textSize.x + 2 * kCaptionChipPadX);
+  if (width > kCaptionChipMaxW) width = kCaptionChipMaxW;
+  lv_obj_set_width(caption_, width);
+  // Width changed, so the stored alignment has to be applied again.
+  lv_obj_align(caption_, LV_ALIGN_TOP_MID, 0, kCaptionY);
+
+  // Font before text, as everywhere else in this app: setting it
+  // afterwards has left glyphs invisible on real hardware
+  // (LvglButtonHelpers.h).
+  lv_obj_set_style_text_font(label, font, 0);
+  // A long folder or artist name would otherwise spill out of the chip:
+  // the capped width is the chip, the text ellipses inside it.
+  lv_obj_set_width(label,
+                   static_cast<lv_coord_t>(width - 2 * kCaptionChipPadX));
+  setClampedText(label, text.c_str(), 1);
+  lv_obj_center(label);
+
+  // Active: the letter alone in the ink capsule the wordmark uses -- the
+  // mode is visible exactly where it was switched on, and nothing covers
+  // the rows it is moving through.
+  lv_obj_set_style_bg_color(caption_, active ? theme::ink() : theme::surfaceAlt(),
+                            0);
+  lv_obj_set_style_text_color(label, active ? theme::surface() : theme::ink(),
+                              0);
+}
+
+void ScreenManager::onCaptionPressed(lv_event_t *e) {
+  auto *self = static_cast<ScreenManager *>(lv_event_get_user_data(e));
+  self->captionPressed_ = true;
+  // Opening on the press, not the release, is what makes holding the
+  // chip and turning the knob with the other hand work -- the gesture
+  // the time pill's shuttle already taught (ADR 0013).
+  self->captionPressOpened_ = !self->letterJump_.active();
+  if (self->captionPressOpened_) {
+    self->letterJump_.open(self->highlightedIndex_, millis());
+  }
+  self->applyCaptionChip();
+}
+
+void ScreenManager::onCaptionReleased(lv_event_t *e) {
+  auto *self = static_cast<ScreenManager *>(lv_event_get_user_data(e));
+  // RELEASED and PRESS_LOST share this handler; only the first one that
+  // arrives ends the press.
+  if (!self->captionPressed_) return;
+  self->captionPressed_ = false;
+  // A press that found the mode already open was a second tap: close it.
+  // Otherwise the mode stays on after the finger lifts, so a plain tap
+  // works as well as a hold.
+  if (!self->captionPressOpened_) self->letterJump_.close();
+  self->applyCaptionChip();
+}
+
+void ScreenManager::tickLetterJump(uint32_t nowMs) {
+  if (!letterJump_.active()) return;
+  // A finger still on the chip is a hold in progress, however long it
+  // lasts -- the mode times out from being unused, not from being held.
+  if (captionPressed_) return;
+  letterJump_.tick(nowMs);
+  // Closed by the timeout: put the caption back, keeping the highlight
+  // wherever the last jump left it.
+  if (!letterJump_.active()) applyCaptionChip();
+}
+
+bool ScreenManager::swipeStartsOnControl(int16_t x, int16_t y) const {
+  if (!caption_) return false;
+  lv_area_t area;
+  lv_obj_get_coords(caption_, &area);
+  // The same slop the chip's own hit area uses (LvglButtonHelpers.h):
+  // calibrated touch still scatters around the finger.
+  constexpr lv_coord_t kSlop = 10;
+  return x >= area.x1 - kSlop && x <= area.x2 + kSlop &&
+         y >= area.y1 - kSlop && y <= area.y2 + kSlop;
+}
+
+
 
 void ScreenManager::renderBackButtonIfNeeded() {
   // Swiping left-to-right also goes back (decision 5, ADR 0004), but
@@ -1209,6 +1499,19 @@ void ScreenManager::onListMove(int16_t delta) {
   if (!list_) return;
   int count = static_cast<int>(lv_obj_get_child_cnt(list_));
   if (count == 0) return;
+  if (letterJump_.active()) {
+    // The knob moves by initial letter, not by row, until the mode
+    // closes (ADR 0021). The caption follows the letter it lands on.
+    const int row = letterJump_.turn(static_cast<int>(delta), millis());
+    if (row >= 0) {
+      highlightedIndex_ = std::clamp(row, 0, count - 1);
+      applyHighlight();
+      lv_obj_t *target = lv_obj_get_child(list_, highlightedIndex_);
+      if (target) lv_obj_scroll_to_view(target, LV_ANIM_ON);
+      applyCaptionChip();
+      return;
+    }
+  }
   highlightedIndex_ =
       std::clamp(highlightedIndex_ + static_cast<int>(delta), 0, count - 1);
   applyHighlight();
@@ -1286,11 +1589,34 @@ void ScreenManager::onListItemClicked(lv_event_t *e) {
     return;
   }
 
+  if (ctx->isBrowseAxis) {
+    self->tabs_.activeStack().push(
+        Screen{ScreenKind::BrowseAxis,
+               ScreenParams{.collection = current.params.collection}});
+    self->render();
+    return;
+  }
+
   if (ctx->isShuffle) {
     std::vector<std::string> playlist;
     std::string name = "library";
     playback::PlayScope scope;
-    if (current.kind == ScreenKind::Artists) {
+    if (current.kind == ScreenKind::AlbumsFlat &&
+        (current.params.year != 0 || current.params.genreId != 0)) {
+      // One shelf: this year's albums, or this genre's. The scope stays
+      // Library because a shelf is not something PlayScope can rebuild
+      // after a reboot -- resume then continues with the whole library
+      // rather than claiming a shelf it cannot reconstruct (ADR 0021).
+      playlist = library::PlaylistBuilder::forAlbums(self->library(),
+                                                     self->shelfAlbums(current));
+      scope = playback::PlayScope::Library;
+      name = current.params.year != 0
+                 ? std::to_string(current.params.year)
+                 : self->library().genres[current.params.genreId].name;
+    } else if (current.kind == ScreenKind::Artists ||
+               current.kind == ScreenKind::AlbumsFlat ||
+               current.kind == ScreenKind::Songs ||
+               current.kind == ScreenKind::Genres) {
       playlist = library::PlaylistBuilder::forLibrary(self->library(), self->profile().sort);
       scope = playback::PlayScope::Library;
     } else if (current.kind == ScreenKind::Albums) {
@@ -1372,6 +1698,65 @@ void ScreenManager::onListItemClicked(lv_event_t *e) {
     case ScreenKind::MenuVisibility:
       self->toggleMenuEntryVisible(ctx->index);
       break;
+    case ScreenKind::BrowseAxis:
+      self->openBrowseAxis(ctx->index);
+      break;
+    case ScreenKind::AlbumsFlat: {
+      const auto albums = self->shelfAlbums(current);
+      if (ctx->index < 0 || static_cast<size_t>(ctx->index) >= albums.size()) {
+        break;
+      }
+      self->tabs_.activeStack().push(
+          Screen{ScreenKind::Tracks,
+                 ScreenParams{.albumId = static_cast<uint32_t>(
+                                  albums[ctx->index]),
+                              .collection = current.params.collection}});
+      self->render();
+      break;
+    }
+    case ScreenKind::Songs: {
+      // Rows follow tracksSorted(), so the row index is where in that
+      // list to start -- the whole shelf becomes the queue, in the order
+      // shown, like a tapped track starts its album.
+      const auto songs = self->library().tracksSorted();
+      if (ctx->index < 0 || static_cast<size_t>(ctx->index) >= songs.size()) {
+        break;
+      }
+      std::vector<std::string> playlist;
+      playlist.reserve(songs.size());
+      for (auto trackId : songs) {
+        playlist.push_back(self->library().tracks[trackId].filePath);
+      }
+      self->playback_.play(std::move(playlist),
+                           static_cast<size_t>(ctx->index), millis(),
+                           /*shuffle=*/false, playback::PlayScope::Library);
+      self->goToNowPlaying();
+      break;
+    }
+    case ScreenKind::Years: {
+      const auto years = self->library().yearsSorted();
+      if (ctx->index < 0 || static_cast<size_t>(ctx->index) >= years.size()) {
+        break;
+      }
+      self->tabs_.activeStack().push(
+          Screen{ScreenKind::AlbumsFlat,
+                 ScreenParams{.year = years[ctx->index],
+                              .collection = current.params.collection}});
+      self->render();
+      break;
+    }
+    case ScreenKind::Genres: {
+      const auto genres = self->library().genresSorted();
+      if (ctx->index < 0 || static_cast<size_t>(ctx->index) >= genres.size()) {
+        break;
+      }
+      self->tabs_.activeStack().push(
+          Screen{ScreenKind::AlbumsFlat,
+                 ScreenParams{.genreId = genres[ctx->index],
+                              .collection = current.params.collection}});
+      self->render();
+      break;
+    }
     default:
       break;
   }

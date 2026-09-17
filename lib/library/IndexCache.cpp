@@ -7,7 +7,7 @@ namespace knobify::library {
 namespace {
 
 constexpr char kMagic[4] = {'K', 'L', 'I', 'B'};
-constexpr uint16_t kFormatVersion = 4;  // v2 adds Album.year, v3 Track.discNumber,
+constexpr uint16_t kFormatVersion = 5;  // v2 adds Album.year, v3 Track.discNumber,
                                          // v4: tag text is UTF-8 (previously
                                          // UTF-16 tags lost non-ASCII text and
                                          // Latin-1 bytes could be invalid
@@ -111,6 +111,7 @@ std::vector<uint8_t> IndexCache::encode(const LibraryIndex &index,
   appendU32(out, static_cast<uint32_t>(index.artists.size()));
   appendU32(out, static_cast<uint32_t>(index.albums.size()));
   appendU32(out, static_cast<uint32_t>(index.tracks.size()));
+  appendU32(out, static_cast<uint32_t>(index.genres.size()));
 
   for (const auto &artist : index.artists) {
     appendU32(out, artist.id);
@@ -121,6 +122,7 @@ std::vector<uint8_t> IndexCache::encode(const LibraryIndex &index,
     appendU32(out, album.artistId);
     appendString(out, album.title);
     appendU16(out, album.year);
+    appendU32(out, album.genreId);
   }
   for (const auto &track : index.tracks) {
     appendU32(out, track.id);
@@ -129,6 +131,13 @@ std::vector<uint8_t> IndexCache::encode(const LibraryIndex &index,
     appendU16(out, track.trackNumber);
     appendString(out, track.filePath);
     appendU16(out, track.discNumber);
+  }
+  // Last, so the genre table is appended rather than threaded between
+  // existing records -- the id-0 "unknown" entry is written with the
+  // rest, so a decoded index needs no fix-up.
+  for (const auto &genre : index.genres) {
+    appendU32(out, genre.id);
+    appendString(out, genre.name);
   }
 
   return out;
@@ -155,6 +164,7 @@ bool IndexCache::decode(const std::vector<uint8_t> &bytes, LibraryIndex &index,
   uint32_t artistCount = reader.readU32();
   uint32_t albumCount = reader.readU32();
   uint32_t trackCount = reader.readU32();
+  uint32_t genreCount = reader.readU32();
 
   LibraryIndex result;
   result.artists.reserve(artistCount);
@@ -171,6 +181,7 @@ bool IndexCache::decode(const std::vector<uint8_t> &bytes, LibraryIndex &index,
     a.artistId = reader.readU32();
     a.title = reader.readString();
     a.year = reader.readU16();
+    a.genreId = reader.readU32();
     result.albums.push_back(a);
   }
   result.tracks.reserve(trackCount);
@@ -184,6 +195,17 @@ bool IndexCache::decode(const std::vector<uint8_t> &bytes, LibraryIndex &index,
     t.discNumber = reader.readU16();
     result.tracks.push_back(t);
   }
+  result.genres.clear();
+  result.genres.reserve(genreCount);
+  for (uint32_t i = 0; i < genreCount && reader.ok(); ++i) {
+    Genre g;
+    g.id = reader.readU32();
+    g.name = reader.readString();
+    result.genres.push_back(g);
+  }
+  // A cache written before any genre existed (or a truncated table)
+  // still needs the id-0 entry every index is built around.
+  if (result.genres.empty()) result.genres.push_back(Genre{0, ""});
 
   if (!reader.ok()) {
     return false;

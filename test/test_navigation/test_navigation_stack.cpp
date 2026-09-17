@@ -206,6 +206,28 @@ void test_restore_selects_the_collection_before_its_stacks() {
                    CollectionId::RadioPlays);
 }
 
+void test_library_root_follows_the_chosen_browse_axis() {
+  TabController tabs;
+  tabs.openCollection(CollectionId::Music);
+  tabs.activeStack().push(Screen{ScreenKind::Albums, {}});
+
+  tabs.setLibraryRoot(ScreenKind::Songs);
+
+  // Re-rooting drops the artist you were inside: it means nothing here.
+  TEST_ASSERT_TRUE(tabs.libraryRootKind() == ScreenKind::Songs);
+  TEST_ASSERT_TRUE(tabs.activeStack().current().kind == ScreenKind::Songs);
+  TEST_ASSERT_FALSE(tabs.activeStack().canGoBack());
+}
+
+void test_browse_axis_is_per_collection() {
+  TabController tabs;
+  tabs.openCollection(CollectionId::Music);
+  tabs.setLibraryRoot(ScreenKind::Genres);
+  tabs.openCollection(CollectionId::Audiobooks);
+
+  TEST_ASSERT_TRUE(tabs.libraryRootKind() == ScreenKind::Artists);
+}
+
 int main(int argc, char **argv) {
   UNITY_BEGIN();
   RUN_TEST(test_root_is_current_on_construction);
@@ -227,5 +249,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_collections_keep_separate_browse_positions);
   RUN_TEST(test_switching_tabs_never_leaves_the_collection);
   RUN_TEST(test_restore_selects_the_collection_before_its_stacks);
+  RUN_TEST(test_library_root_follows_the_chosen_browse_axis);
+  RUN_TEST(test_browse_axis_is_per_collection);
   return UNITY_END();
 }

@@ -409,6 +409,10 @@ void setup() {
   // a crash -- a position in an audiobook can't be what caused one.
   g_bookmarkKeeper.begin();
 
+  // Before the resume record: which shelf Music is rooted on decides
+  // whether a saved Library stack still matches its root (ADR 0021).
+  g_screenManager.restoreBrowseAxis();
+
   // After a crash the saved state may be what caused it: start on Home once,
   // so a bad record can't trap the device in a reboot loop.
   esp_reset_reason_t resetReason = esp_reset_reason();
@@ -665,7 +669,11 @@ void loop() {
     // still tracks the finger.
     if (!g_lockController.isLocked() && !g_shuttle.isHeld()) {
       auto gesture = g_gestureRecognizer.feed(touchSample);
-      if (gesture) {
+      // A swipe that began on an on-screen control was a tap aimed at
+      // that control, however far the finger slid: acting on it too
+      // would navigate away from the very thing being tapped (ADR 0021).
+      if (gesture && !g_screenManager.swipeStartsOnControl(gesture->startX,
+                                                           gesture->startY)) {
         g_inputRouter.onGesture(*gesture);
         if (gesture->type == knobify::input::GestureType::SwipeLeftToRight) {
           g_screenManager.render();
@@ -692,6 +700,9 @@ void loop() {
   }
   g_screenManager.tickVolumeHud(now);
   if (displayOn) g_screenManager.tickSleepTimer(now);
+  // Not gated on the display: a letter-jump mode left open when the screen
+  // went dark must not still be open when it comes back (ADR 0021).
+  g_screenManager.tickLetterJump(now);
 
   // A calibration never survives the display going dark or the lock
   // screen: nobody is there to confirm it (TouchCalibrator.h).

@@ -20,6 +20,54 @@ using knobify::navigation::ScreenKind;
 
 namespace knobify::ui {
 
+// Music's browse axes (ADR 0021), in the order the picker lists them:
+// the shelf you know first, the flatter ones after, the derived ones
+// last. A table rather than a switch, so adding a shelf is one line.
+const ScreenManager::BrowseAxis
+    ScreenManager::kBrowseAxes[ScreenManager::kBrowseAxisCount] = {
+        {"Artists", navigation::ScreenKind::Artists},
+        {"Albums", navigation::ScreenKind::AlbumsFlat},
+        {"Songs", navigation::ScreenKind::Songs},
+        {"Years", navigation::ScreenKind::Years},
+        {"Genres", navigation::ScreenKind::Genres},
+};
+
+// Only Music, and only on the shelf's own root: inside an artist, or a
+// year, "browse by" would mean leaving where you are, which the back
+// chevron already does.
+bool ScreenManager::hasBrowseAxisRow(const navigation::Screen &screen) const {
+  if (screen.params.collection != collection::CollectionId::Music) return false;
+  if (tabs_.activeTab() != navigation::Tab::Library) return false;
+  if (tabs_.activeStack().canGoBack()) return false;
+  for (const auto &axis : kBrowseAxes) {
+    if (axis.kind == screen.kind) return true;
+  }
+  return false;
+}
+
+void ScreenManager::openBrowseAxis(int axisIndex) {
+  if (axisIndex < 0 || axisIndex >= kBrowseAxisCount) return;
+  const auto kind = kBrowseAxes[axisIndex].kind;
+  tabs_.setLibraryRoot(kind);
+  settings_.setU8(kMusicAxisKey, static_cast<uint8_t>(kind));
+  render();
+}
+
+// The shelf Music was left on. Called before any resume record is
+// applied -- NavigationResumeSource only accepts a saved stack whose
+// root matches the tab's current one.
+void ScreenManager::restoreBrowseAxis() {
+  uint8_t stored = 0;
+  if (!settings_.getU8(kMusicAxisKey, stored)) return;
+  const auto kind = static_cast<navigation::ScreenKind>(stored);
+  for (const auto &axis : kBrowseAxes) {
+    if (axis.kind != kind) continue;
+    tabs_.setLibraryRoot(kind);
+    return;
+  }
+}
+
+
 namespace {
 
 // One row per main-menu entry; adding a destination means adding a row

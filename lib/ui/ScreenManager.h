@@ -18,6 +18,7 @@
 #include "Bookmarks.h"
 #include "CollectionSet.h"
 #include "MenuVisibility.h"
+#include "LetterJump.h"
 #include "LibraryScanner.h"
 #include "KeyValueStore.h"
 #include "LockController.h"
@@ -84,11 +85,26 @@ class ScreenManager : public input::ListMoveSink {
 
   void begin();
 
+  // Re-roots Music's Library tab on the browse axis last chosen (ADR
+  // 0021). Call before restoring a resume record: that restore only
+  // accepts a saved stack whose root matches the tab's current one, so
+  // the axis has to be in place first.
+  void restoreBrowseAxis();
+
   // Call after anything that might change what should be on screen:
   // a tap, a swipe, playback starting/stopping.
   void render();
 
   void onListMove(int16_t delta) override;
+
+  // Whether a swipe that began at this point belongs to a control rather
+  // than to the screen behind it. The caption chip is up to 220px wide,
+  // so a sloppy tap on it can drift far enough to be recognized as a
+  // left-to-right swipe -- which at a stack root means "switch to the
+  // Files tab". Tapping a control must never navigate somewhere else
+  // (found on the device 2026-09-17). Same idea as the shuttle-held
+  // guard in loop(): a finger on a control is not a swipe.
+  bool swipeStartsOnControl(int16_t x, int16_t y) const;
 
   // Cheap live update of the volume HUD (ring + number) on the Now
   // Playing screen (if that's what's currently shown) -- call after any
@@ -130,6 +146,10 @@ class ScreenManager : public input::ListMoveSink {
   // a flow whose screen was left some other way. Call every loop().
   void tickTouchCalibration(uint32_t nowMs);
 
+  // Closes the header's letter-jump mode once it has been left alone
+  // (ADR 0021). A no-op when it isn't open. Call every loop().
+  void tickLetterJump(uint32_t nowMs);
+
   // Drives the USB drive screen (ADR 0016): follows the session's phase,
   // ends a session whose screen was left, and once a session ended -- by
   // eject, unplug or Done -- leaves the screen and rescans the library.
@@ -139,6 +159,33 @@ class ScreenManager : public input::ListMoveSink {
  private:
   void renderList(const std::vector<std::pair<std::string, int>> &items,
                    bool showMiniBar);
+  // The sort keys of a list's data rows, folded exactly the way that list
+  // is ordered -- what the header's letter buckets are built from.
+  std::vector<std::string> letterKeysFor(
+      const std::vector<std::pair<std::string, int>> &items,
+      int leadingRows) const;
+  // Whether this screen's rows are in an order letters can be read from
+  // at all: a Tracks list is in track-number order, Music's albums in
+  // year order, so neither offers it (ADR 0021).
+  bool listIsNameOrdered() const;
+  const char *emptyListText(const navigation::Screen &screen) const;
+  // The caption chip is a hold button, not a click one: pressing opens
+  // the letter mode straight away, so holding it and turning the knob
+  // with the other hand works -- the same two-handed gesture the time
+  // pill's shuttle uses (ADR 0013). Releasing leaves it open, so a plain
+  // tap works too; a second press closes it.
+  static void onCaptionPressed(lv_event_t *e);
+  static void onCaptionReleased(lv_event_t *e);
+  // Text and colours of the existing chip, without deleting it. A press
+  // must not destroy the very object the touch is tracking: the finger
+  // is still down on it, and its release would never arrive.
+  void applyCaptionChip();
+  std::string captionTextFor(const navigation::Screen &screen) const;
+  // The albums an AlbumsFlat screen shows: every one, or the year's, or
+  // the genre's -- whichever its params ask for.
+  std::vector<library::AlbumId> shelfAlbums(
+      const navigation::Screen &screen) const;
+  std::string artistNameForRow(navigation::ScreenKind kind, int itemId) const;
   void renderMiniBar();
   void renderNowPlaying();
   // Main menu and settings -- ScreenManagerMenu.cpp (ADR 0010).
@@ -178,6 +225,19 @@ class ScreenManager : public input::ListMoveSink {
   };
   static constexpr int kSettingsRowCount = 5;
   static const SettingsRow kSettingsRows[kSettingsRowCount];
+  // Music's browse axes (ADR 0021): which shelf the Library tab is
+  // rooted on, remembered across reboots.
+  struct BrowseAxis {
+    const char *label;
+    navigation::ScreenKind kind;
+  };
+  static constexpr int kBrowseAxisCount = 5;
+  static const BrowseAxis kBrowseAxes[kBrowseAxisCount];
+  // Whether this screen leads with the "Browse by" row: only Music, and
+  // only on the shelf's own root -- an artist's albums are not a shelf.
+  bool hasBrowseAxisRow(const navigation::Screen &screen) const;
+  void openBrowseAxis(int axisIndex);
+
   void renderBackButtonIfNeeded();
   void renderContextCaption();
   void setProgressRingVisible(bool visible);
@@ -236,7 +296,13 @@ class ScreenManager : public input::ListMoveSink {
     return profile().hasShuffleRow &&
            (kind == navigation::ScreenKind::Artists ||
             kind == navigation::ScreenKind::Albums ||
-            kind == navigation::ScreenKind::Tracks);
+            kind == navigation::ScreenKind::Tracks ||
+            // Music's other shelves shuffle what they show (ADR 0021).
+            // Years does not: a list of years is not a shelf of music,
+            // it is the way to one.
+            kind == navigation::ScreenKind::AlbumsFlat ||
+            kind == navigation::ScreenKind::Songs ||
+            kind == navigation::ScreenKind::Genres);
   }
 
   navigation::TabController &tabs_;
@@ -280,6 +346,12 @@ class ScreenManager : public input::ListMoveSink {
   static constexpr lv_coord_t kHeaderButtonW = 56;
   static constexpr lv_coord_t kHeaderButtonH = 44;
   static constexpr lv_coord_t kCaptionY = kHeaderButtonY + kHeaderButtonH + 2;
+  // The caption doubles as the letter-jump chip (ADR 0021). It has to
+  // stay inside the 22px band between the header buttons and the list --
+  // kListTopY does not move for it.
+  static constexpr lv_coord_t kCaptionChipH = 20;
+  static constexpr lv_coord_t kCaptionChipPadX = 10;
+  static constexpr lv_coord_t kCaptionChipMaxW = 220;
   static constexpr lv_coord_t kListTopY = kCaptionY + 22;
   static constexpr lv_coord_t kMiniBarZoneHeight = 88;
   static constexpr lv_coord_t kCoverY = 44;
@@ -315,6 +387,9 @@ class ScreenManager : public input::ListMoveSink {
   // Item id of the Shuffle row -- real ids are unsigned indices.
   static constexpr int kShuffleItemId = -1;
   static constexpr int kContinueItemId = -2;
+  static constexpr int kBrowseAxisItemId = -3;
+  // Persisted Music browse axis (navigation::ScreenKind by value).
+  static constexpr char kMusicAxisKey[] = "musicAxis";
   // Bit per main-menu entry, 1 = shown. NVS keys are limited to 15
   // characters. Default: everything visible, which is what a device that
   // has never opened this screen should look like.
@@ -325,6 +400,16 @@ class ScreenManager : public input::ListMoveSink {
 
   lv_obj_t *screen_ = nullptr;
   lv_obj_t *list_ = nullptr;
+  // The context caption, which doubles as the letter-jump target on long
+  // name-ordered lists (ADR 0021).
+  lv_obj_t *caption_ = nullptr;
+  navigation::LetterJump letterJump_;
+  // Whether the press currently on the chip is the one that opened the
+  // mode: if it is, releasing keeps it open (a hold, or a tap that will
+  // be followed by a turn); if not, the press was a second tap and
+  // releasing closes it.
+  bool captionPressOpened_ = false;
+  bool captionPressed_ = false;
   // Home's tile cells (one child per menu entry); the knob moves the
   // selection across them like across list rows.
   lv_obj_t *tiles_ = nullptr;
@@ -405,6 +490,7 @@ class ScreenManager : public input::ListMoveSink {
     bool isFolder;
     bool isShuffle = false;
     bool isContinue = false;
+    bool isBrowseAxis = false;
     std::string path;
   };
   // unique_ptr so addresses stay stable across vector growth -- LVGL

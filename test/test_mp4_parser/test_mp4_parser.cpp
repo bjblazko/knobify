@@ -183,12 +183,41 @@ void test_tag_reader_dispatches_m4a() {
   TEST_ASSERT_TRUE(tags.picture.present);
 }
 
+void test_free_text_genre_atom_is_read() {
+  Bytes ilst = concat({item("\xA9nam", 1, text("Song")),
+                       item("\xA9gen", 1, text("Shoegaze"))});
+  FakeRawFile raw(concat({ftyp(), moov(ilst)}));
+
+  TEST_ASSERT_EQUAL_STRING("Shoegaze", Mp4Parser::parse(raw).tags.genre.c_str());
+}
+
+void test_numbered_gnre_atom_resolves_to_a_name() {
+  // `gnre` is one-based, so 18 is the 17th entry: Rock.
+  Bytes ilst = concat({item("\xA9nam", 1, text("Song")),
+                       item("gnre", 0, Bytes{0, 18})});
+  FakeRawFile raw(concat({ftyp(), moov(ilst)}));
+
+  TEST_ASSERT_EQUAL_STRING("Rock", Mp4Parser::parse(raw).tags.genre.c_str());
+}
+
+void test_free_text_genre_wins_over_the_numbered_one() {
+  Bytes ilst = concat({item("\xA9gen", 1, text("Post-Rock")),
+                       item("gnre", 0, Bytes{0, 18})});
+  FakeRawFile raw(concat({ftyp(), moov(ilst)}));
+
+  TEST_ASSERT_EQUAL_STRING("Post-Rock",
+                           Mp4Parser::parse(raw).tags.genre.c_str());
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_parses_tags_duration_and_mdat_with_moov_first);
   RUN_TEST(test_moov_after_mdat);
   RUN_TEST(test_album_artist_is_fallback_for_missing_artist);
   RUN_TEST(test_png_cover_is_ignored_and_untyped_jpeg_accepted);
+  RUN_TEST(test_free_text_genre_atom_is_read);
+  RUN_TEST(test_numbered_gnre_atom_resolves_to_a_name);
+  RUN_TEST(test_free_text_genre_wins_over_the_numbered_one);
   RUN_TEST(test_mvhd_version_1);
   RUN_TEST(test_truncated_and_garbage_files_do_not_crash);
   RUN_TEST(test_tag_reader_dispatches_m4a);

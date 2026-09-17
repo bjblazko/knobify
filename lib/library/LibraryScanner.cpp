@@ -13,17 +13,37 @@ ArtistId findOrAddArtist(LibraryIndex &index, const std::string &name) {
   return id;
 }
 
+// Interned by folded key, so "Rock", "rock" and "ROCK" are one shelf
+// rather than three (ADR 0021). An empty genre stays id 0, the "unknown"
+// entry every index starts with.
+GenreId findOrAddGenre(LibraryIndex &index, const std::string &name) {
+  if (name.empty()) return 0;
+  const std::string key = LibraryIndex::nameSortKey(name);
+  for (const auto &genre : index.genres) {
+    if (genre.id != 0 && LibraryIndex::nameSortKey(genre.name) == key) {
+      return genre.id;
+    }
+  }
+  GenreId id = static_cast<GenreId>(index.genres.size());
+  index.genres.push_back(Genre{id, name});
+  return id;
+}
+
 AlbumId findOrAddAlbum(LibraryIndex &index, ArtistId artistId,
                        const std::string &title, uint16_t year,
-                       bool *isNew) {
-  for (const auto &album : index.albums) {
+                       const std::string &genre, bool *isNew) {
+  for (auto &album : index.albums) {
     if (album.artistId == artistId && album.title == title) {
       *isNew = false;
+      // The first track that carries a genre names the shelf; later
+      // tracks of a mixed album don't move it.
+      if (album.genreId == 0) album.genreId = findOrAddGenre(index, genre);
       return album.id;
     }
   }
   AlbumId id = static_cast<AlbumId>(index.albums.size());
-  index.albums.push_back(Album{id, artistId, title, year});
+  index.albums.push_back(
+      Album{id, artistId, title, year, findOrAddGenre(index, genre)});
   *isNew = true;
   return id;
 }
@@ -61,7 +81,8 @@ LibraryIndex LibraryScanner::scan(FileLister &lister, FileOpener &opener,
       ArtistId artistId = findOrAddArtist(index, tags.artist);
       bool isNewAlbum = false;
       AlbumId albumId =
-          findOrAddAlbum(index, artistId, tags.album, tags.year, &isNewAlbum);
+          findOrAddAlbum(index, artistId, tags.album, tags.year, tags.genre,
+                         &isNewAlbum);
 
       TrackId trackId = static_cast<TrackId>(index.tracks.size());
       index.tracks.push_back(

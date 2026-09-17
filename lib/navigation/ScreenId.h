@@ -35,6 +35,15 @@ enum class ScreenKind {
   // TouchCalibration was -- resume records store kinds by value.
   RescanPicker,
   MenuVisibility,
+  // The Music browse axes (ADR 0021), appended for the same reason as
+  // everything above: resume records store kinds by value. One screen
+  // covers every album shelf -- all albums, one year's, one genre's --
+  // since only the filter in ScreenParams differs.
+  AlbumsFlat,
+  Songs,
+  Years,
+  Genres,
+  BrowseAxis,
 };
 
 // Parameters a screen needs to render itself. Only the fields relevant
@@ -46,6 +55,11 @@ struct ScreenParams {
   uint32_t artistId = 0;
   uint32_t albumId = 0;
   std::string folderPath;
+  // AlbumsFlat's filter: a year, a genre, or neither (every album).
+  // Year 0 and genre 0 both mean "unset" in the index too, so no extra
+  // flag is needed to say which shelf is being shown.
+  uint16_t year = 0;
+  uint32_t genreId = 0;
   // Which collection's index the ids above are indices into, and whose
   // root a Folder path sits under (ADR 0018). Every push carries the
   // pushing screen's value along, so a whole browse stack stays inside

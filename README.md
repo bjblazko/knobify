@@ -177,8 +177,6 @@ Settings > USB drive, at about 0.8 MB/s writing and 0.9 MB/s reading
 - Gapless playback (for live albums, concept albums, etc.)
 - On-device firmware updates from a file on the SD card (no Wi-Fi
   needed, fits the offline-first goal)
-- Jump-by-letter navigation for long lists (e.g. holding the encoder's
-  equivalent gesture while turning jumps through initial letters)
 
 These are acknowledged future ideas, not requirements yet — don't design around them prematurely.
 
@@ -190,7 +188,8 @@ Arduino, native + esp32-s3 environments) are in place — see
 [`docs/adr/`](docs/adr/README.md) and [`docs/arc42/arc42.md`](docs/arc42/arc42.md)
 for what was decided and why.
 
-v1 works on real hardware: browsing by artist/album (or by folder),
+v1 works on real hardware: browsing Music by artist, album, song, year or
+genre (or by folder), jumping through long lists by initial letter,
 playback with cover art, jog/shuttle, lock, sleep timer, resume, and
 copying files over the USB cable. Formats are **MP3, M4A (AAC), WAV,
 FLAC (16-bit) and Ogg Vorbis**. See
@@ -204,7 +203,9 @@ path, and
 collections and the main menu, and
 [ADR 0019](docs/adr/0019-utf8-tag-text-and-project-text-fonts.md) for
 UTF-8 tag decoding and the project's own text fonts, which is what lets
-umlauts and accents render as written.
+umlauts and accents render as written, and
+[ADR 0021](docs/adr/0021-jump-by-letter-and-music-browse-axes.md) for
+jump-by-letter and Music's browse axes.
 
 ### What goes on the SD card
 
