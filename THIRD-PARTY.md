@@ -14,6 +14,8 @@ all of them are compatible with GPL-3.0-or-later. Versions are pinned in
 | [Arduino-ESP32](https://github.com/espressif/arduino-esp32) 2.0.x | Arduino core, TinyUSB, SD_MMC | LGPL-2.1 |
 | [ESP-IDF](https://github.com/espressif/esp-idf) (bundled with the core) | FreeRTOS, FatFs, drivers | Apache-2.0 |
 | [Material Symbols](https://github.com/google/material-design-icons) | The icon glyphs in `lib/ui-widgets/IconFont*.c` | Apache-2.0 |
+| [Montserrat](https://fonts.google.com/specimen/Montserrat) (Medium, bundled by LVGL as `scripts/built_in_font/Montserrat-Medium.ttf`) | Text glyphs in `lib/ui-widgets/TextFont*.c` (replaces LVGL's built-in Montserrat fonts, extended to Latin-1 Supplement/Latin Extended-A for European tag text) | SIL Open Font License 1.1 |
+| [Font Awesome 5 Free](https://fontawesome.com) (bundled by LVGL as `scripts/built_in_font/FontAwesome5-Solid+Brands+Regular.woff`) | The `LV_SYMBOL_*` icon glyphs embedded in `lib/ui-widgets/TextFont*.c` (same codepoint range as LVGL's own built-in Montserrat fonts) | CC BY 4.0 (icons) / SIL OFL 1.1 (font) |
 | [Unity](https://github.com/ThrowTheSwitch/Unity) | Host-side unit tests only (not shipped) | MIT |
 | [stb_vorbis](https://github.com/nothings/stb) (vendored) | Ogg Vorbis decoding | Public domain / MIT |
 

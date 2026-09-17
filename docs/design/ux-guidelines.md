@@ -481,6 +481,7 @@ visibility at the edge, Now Playing offsets with and without a cover)
 were confirmed on the physical device — see
 [ADR 0008](../adr/0008-braun-design-system-and-screen-redesign.md).
 
-- Non-ASCII tag text (umlauts, accents, `·`) renders as missing-glyph
-  boxes with LVGL's built-in fonts; needs custom fonts with a Latin-1
-  range.
+Non-ASCII tag text (umlauts, accents, `·`, `×`) was confirmed on the
+physical device on 2026-09-17, once the project's own text fonts and
+UTF-8 tag decoding landed — see
+[ADR 0019](../adr/0019-utf8-tag-text-and-project-text-fonts.md).

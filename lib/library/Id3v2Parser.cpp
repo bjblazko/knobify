@@ -5,6 +5,8 @@
 #include <cstring>
 #include <vector>
 
+#include "Utf8.h"
+
 namespace knobify::library {
 
 namespace {
@@ -31,21 +33,30 @@ std::string trimTrailing(std::string s) {
   return s;
 }
 
-// Text frame payload (after the leading encoding byte) -> a best-effort
-// narrow string. Encodings 0 (Latin-1) and 3 (UTF-8) pass through
-// verbatim; UTF-16 variants (1: BOM-prefixed, 2: big-endian, no BOM)
-// keep only ASCII-range code units, dropping the rest -- adequate for
-// the common case, not a full Unicode implementation.
+// Text frame payload (after the leading encoding byte) -> a UTF-8
+// string. Encoding 0 (ISO-8859-1/Latin-1) is transcoded byte-for-byte
+// via utf8::fromLatin1; encoding 3 (UTF-8) is passed through
+// utf8::repair() in case a file lied about its encoding and actually
+// wrote Latin-1 there; encodings 1 (UTF-16 with a BOM) and 2 (UTF-16BE,
+// no BOM) are decoded in full -- including surrogate pairs -- by
+// utf8::fromUtf16, after sniffing the BOM for byte order.
 std::string decodeText(uint8_t encoding, const uint8_t *data, size_t len) {
-  std::string out;
-  if (encoding == 0 || encoding == 3) {
-    out.assign(reinterpret_cast<const char *>(data), len);
-    // Stop at embedded null terminator, if any.
+  if (encoding == 0) {
+    std::string out = utf8::fromLatin1(data, len);
     auto nul = out.find('\0');
     if (nul != std::string::npos) {
       out.resize(nul);
     }
     return trimTrailing(out);
+  }
+  if (encoding == 3) {
+    std::string out(reinterpret_cast<const char *>(data), len);
+    // Stop at embedded null terminator, if any.
+    auto nul = out.find('\0');
+    if (nul != std::string::npos) {
+      out.resize(nul);
+    }
+    return trimTrailing(utf8::repair(out));
   }
 
   bool littleEndian = true;
@@ -62,16 +73,7 @@ std::string decodeText(uint8_t encoding, const uint8_t *data, size_t len) {
     littleEndian = false;
   }
 
-  for (size_t i = start; i + 1 < len; i += 2) {
-    uint16_t unit = littleEndian ? (data[i] | (data[i + 1] << 8))
-                                  : ((data[i] << 8) | data[i + 1]);
-    if (unit == 0) {
-      break;
-    }
-    if (unit < 0x80) {
-      out.push_back(static_cast<char>(unit));
-    }
-  }
+  std::string out = utf8::fromUtf16(data + start, len - start, littleEndian);
   return trimTrailing(out);
 }
 

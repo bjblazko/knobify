@@ -83,10 +83,12 @@ and overlapped the line below it.
   as wrongly tinted on the device, so the neutrals went back to the
   original Snow White `#F4F4F0` / Light Grey `#DCDDD8` (2026-09-13).
   Judge neutrals on the device.
-- **Built-in Montserrat is ASCII-only** (0x20–0x7F plus `LV_SYMBOL_*`):
+- **Built-in Montserrat was ASCII-only** (0x20–0x7F plus `LV_SYMBOL_*`):
   a U+00B7 middle dot rendered as a missing-glyph box, so the Now
-  Playing separator is " - ". Umlauts/accents have the same problem —
-  not yet fixed.
+  Playing separator was " - ", and umlauts/accents had the same
+  problem. Resolved in ADR 0019 by generating project-owned text fonts
+  covering Latin-1 Supplement and Latin Extended-A; the separator is
+  " · " again.
 - **Anthracite and black edge rings blended into the dark housing** at
   the bezel, hence signal colors (yellow progress, orange volume).
 - **A volume pill positioned over the cover's center covered the title
@@ -103,7 +105,8 @@ and overlapped the line below it.
   guidelines (§3, §3a, §6, §7) are the reference for which.
 - `PlaybackDriver` gained a method, so every implementation (including
   test fakes) must provide `durationSeconds()`.
-- `LV_FONT_MONTSERRAT_28` is compiled in (volume numeral, Play/Pause
-  glyph).
-- Non-ASCII tag text still renders as boxes until custom fonts with a
-  Latin-1 range are generated.
+- `LV_FONT_MONTSERRAT_28` was compiled in (volume numeral, Play/Pause
+  glyph) until ADR 0019 switched the project over to its own
+  Montserrat-derived fonts.
+- Non-ASCII tag text rendered as boxes until ADR 0019's custom fonts
+  with a Latin-1/Latin Extended-A range were generated.

@@ -201,7 +201,10 @@ cover decoding and USB drive mode,
 [ADR 0017](docs/adr/0017-two-audio-decode-paths.md) for the Vorbis decode
 path, and
 [ADR 0018](docs/adr/0018-collections-and-menu-visibility.md) for
-collections and the main menu.
+collections and the main menu, and
+[ADR 0019](docs/adr/0019-utf8-tag-text-and-project-text-fonts.md) for
+UTF-8 tag decoding and the project's own text fonts, which is what lets
+umlauts and accents render as written.
 
 ### What goes on the SD card
 

@@ -3,6 +3,8 @@
 #include <cstring>
 #include <string>
 
+#include "Utf8.h"
+
 namespace knobify::library {
 
 namespace {
@@ -89,13 +91,23 @@ bool findData(RawFile &file, const Atom &item, size_t *offset, size_t *length,
 }
 
 std::string readText(RawFile &file, size_t offset, size_t length) {
-  if (length > kMaxTextBytes) length = kMaxTextBytes;
-  std::string text(length, '\0');
+  // Read a few bytes past kMaxTextBytes so a raw cut that lands mid a
+  // multi-byte UTF-8 sequence still leaves utf8::truncate() a complete
+  // sequence to inspect at the boundary, rather than hard-cutting
+  // exactly at the cap (which utf8::truncate can't fix up after the
+  // fact, since by then the missing continuation bytes are already
+  // gone).
+  size_t readLen = length;
+  if (readLen > kMaxTextBytes + 3) readLen = kMaxTextBytes + 3;
+  std::string text(readLen, '\0');
   if (!file.seek(offset)) return "";
-  text.resize(file.read(reinterpret_cast<uint8_t *>(&text[0]), length));
+  text.resize(file.read(reinterpret_cast<uint8_t *>(&text[0]), readLen));
   auto nul = text.find('\0');
   if (nul != std::string::npos) text.resize(nul);
-  return text;
+  // iTunes/MP4 text atoms are documented as UTF-8, but repair() guards
+  // against a file that wrote Latin-1 there anyway; truncate() then
+  // enforces the byte cap without ever splitting a sequence.
+  return utf8::truncate(utf8::repair(text), kMaxTextBytes);
 }
 
 // trkn/disk: 2 reserved bytes, then the number, then the total.

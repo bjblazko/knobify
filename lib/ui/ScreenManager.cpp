@@ -12,6 +12,7 @@
 #include "PlaylistBuilder.h"
 #include "ScreenHelpers.h"
 #include "St77916Driver.h"
+#include "TextFont.h"
 #include "Theme.h"
 
 using knobify::navigation::Screen;
@@ -330,7 +331,7 @@ void ScreenManager::renderList(
     // several artist/album names all mid-scroll at once.
     lv_obj_t *label = lv_obj_get_child(btn, 0);
     if (label) {
-      lv_obj_set_style_text_font(label, &lv_font_montserrat_20, 0);
+      lv_obj_set_style_text_font(label, &knobify_text_font_20, 0);
     }
 
     // Album rows end in the release year -- albums are sorted by it
@@ -347,7 +348,7 @@ void ScreenManager::renderList(
         snprintf(yearText, sizeof(yearText), "%u",
                  static_cast<unsigned>(album.year));
         lv_obj_t *yearLabel = lv_label_create(btn);
-        lv_obj_set_style_text_font(yearLabel, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_font(yearLabel, &knobify_text_font_14, 0);
         lv_label_set_text(yearLabel, yearText);
         lv_obj_set_style_pad_column(btn, 10, 0);
         break;
@@ -375,7 +376,7 @@ void ScreenManager::renderList(
                    static_cast<unsigned>(track.trackNumber));
         }
         lv_obj_t *numberLabel = lv_label_create(btn);
-        lv_obj_set_style_text_font(numberLabel, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_font(numberLabel, &knobify_text_font_14, 0);
         lv_label_set_text(numberLabel, numberText);
         lv_obj_set_style_pad_column(btn, 10, 0);
       }
@@ -396,7 +397,7 @@ void ScreenManager::renderList(
     }
     if (secondary) {
       lv_obj_t *valueLabel = lv_label_create(btn);
-      lv_obj_set_style_text_font(valueLabel, &lv_font_montserrat_14, 0);
+      lv_obj_set_style_text_font(valueLabel, &knobify_text_font_14, 0);
       lv_label_set_text(valueLabel, secondary);
       lv_obj_set_style_pad_column(btn, 10, 0);
     }
@@ -486,7 +487,7 @@ void ScreenManager::renderMiniBar() {
   constexpr lv_coord_t kMaxTitleWidth = 170;
   const std::string title = trackInfoFor(playback_.currentPath()).title;
   lv_obj_t *label = lv_label_create(row);
-  lv_obj_set_style_text_font(label, &lv_font_montserrat_16, 0);
+  lv_obj_set_style_text_font(label, &knobify_text_font_16, 0);
   lv_obj_set_style_text_color(label, theme::ink(), 0);
   lv_label_set_text(label, title.c_str());
   lv_obj_update_layout(label);
@@ -550,7 +551,7 @@ void ScreenManager::renderContextCaption() {
       return;
   }
   lv_obj_t *label = lv_label_create(screen_);
-  lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_font(label, &knobify_text_font_14, 0);
   lv_obj_set_style_text_color(label, theme::structure(), 0);
   lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
   lv_obj_set_width(label, 200);
@@ -581,7 +582,7 @@ void ScreenManager::renderBackButtonIfNeeded() {
   makeIconButton(screen_, glyph, kHeaderButtonW, kHeaderButtonH,
                  LV_ALIGN_TOP_MID, 0, kHeaderButtonY,
                  &ScreenManager::onBackClicked, this, ButtonRole::Quiet,
-                 &lv_font_montserrat_20);
+                 &knobify_text_font_20);
 }
 
 ScreenManager::TrackInfo ScreenManager::trackInfoFor(
@@ -668,7 +669,7 @@ void ScreenManager::renderNowPlaying() {
   TrackInfo info = trackInfoFor(playback_.currentPath());
 
   lv_obj_t *title = lv_label_create(screen_);
-  lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+  lv_obj_set_style_text_font(title, &knobify_text_font_20, 0);
   lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, 0);
   // Wide: without a cover this block sits near the vertical middle, where
   // the round screen is ~330px across; with a cover (y~164) still ~320px.
@@ -682,14 +683,14 @@ void ScreenManager::renderNowPlaying() {
 
   std::string meta = info.artist;
   if (!info.album.empty()) {
-    // Plain ASCII: LVGL's built-in Montserrat only covers 0x20-0x7F (plus
-    // LV_SYMBOL_*), so a middle dot rendered as a missing-glyph box.
-    if (!meta.empty()) meta += " - ";
+    // U+00B7 middle dot: back now that the project's own text fonts cover
+    // Latin-1 Supplement (ADR 0019), unlike LVGL's built-in Montserrat.
+    if (!meta.empty()) meta += " \xC2\xB7 ";
     meta += info.album;
   }
   if (!meta.empty()) {
     lv_obj_t *metaLabel = lv_label_create(screen_);
-    lv_obj_set_style_text_font(metaLabel, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(metaLabel, &knobify_text_font_14, 0);
     lv_obj_set_style_text_color(metaLabel, theme::structure(), 0);
     lv_obj_set_style_text_align(metaLabel, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_width(metaLabel, 300);
@@ -791,7 +792,7 @@ void ScreenManager::renderNowPlaying() {
   lv_obj_clear_flag(volumeHudPill_, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_clear_flag(volumeHudPill_, LV_OBJ_FLAG_CLICKABLE);
   volumeHudLabel_ = lv_label_create(volumeHudPill_);
-  lv_obj_set_style_text_font(volumeHudLabel_, &lv_font_montserrat_28, 0);
+  lv_obj_set_style_text_font(volumeHudLabel_, &knobify_text_font_28, 0);
   lv_obj_set_style_text_color(volumeHudLabel_, theme::surface(), 0);
   char volText[8];
   snprintf(volText, sizeof(volText), "%d", playback_.volume());
@@ -814,14 +815,14 @@ void ScreenManager::renderNowPlaying() {
   makeIconButton(screen_, "...", kHeaderButtonW, kOptionsHandleH,
                  LV_ALIGN_BOTTOM_MID, 0, -kOptionsHandleBottom,
                  &ScreenManager::onOptionsHandleClicked, this,
-                 ButtonRole::Quiet, &lv_font_montserrat_20);
+                 ButtonRole::Quiet, &knobify_text_font_20);
 
   // Transport row: secondary (grey) prev/next either side of the one
   // primary control. Inset well within the round display's visible area at this
   // height -- see decision 6, ADR 0004.
   makeIconButton(screen_, LV_SYMBOL_PREV, 56, 56, LV_ALIGN_TOP_MID, -84,
                  kTransportCenterY - 28, &ScreenManager::onPrevClicked, this,
-                 ButtonRole::Secondary, &lv_font_montserrat_20);
+                 ButtonRole::Secondary, &knobify_text_font_20);
 
   makeIconButton(screen_,
                  playback_.state() == playback::PlaybackState::Playing
@@ -829,11 +830,11 @@ void ScreenManager::renderNowPlaying() {
                      : LV_SYMBOL_PLAY,
                  72, 72, LV_ALIGN_TOP_MID, 0, kTransportCenterY - 36,
                  &ScreenManager::onPlayPauseClicked, this, ButtonRole::Primary,
-                 &lv_font_montserrat_28);
+                 &knobify_text_font_28);
 
   makeIconButton(screen_, LV_SYMBOL_NEXT, 56, 56, LV_ALIGN_TOP_MID, 84,
                  kTransportCenterY - 28, &ScreenManager::onNextClicked, this,
-                 ButtonRole::Secondary, &lv_font_montserrat_20);
+                 ButtonRole::Secondary, &knobify_text_font_20);
 
   // Elapsed (and, once known, total) play time -- requested after real
   // hardware testing made it clear there was no way to tell whether
@@ -855,7 +856,7 @@ void ScreenManager::renderNowPlaying() {
     elapsedLabel_ = lv_obj_get_child(timePill_, 0);
   } else {
     elapsedLabel_ = lv_label_create(screen_);
-    lv_obj_set_style_text_font(elapsedLabel_, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(elapsedLabel_, &knobify_text_font_14, 0);
     lv_obj_set_style_text_color(elapsedLabel_, theme::structure(), 0);
     lv_obj_align(elapsedLabel_, LV_ALIGN_TOP_MID, 0, timeY);
     lv_label_set_text(elapsedLabel_, "0:00");
@@ -904,7 +905,7 @@ void ScreenManager::renderOptionsPanel(bool animate) {
   makeIconButton(panel, LV_SYMBOL_DOWN, kHeaderButtonW, kOptionsHandleH,
                  LV_ALIGN_TOP_MID, 0, 4,
                  &ScreenManager::onOptionsPanelCloseClicked, this,
-                 ButtonRole::Quiet, &lv_font_montserrat_20);
+                 ButtonRole::Quiet, &knobify_text_font_20);
 
   // Four secondary circles in a row, each named underneath -- the icons
   // alone didn't say what shuffle/repeat were doing (ADR 0011), and the
@@ -955,7 +956,7 @@ void ScreenManager::renderOptionsPanel(bool animate) {
                                    &knobify_icon_font_28);
     lv_obj_set_ext_click_area(btn, 0);
     lv_obj_t *label = lv_label_create(panel);
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(label, &knobify_text_font_14, 0);
     lv_obj_set_style_text_color(label, theme::structure(), 0);
     lv_label_set_text(label, option.label);
     lv_obj_align(label, LV_ALIGN_TOP_MID, x, kButtonTop + kButtonSize + 6);
@@ -1140,14 +1141,14 @@ void ScreenManager::updateElapsedTimeDisplay() {
     // the knob does now until it's turned (user feedback 2026-09-15: the
     // hold-and-turn wasn't obvious). Gone with the first detent or release.
     // While winding, the same spot names the speed -- bigger and easier to
-    // read than inside the pill (user feedback 2026-09-15). ASCII "x": the
-    // built-in font has no "×".
+    // read than inside the pill (user feedback 2026-09-15). "×" (U+00D7):
+    // the project's own text fonts cover it (ADR 0019).
     if (held && step == 0) {
       messages_.show("Turn knob to rewind or fast forward", kNowPlayingMessageAnchor,
                      millis(), kShuttleHintMs);
     } else if (held) {
       char speed[32];
-      snprintf(speed, sizeof(speed), "%s %ux", step > 0 ? "Fast forward" : "Rewind",
+      snprintf(speed, sizeof(speed), "%s %u\xC3\x97", step > 0 ? "Fast forward" : "Rewind",
                1u << std::abs(step));
       messages_.show(speed, kNowPlayingMessageAnchor, millis(), kShuttleHintMs);
     } else if (shownShuttleHeld_) {

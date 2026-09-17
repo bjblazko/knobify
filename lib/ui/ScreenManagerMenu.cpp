@@ -12,6 +12,7 @@
 #include "ScreenHelpers.h"
 #include "ScreenManager.h"
 #include "St77916Driver.h"
+#include "TextFont.h"
 #include "Theme.h"
 
 using knobify::navigation::Screen;
@@ -326,7 +327,7 @@ void ScreenManager::renderHome() {
 // screen the device boots into is the last place to introduce a layout
 // engine whose passes interact with the label clamping below.
 void ScreenManager::renderWordmark() {
-  const lv_font_t *font = &lv_font_montserrat_16;
+  const lv_font_t *font = &knobify_text_font_16;
   lv_point_t textSize;
   lv_txt_get_size(&textSize, kWordmark, font, 0, 0, LV_COORD_MAX,
                   LV_TEXT_FLAG_NONE);
@@ -431,7 +432,7 @@ void ScreenManager::makeMenuTile(int entryIndex, int slot) {
     // like the circle does -- the label has always been part of the
     // target.
     lv_obj_t *label = lv_label_create(tiles_);
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(label, &knobify_text_font_16, 0);
     lv_obj_set_style_text_color(label, theme::ink(), 0);
     lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_width(label, kLabelWidth);
@@ -495,14 +496,14 @@ void ScreenManager::renderBrightness() {
   lv_obj_align(glyph, LV_ALIGN_TOP_MID, 0, kGlyphY);
 
   brightnessLabel_ = lv_label_create(screen_);
-  lv_obj_set_style_text_font(brightnessLabel_, &lv_font_montserrat_28, 0);
+  lv_obj_set_style_text_font(brightnessLabel_, &knobify_text_font_28, 0);
   lv_obj_set_style_text_color(brightnessLabel_, theme::ink(), 0);
   lv_obj_align(brightnessLabel_, LV_ALIGN_TOP_MID, 0, kGlyphY + 60);
 
   // There's no button to press on this screen, so name the one control
   // that does something.
   lv_obj_t *hint = lv_label_create(screen_);
-  lv_obj_set_style_text_font(hint, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_font(hint, &knobify_text_font_14, 0);
   lv_obj_set_style_text_color(hint, theme::structure(), 0);
   lv_label_set_text(hint, "Turn to adjust");
   lv_obj_align(hint, LV_ALIGN_TOP_MID, 0, kGlyphY + 104);
@@ -545,12 +546,12 @@ void ScreenManager::renderSleepTimer() {
   lv_obj_align(glyph, LV_ALIGN_TOP_MID, 0, kGlyphY);
 
   sleepValueLabel_ = lv_label_create(screen_);
-  lv_obj_set_style_text_font(sleepValueLabel_, &lv_font_montserrat_28, 0);
+  lv_obj_set_style_text_font(sleepValueLabel_, &knobify_text_font_28, 0);
   lv_obj_set_style_text_color(sleepValueLabel_, theme::ink(), 0);
   lv_obj_align(sleepValueLabel_, LV_ALIGN_TOP_MID, 0, kGlyphY + 60);
 
   lv_obj_t *hint = lv_label_create(screen_);
-  lv_obj_set_style_text_font(hint, &lv_font_montserrat_14, 0);
+  lv_obj_set_style_text_font(hint, &knobify_text_font_14, 0);
   lv_obj_set_style_text_color(hint, theme::structure(), 0);
   lv_label_set_text(hint, "Turn to set");
   lv_obj_align(hint, LV_ALIGN_TOP_MID, 0, kGlyphY + 104);
@@ -615,11 +616,11 @@ void ScreenManager::renderTouchCalibration() {
   if (shownCalibrationPhase_ == CalibrationPhase::Verifying) {
     // The new calibration is already live: tapping Keep proves it works.
     // If it doesn't, Keep can't be hit and the ring runs out.
-    addLabel("Touch calibrated", &lv_font_montserrat_20, theme::ink(), -84);
+    addLabel("Touch calibrated", &knobify_text_font_20, theme::ink(), -84);
     makeIconButton(screen_, "Keep", 96, 96, LV_ALIGN_CENTER, 0, 0,
                    &ScreenManager::onCalibrationKeepClicked, this,
-                   ButtonRole::Primary, &lv_font_montserrat_20);
-    addLabel("Reverts unless kept", &lv_font_montserrat_14, theme::structure(),
+                   ButtonRole::Primary, &knobify_text_font_20);
+    addLabel("Reverts unless kept", &knobify_text_font_14, theme::structure(),
              84);
     ui_widgets::EdgeArcConfig arcConfig;
     arcConfig.startAngle = 135;
@@ -647,15 +648,15 @@ void ScreenManager::renderTouchCalibration() {
     }
   }
   addLabel(shownCalibrationRejected_ ? "Didn't fit.\nTry again" : "Tap the cross",
-           &lv_font_montserrat_20, theme::ink(),
+           &knobify_text_font_20, theme::ink(),
            shownCalibrationRejected_ ? -24 : -16);
   char progress[16];
   snprintf(progress, sizeof(progress), "%u of %u",
            static_cast<unsigned>(shownCalibrationTargets_ + 1),
            static_cast<unsigned>(TouchCalibrator::kTargetCount));
-  addLabel(progress, &lv_font_montserrat_14, theme::structure(), 18);
+  addLabel(progress, &knobify_text_font_14, theme::structure(), 18);
   // The one exit, and it never depends on touch.
-  addLabel("Turn knob to cancel", &lv_font_montserrat_14, theme::structure(),
+  addLabel("Turn knob to cancel", &knobify_text_font_14, theme::structure(),
            52);
 }
 
@@ -733,18 +734,18 @@ void ScreenManager::renderUsbDrive() {
     lv_obj_align(label, LV_ALIGN_CENTER, 0, dy);
     return label;
   };
-  addLabel("USB drive", &lv_font_montserrat_20, theme::ink(), -96);
+  addLabel("USB drive", &knobify_text_font_20, theme::ink(), -96);
   addLabel(connected ? "Connected" : "Connect to a computer",
-           &lv_font_montserrat_14, connected ? theme::accent() : theme::structure(),
+           &knobify_text_font_14, connected ? theme::accent() : theme::structure(),
            -66);
   makeIconButton(screen_, "Done", 96, 96, LV_ALIGN_CENTER, 0, 10,
                  &ScreenManager::onUsbDriveDoneClicked, this,
-                 ButtonRole::Primary, &lv_font_montserrat_20);
+                 ButtonRole::Primary, &knobify_text_font_20);
   // Done doesn't wait for the computer: leaving before its writes are
   // flushed corrupts the card.
   if (connected) {
     addLabel("Eject on the computer\nbefore tapping Done",
-             &lv_font_montserrat_14, theme::structure(), 96);
+             &knobify_text_font_14, theme::structure(), 96);
   }
 }
 
