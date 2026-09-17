@@ -3,6 +3,7 @@
 #include <cstring>
 #include <string>
 
+#include "Id3Genres.h"
 #include "Utf8.h"
 
 namespace knobify::library {
@@ -39,6 +40,7 @@ constexpr uint32_t kNam = 0xA96E616D;  // ©nam
 constexpr uint32_t kArt = 0xA9415254;  // ©ART
 constexpr uint32_t kAlb = 0xA9616C62;  // ©alb
 constexpr uint32_t kDay = 0xA9646179;  // ©day
+constexpr uint32_t kGen = 0xA967656E;  // ©gen
 
 struct Atom {
   uint32_t type = 0;
@@ -142,6 +144,9 @@ void parseIlst(RawFile &file, const Atom &ilst, Mp4Info *info) {
       case kArt: tags.artist = readText(file, offset, length); break;
       case kAlb: tags.album = readText(file, offset, length); break;
       case kDay: tags.year = parseYear(readText(file, offset, length)); break;
+      // Free-text genre; the numbered `gnre` below only fills in when
+      // this is absent, since iTunes writes one or the other.
+      case kGen: tags.genre = readText(file, offset, length); break;
       default:
         if (item.type == fourcc("aART")) {
           albumArtist = readText(file, offset, length);
@@ -149,6 +154,14 @@ void parseIlst(RawFile &file, const Atom &ilst, Mp4Info *info) {
           tags.trackNumber = readIndexNumber(file, offset, length);
         } else if (item.type == fourcc("disk")) {
           tags.discNumber = readIndexNumber(file, offset, length);
+        } else if (item.type == fourcc("gnre") && tags.genre.empty()) {
+          // A big-endian index into the ID3v1 table, one-based here.
+          uint8_t b[2];
+          if (length >= 2 && file.seek(offset) && file.read(b, 2) == 2) {
+            const unsigned index = static_cast<unsigned>((b[0] << 8) | b[1]);
+            const char *name = index > 0 ? id3v1Genre(index - 1) : nullptr;
+            if (name) tags.genre = name;
+          }
         } else if (item.type == fourcc("covr") && !tags.picture.present) {
           uint8_t magic[2] = {0, 0};
           bool jpeg = type == kTypeJpeg;

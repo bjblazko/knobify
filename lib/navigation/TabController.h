@@ -67,6 +67,18 @@ class TabController {
 
   void goHome() { active_ = Tab::Menu; }
 
+  // Re-roots the active collection's Library tab on another browse axis
+  // (ADR 0021). Everything above the root goes: the artist you were
+  // inside means nothing on a year or genre shelf.
+  void setLibraryRoot(ScreenKind kind) {
+    stackFor(Tab::Library).setRoot(
+        Screen{kind, ScreenParams{.collection = activeCollection_}});
+  }
+
+  ScreenKind libraryRootKind() const {
+    return const_cast<TabController *>(this)->stackFor(Tab::Library).at(0).kind;
+  }
+
   // Toggles between the active collection's two browse tabs; does nothing
   // in the menu. Never crosses collections: a swipe is "the other view of
   // what I am browsing", not "a different shelf".

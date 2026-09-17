@@ -107,6 +107,9 @@ TagResult VorbisCommentParser::parse(RawFile &file) {
       }
       result.discNumber = disc;
       any = true;
+    } else if (key == "GENRE") {
+      result.genre = value;
+      any = true;
     } else if (key == "DATE") {
       // Value is typically "YYYY" or "YYYY-MM-DD"; take the leading digits.
       uint16_t year = 0;

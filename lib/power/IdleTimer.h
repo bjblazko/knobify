@@ -14,11 +14,12 @@ namespace knobify::power {
 class IdleTimer {
  public:
   static constexpr uint32_t kIdleTimeoutMs = 60000;
-  // A dark display only wakes from the knob after about a quarter turn
-  // (~30 detents per revolution), so nudges in a pocket don't light the
-  // screen and drain the battery. Detents count as a signed sum, so
-  // back-and-forth jiggle cancels out, and only while they keep coming:
-  // a pause longer than the window starts the count over.
+  // While locked, a dark display only wakes from the knob after about a
+  // quarter turn (~30 detents per revolution), so nudges in a pocket
+  // don't light the screen and drain the battery. Detents count as a
+  // signed sum, so back-and-forth jiggle cancels out, and only while they
+  // keep coming: a pause longer than the window starts the count over.
+  // Unlocked, none of this applies -- see noteEncoderDelta().
   static constexpr int kEncoderWakeDetents = 8;
   static constexpr uint32_t kEncoderWakeWindowMs = 1500;
 
@@ -32,10 +33,17 @@ class IdleTimer {
   }
 
   // Call for every non-zero encoder delta. While the display is on, any
-  // detent counts as activity; while it's off, only a deliberate turn
-  // (see kEncoderWakeDetents) wakes it.
-  void noteEncoderDelta(int delta, uint32_t nowMs) {
+  // detent counts as activity. While it's off, `requireDeliberateTurn` is
+  // the pocket guard: pass the lock state. Locked, only a deliberate turn
+  // (see kEncoderWakeDetents) wakes the display. Unlocked the device is
+  // merely dimmed on a table, so the very first detent wakes it -- and
+  // the caller acts on that same detent as usual (ADR 0005).
+  void noteEncoderDelta(int delta, uint32_t nowMs, bool requireDeliberateTurn) {
     if (displayOn_) {
+      noteActivity(nowMs);
+      return;
+    }
+    if (!requireDeliberateTurn) {
       noteActivity(nowMs);
       return;
     }

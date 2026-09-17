@@ -17,6 +17,12 @@ struct GestureEvent {
   GestureType type;
   int16_t x;
   int16_t y;
+  // Where the finger went down. A swipe is acted on by whatever owns the
+  // screen, and that owner sometimes needs to know where it started --
+  // a control the finger began on may have meant to be tapped, not
+  // swiped from (ADR 0021).
+  int16_t startX = 0;
+  int16_t startY = 0;
 };
 
 // Turns a stream of raw touch samples into a Tap or a left-to-right
@@ -57,10 +63,11 @@ class GestureRecognizer {
     int16_t absDy = dy < 0 ? -dy : dy;
 
     if (absDx <= kTapMaxMovement && absDy <= kTapMaxMovement) {
-      return GestureEvent{GestureType::Tap, lastX_, lastY_};
+      return GestureEvent{GestureType::Tap, lastX_, lastY_, downX_, downY_};
     }
     if (dx >= kSwipeMinDx && absDy <= kSwipeMaxDy) {
-      return GestureEvent{GestureType::SwipeLeftToRight, lastX_, lastY_};
+      return GestureEvent{GestureType::SwipeLeftToRight, lastX_, lastY_,
+                          downX_, downY_};
     }
     return std::nullopt;
   }

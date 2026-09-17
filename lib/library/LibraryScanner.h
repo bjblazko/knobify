@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <functional>
 #include <string>
 #include <memory>
 #include <vector>
@@ -31,6 +32,8 @@ struct LibraryIndex {
   std::vector<Artist> artists;
   std::vector<Album> albums;
   std::vector<Track> tracks;
+  // Always starts with the id-0 "unknown" entry (LibraryTypes.h).
+  std::vector<Genre> genres{Genre{0, ""}};
 
   // Alphabetical, the way a reader scans a shelf: case is ignored, a
   // leading "The " doesn't count (The Beatles sits under B), and the
@@ -47,16 +50,19 @@ struct LibraryIndex {
     for (const auto &artist : artists) result.push_back(artist.id);
     std::sort(result.begin(), result.end(), [this, order](ArtistId a, ArtistId b) {
       if (order == SortOrder::ByName) return artists[a].name < artists[b].name;
-      const std::string left = artistSortKey(artists[a].name);
-      const std::string right = artistSortKey(artists[b].name);
+      const std::string left = nameSortKey(artists[a].name);
+      const std::string right = nameSortKey(artists[b].name);
       if (left != right) return left < right;
       return artists[a].name < artists[b].name;  // Stable for equal keys.
     });
     return result;
   }
 
-  // Exposed for testing the folding rules directly.
-  static std::string artistSortKey(const std::string &name) {
+  // The shelf key for any name -- artist, album title, song title or
+  // genre. Exposed for testing the folding rules directly, and used by
+  // the header's jump-by-letter so its letter can never disagree with
+  // the row order (lib/navigation/LetterJump.h, ADR 0021).
+  static std::string nameSortKey(const std::string &name) {
     std::string key = foldAccents(name);
     for (char &c : key) {
       c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
@@ -132,6 +138,85 @@ struct LibraryIndex {
       return left.title < right.title;
     });
     return result;
+  }
+
+  // Every album in one flat shelf, by title -- the Albums browse axis
+  // (ADR 0021). Artist is only the tie-break: two albums of the same name
+  // by different artists still each get a row.
+  std::vector<AlbumId> albumsSorted() const {
+    std::vector<AlbumId> result;
+    result.reserve(albums.size());
+    for (const auto &album : albums) result.push_back(album.id);
+    sortByName(result, [this](AlbumId id) { return albums[id].title; });
+    return result;
+  }
+
+  // Every track in one flat shelf, by title -- the Songs browse axis.
+  std::vector<TrackId> tracksSorted() const {
+    std::vector<TrackId> result;
+    result.reserve(tracks.size());
+    for (const auto &track : tracks) result.push_back(track.id);
+    sortByName(result, [this](TrackId id) { return tracks[id].title; });
+    return result;
+  }
+
+  // The years that actually have albums, newest first: a year shelf is
+  // read backwards from now, not forwards from 1950. Albums with no year
+  // (0) have no shelf at all rather than a "0" one.
+  std::vector<uint16_t> yearsSorted() const {
+    std::vector<uint16_t> result;
+    for (const auto &album : albums) {
+      if (album.year == 0) continue;
+      if (std::find(result.begin(), result.end(), album.year) == result.end()) {
+        result.push_back(album.year);
+      }
+    }
+    std::sort(result.begin(), result.end(), std::greater<uint16_t>());
+    return result;
+  }
+
+  std::vector<AlbumId> albumsForYear(uint16_t year) const {
+    std::vector<AlbumId> result;
+    for (const auto &album : albums) {
+      if (album.year == year) result.push_back(album.id);
+    }
+    sortByName(result, [this](AlbumId id) { return albums[id].title; });
+    return result;
+  }
+
+  // Genres with at least one album, by name. The id-0 "unknown" shelf is
+  // never offered: "no genre" is not a genre.
+  std::vector<GenreId> genresSorted() const {
+    std::vector<GenreId> result;
+    for (const auto &genre : genres) {
+      if (genre.id == 0 || genre.name.empty()) continue;
+      result.push_back(genre.id);
+    }
+    sortByName(result, [this](GenreId id) { return genres[id].name; });
+    return result;
+  }
+
+  std::vector<AlbumId> albumsForGenre(GenreId genreId) const {
+    std::vector<AlbumId> result;
+    for (const auto &album : albums) {
+      if (album.genreId == genreId) result.push_back(album.id);
+    }
+    sortByName(result, [this](AlbumId id) { return albums[id].title; });
+    return result;
+  }
+
+ private:
+  // Shelf order for any flat list of ids: the folded key first (so "Die
+  // Ärzte" sits under A and "The Wall" under W), the raw name as a
+  // stable tie-break.
+  template <typename Id, typename NameOf>
+  static void sortByName(std::vector<Id> &ids, NameOf nameOf) {
+    std::sort(ids.begin(), ids.end(), [&nameOf](Id a, Id b) {
+      const std::string left = nameSortKey(nameOf(a));
+      const std::string right = nameSortKey(nameOf(b));
+      if (left != right) return left < right;
+      return nameOf(a) < nameOf(b);
+    });
   }
 };
 

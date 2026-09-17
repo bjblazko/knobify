@@ -4,6 +4,7 @@
 #include "IndexCache.h"
 
 using knobify::library::Album;
+using knobify::library::Genre;
 using knobify::library::Artist;
 using knobify::library::computeSignature;
 using knobify::library::FileEntry;
@@ -93,6 +94,24 @@ std::vector<uint8_t> buildTaggedMp3WithDisc(
   appendFrame(frames, "TALB", album);
   appendFrame(frames, "TRCK", track);
   appendFrame(frames, "TPOS", disc);
+
+  std::vector<uint8_t> file;
+  file.insert(file.end(), {'I', 'D', '3', 3, 0, 0});
+  appendSynchsafe(file, static_cast<uint32_t>(frames.size()));
+  file.insert(file.end(), frames.begin(), frames.end());
+  return file;
+}
+
+std::vector<uint8_t> buildTaggedMp3WithGenreAndYear(
+    const std::string &artist, const std::string &album,
+    const std::string &title, const std::string &genre,
+    const std::string &year) {
+  std::vector<uint8_t> frames;
+  appendFrame(frames, "TIT2", title);
+  appendFrame(frames, "TPE1", artist);
+  appendFrame(frames, "TALB", album);
+  if (!genre.empty()) appendFrame(frames, "TCON", genre);
+  if (!year.empty()) appendFrame(frames, "TYER", year);
 
   std::vector<uint8_t> file;
   file.insert(file.end(), {'I', 'D', '3', 3, 0, 0});
@@ -433,10 +452,102 @@ void test_signature_changes_when_a_file_changes() {
   TEST_ASSERT_TRUE(computeSignature(a) != computeSignature(b));
 }
 
+void test_genres_are_interned_case_insensitively() {
+  FakeFileLister lister({{"/a.mp3", 1, 1}, {"/b.mp3", 2, 2}, {"/c.mp3", 3, 3}});
+  FakeFileOpener opener;
+  opener.put("/a.mp3", buildTaggedMp3WithGenreAndYear("A", "One", "T", "Rock", "1971"));
+  opener.put("/b.mp3", buildTaggedMp3WithGenreAndYear("B", "Two", "T", "rock", "1994"));
+  opener.put("/c.mp3", buildTaggedMp3WithGenreAndYear("C", "Three", "T", "Dub", "1994"));
+
+  LibraryIndex index = LibraryScanner::scan(lister, opener);
+
+  // Unknown (id 0) plus Rock and Dub -- not a third "rock" shelf.
+  TEST_ASSERT_EQUAL_UINT32(3, index.genres.size());
+  TEST_ASSERT_EQUAL_UINT32(index.albums[0].genreId, index.albums[1].genreId);
+  TEST_ASSERT_EQUAL_UINT32(2, index.genresSorted().size());
+  // Dub before Rock, and the "no genre" shelf is never offered.
+  TEST_ASSERT_EQUAL_STRING("Dub",
+                           index.genres[index.genresSorted()[0]].name.c_str());
+}
+
+void test_untagged_albums_keep_the_unknown_genre() {
+  FakeFileLister lister({{"/a.mp3", 1, 1}});
+  FakeFileOpener opener;
+  opener.put("/a.mp3", buildTaggedMp3WithGenreAndYear("A", "One", "T", "", ""));
+
+  LibraryIndex index = LibraryScanner::scan(lister, opener);
+
+  TEST_ASSERT_EQUAL_UINT32(0, index.albums[0].genreId);
+  TEST_ASSERT_EQUAL_UINT32(0, index.genresSorted().size());
+}
+
+void test_first_genre_seen_names_a_mixed_album() {
+  FakeFileLister lister({{"/a.mp3", 1, 1}, {"/b.mp3", 2, 2}});
+  FakeFileOpener opener;
+  // Same album, two tracks disagreeing about the genre.
+  opener.put("/a.mp3", buildTaggedMp3WithGenreAndYear("A", "One", "T1", "", ""));
+  opener.put("/b.mp3", buildTaggedMp3WithGenreAndYear("A", "One", "T2", "Jazz", ""));
+
+  LibraryIndex index = LibraryScanner::scan(lister, opener);
+
+  TEST_ASSERT_EQUAL_UINT32(1, index.albums.size());
+  // The untagged first track left the shelf open; the second one names it.
+  TEST_ASSERT_EQUAL_STRING("Jazz",
+                           index.genres[index.albums[0].genreId].name.c_str());
+}
+
+void test_browse_axes_list_albums_songs_and_years() {
+  FakeFileLister lister({{"/a.mp3", 1, 1}, {"/b.mp3", 2, 2}, {"/c.mp3", 3, 3}});
+  FakeFileOpener opener;
+  opener.put("/a.mp3",
+             buildTaggedMp3WithGenreAndYear("Air", "Moon Safari", "Sexy Boy", "Downtempo", "1998"));
+  opener.put("/b.mp3",
+             buildTaggedMp3WithGenreAndYear("The Cure", "Disintegration", "Lullaby", "Post-Punk", "1989"));
+  opener.put("/c.mp3",
+             buildTaggedMp3WithGenreAndYear("Air", "Premiers Symptomes", "Casanova 70", "Downtempo", "1999"));
+
+  LibraryIndex index = LibraryScanner::scan(lister, opener);
+
+  // Albums: one flat shelf by title, across artists.
+  auto albums = index.albumsSorted();
+  TEST_ASSERT_EQUAL_UINT32(3, albums.size());
+  TEST_ASSERT_EQUAL_STRING("Disintegration", index.albums[albums[0]].title.c_str());
+  TEST_ASSERT_EQUAL_STRING("Moon Safari", index.albums[albums[1]].title.c_str());
+
+  // Songs: every track by title, regardless of album.
+  auto songs = index.tracksSorted();
+  TEST_ASSERT_EQUAL_UINT32(3, songs.size());
+  TEST_ASSERT_EQUAL_STRING("Casanova 70", index.tracks[songs[0]].title.c_str());
+  TEST_ASSERT_EQUAL_STRING("Sexy Boy", index.tracks[songs[2]].title.c_str());
+
+  // Years: newest first, one row per year that has albums.
+  auto years = index.yearsSorted();
+  TEST_ASSERT_EQUAL_UINT32(3, years.size());
+  TEST_ASSERT_EQUAL_UINT16(1999, years[0]);
+  TEST_ASSERT_EQUAL_UINT16(1989, years[2]);
+  TEST_ASSERT_EQUAL_UINT32(1, index.albumsForYear(1998).size());
+
+  // Genres: two albums share Downtempo.
+  auto genres = index.genresSorted();
+  TEST_ASSERT_EQUAL_UINT32(2, genres.size());
+  TEST_ASSERT_EQUAL_UINT32(2, index.albumsForGenre(genres[0]).size());
+}
+
+void test_albums_with_no_year_have_no_shelf() {
+  FakeFileLister lister({{"/a.mp3", 1, 1}});
+  FakeFileOpener opener;
+  opener.put("/a.mp3", buildTaggedMp3WithGenreAndYear("A", "One", "T", "", ""));
+
+  LibraryIndex index = LibraryScanner::scan(lister, opener);
+
+  TEST_ASSERT_EQUAL_UINT32(0, index.yearsSorted().size());
+}
+
 void test_index_cache_round_trips() {
   LibraryIndex index;
   index.artists.push_back(Artist{0, "Artist One"});
-  index.albums.push_back(Album{0, 0, "Album One"});
+  index.genres.push_back(Genre{1, "Krautrock"});
+  index.albums.push_back(Album{0, 0, "Album One", 1974, 1});
   index.tracks.push_back(Track{0, 0, "Track A", 1, "/a.mp3"});
   index.tracks.push_back(Track{1, 0, "Track B", 2, "/b.mp3", 3});
   LibrarySignature sig{2, 12345};
@@ -455,6 +566,10 @@ void test_index_cache_round_trips() {
   TEST_ASSERT_EQUAL_STRING("/b.mp3", decoded.tracks[1].filePath.c_str());
   TEST_ASSERT_EQUAL_UINT16(2, decoded.tracks[1].trackNumber);
   TEST_ASSERT_EQUAL_UINT16(3, decoded.tracks[1].discNumber);
+  TEST_ASSERT_EQUAL_UINT16(1974, decoded.albums[0].year);
+  TEST_ASSERT_EQUAL_UINT32(1, decoded.albums[0].genreId);
+  TEST_ASSERT_EQUAL_UINT32(2, decoded.genres.size());
+  TEST_ASSERT_EQUAL_STRING("Krautrock", decoded.genres[1].name.c_str());
 }
 
 void test_index_cache_rejects_corrupt_buffer() {
@@ -548,6 +663,11 @@ int main(int argc, char **argv) {
   RUN_TEST(test_folder_browser_filters_and_sorts);
   RUN_TEST(test_signature_matches_for_identical_listing);
   RUN_TEST(test_signature_changes_when_a_file_changes);
+  RUN_TEST(test_genres_are_interned_case_insensitively);
+  RUN_TEST(test_untagged_albums_keep_the_unknown_genre);
+  RUN_TEST(test_first_genre_seen_names_a_mixed_album);
+  RUN_TEST(test_browse_axes_list_albums_songs_and_years);
+  RUN_TEST(test_albums_with_no_year_have_no_shelf);
   RUN_TEST(test_index_cache_round_trips);
   RUN_TEST(test_index_cache_rejects_corrupt_buffer);
   RUN_TEST(test_index_cache_rejects_truncated_buffer);

@@ -144,14 +144,17 @@ on a monitor.
 4. **No noise** — neutrals stay matte/desaturated; no shadows or
    gradients.
 5. **The brand mark carries no signal colour either.** Home's "knobify"
-   wordmark is led by a small dial — an `ink` disc with the surface colour
-   notched out as its indicator. A coloured bullet was tried first and was
-   wrong for exactly the reason rule 2 gives: a logo means nothing in the
-   functional sense, so it may not borrow a colour that does (the red it
-   used is `warning`, which elsewhere means a flat battery). The mark
-   earns its place through form instead — a knob seen from above, echoing
-   the round display and the rotary encoder the way the circular transport
-   buttons do.
+   wordmark sits in an `ink` capsule, dial and lettering both in
+   `surface` — the badge is the two neutrals and nothing else. A coloured
+   bullet was tried first and was wrong for exactly the reason rule 2
+   gives: a logo means nothing in the functional sense, so it may not
+   borrow a colour that does (the red it used is `warning`, which
+   elsewhere means a flat battery). Drawn in ink *on* the surface it read
+   as a bullet point in front of a word rather than as a mark; inverting
+   it into a capsule is what makes it read as a name-badge stamped on a
+   front panel. The mark earns its place through form, not colour — a
+   knob seen from above, echoing the round display and the rotary encoder
+   the way the circular transport buttons do.
 
 ### Why a light theme
 
@@ -431,6 +434,30 @@ Full architecture: [ADR 0005](../adr/0005-power-lock-and-round-edge-indicators.m
   line; the Now Playing title gets one, since the cover slot (cover or
   spectrum) is always there. Whatever follows a variable-height text is positioned from
   its actual height, never a fixed offset.
+- **A control appears only where it does something.** The context caption
+  is a plain label everywhere, and becomes a tappable chip — the
+  jump-by-letter dial (ADR 0021) — only on a name-ordered list long
+  enough for row-by-row turning to be tedious (20 rows, more than one
+  initial letter). Whatever it becomes, it stays inside the 22px band
+  between the header buttons and the list: the list top never moves for
+  a header control, because vertical space near the round edges is the
+  scarcest thing on this screen.
+- **A control the knob works with is held, not clicked.** Holding a
+  target while turning the knob with the other hand is this device's
+  established two-handed gesture (the time pill's shuttle), and hands
+  reach for it before reading anything. Letter jumping opens on the
+  *press* for that reason — opening on the click's release meant the
+  turn came first and nothing happened. Releasing leaves it on, so a tap
+  works too, and a second press closes it.
+- **A mode the knob enters must close itself — and time out from the
+  hand it is waiting for.** Letter jumping waits 5s for the first turn
+  and only 1.5s between later ones, and never times out while a finger
+  is still on its control. A single timeout tuned for the between-turns
+  case makes the control look dead the first time: the hand is still
+  travelling when it expires. A mode with only an explicit
+  exit is a mode you can get stuck in — on a device whose only controls
+  are a knob and a round touch screen, that is the expensive kind of
+  mistake.
 - **Minimalism in widgets.** Build a widget for its current, real use
   case (e.g. `EdgeArc` as a thin config+create/setValue wrapper); extend
   it only once a genuine further use case needs more, rather than

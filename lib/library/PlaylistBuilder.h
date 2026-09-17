@@ -30,6 +30,15 @@ class PlaylistBuilder {
     return paths;
   }
 
+  // One shelf of albums, in the order the list showed them -- a year's
+  // albums, a genre's (ADR 0021).
+  static std::vector<std::string> forAlbums(const LibraryIndex &index,
+                                            const std::vector<AlbumId> &albumIds) {
+    std::vector<std::string> paths;
+    for (AlbumId id : albumIds) appendAlbum(index, id, paths);
+    return paths;
+  }
+
   static std::vector<std::string> forLibrary(const LibraryIndex &index,
                                              SortOrder order) {
     std::vector<std::string> paths;

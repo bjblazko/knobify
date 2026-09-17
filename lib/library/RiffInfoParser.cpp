@@ -4,6 +4,8 @@
 #include <cstring>
 #include <vector>
 
+#include "Id3Genres.h"
+
 namespace knobify::library {
 
 namespace {
@@ -77,6 +79,12 @@ TagResult RiffInfoParser::parse(RawFile &file) {
               any = true;
             } else if (subId == "IPRD") {
               result.album = value;
+              any = true;
+            } else if (subId == "IGNR") {
+              // RIFF INFO writes the genre as plain text, but taggers
+              // converting from ID3 sometimes carry the numbered form
+              // over, so resolve it the same way TCON is.
+              result.genre = resolveId3GenreText(value);
               any = true;
             } else if (subId == "ICRD") {
               // Typically "YYYY" or "YYYY-MM-DD"; take the leading digits.

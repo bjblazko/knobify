@@ -536,6 +536,21 @@ void test_touch_latch_passes_through_held_press() {
   TEST_ASSERT_FALSE(latch.read().pressed);
 }
 
+void test_gesture_carries_where_the_finger_went_down() {
+  GestureRecognizer recognizer;
+  recognizer.feed(TouchSample{100, 60, true});
+  recognizer.feed(TouchSample{160, 70, true});
+  auto event = recognizer.feed(TouchSample{160, 70, false});
+
+  // The screen owner decides what a swipe means from where it began --
+  // one that started on a control was a tap aimed at that control.
+  TEST_ASSERT_TRUE(event.has_value());
+  TEST_ASSERT_TRUE(event->type == GestureType::SwipeLeftToRight);
+  TEST_ASSERT_EQUAL_INT16(100, event->startX);
+  TEST_ASSERT_EQUAL_INT16(60, event->startY);
+  TEST_ASSERT_EQUAL_INT16(160, event->x);
+}
+
 int main(int argc, char **argv) {
   UNITY_BEGIN();
   RUN_TEST(test_encoder_scrolls_list_on_browse_screen);
@@ -545,6 +560,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_encoder_sets_sleep_timer_on_sleep_screen);
   RUN_TEST(test_encoder_moves_tile_selection_on_home);
   RUN_TEST(test_swipe_pops_when_possible);
+  RUN_TEST(test_gesture_carries_where_the_finger_went_down);
   RUN_TEST(test_swipe_switches_tab_at_root);
   RUN_TEST(test_tap_is_not_routed_by_input_router);
   RUN_TEST(test_gesture_recognizer_detects_tap);

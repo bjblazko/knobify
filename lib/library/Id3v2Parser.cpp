@@ -5,6 +5,7 @@
 #include <cstring>
 #include <vector>
 
+#include "Id3Genres.h"
 #include "Utf8.h"
 
 namespace knobify::library {
@@ -164,6 +165,11 @@ TagResult parseId3v1(RawFile &file) {
   if (buf[125] == 0 && buf[126] != 0) {
     result.trackNumber = buf[126];
   }
+  // Byte 127 is a genre index; 255 is the conventional "unset".
+  if (buf[127] != 255) {
+    const char *genre = id3v1Genre(buf[127]);
+    if (genre) result.genre = genre;
+  }
   return result;
 }
 
@@ -223,7 +229,8 @@ TagResult Id3v2Parser::parse(RawFile &file) {
         result.picture.length = frameSize - imageOffset;
       }
     } else if (frameId == "TIT2" || frameId == "TPE1" || frameId == "TALB" ||
-        frameId == "TRCK" || frameId == "TPOS" || frameId == "TYER" || frameId == "TDRC") {
+        frameId == "TRCK" || frameId == "TPOS" || frameId == "TYER" ||
+        frameId == "TDRC" || frameId == "TCON") {
       std::vector<uint8_t> data(frameSize);
       if (!file.seek(dataStart) ||
           file.read(data.data(), data.size()) != data.size()) {
@@ -255,6 +262,8 @@ TagResult Id3v2Parser::parse(RawFile &file) {
             if (year != 0) {
               result.year = year;
             }
+          } else if (frameId == "TCON") {
+            result.genre = resolveId3GenreText(text);
           }
         }
       }

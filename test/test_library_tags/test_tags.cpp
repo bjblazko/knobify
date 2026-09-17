@@ -74,6 +74,7 @@ std::vector<uint8_t> buildId3v1Trailer(const std::string &title,
   std::memcpy(&tag[3], title.data(), title.size());
   std::memcpy(&tag[33], artist.data(), artist.size());
   std::memcpy(&tag[63], album.data(), album.size());
+  tag[127] = 255;  // No genre, the way a tagger writes it.
   file.insert(file.end(), tag.begin(), tag.end());
   return file;
 }
@@ -352,12 +353,13 @@ void test_vorbis_comment_parses_fields() {
   appendU32LE(static_cast<uint32_t>(vendor.size()));
   buf.insert(buf.end(), vendor.begin(), vendor.end());
 
-  appendU32LE(5);  // comment count
+  appendU32LE(6);  // comment count
   appendComment("ARTIST=Vorbis Artist");
   appendComment("ALBUM=Vorbis Album");
   appendComment("TITLE=Vorbis Title");
   appendComment("TRACKNUMBER=7");
   appendComment("DISCNUMBER=2/3");
+  appendComment("GENRE=Krautrock");
 
   FakeRawFile raw(buf);
   TagResult result = VorbisCommentParser::parse(raw);
@@ -368,6 +370,7 @@ void test_vorbis_comment_parses_fields() {
   TEST_ASSERT_EQUAL_STRING("Vorbis Title", result.title.c_str());
   TEST_ASSERT_EQUAL_UINT16(7, result.trackNumber);
   TEST_ASSERT_EQUAL_UINT16(2, result.discNumber);
+  TEST_ASSERT_EQUAL_STRING("Krautrock", result.genre.c_str());
 }
 
 void test_vorbis_comment_missing_magic_returns_not_found() {
@@ -419,6 +422,7 @@ void test_riff_info_parses_fields() {
   appendSub("INAM", "WAV Title");
   appendSub("IART", "WAV Artist");
   appendSub("IPRD", "WAV Album");
+  appendSub("IGNR", "Field Recording");
 
   std::vector<uint8_t> file;
   file.insert(file.end(), {'R', 'I', 'F', 'F'});
@@ -444,6 +448,7 @@ void test_riff_info_parses_fields() {
   TEST_ASSERT_EQUAL_STRING("WAV Title", result.title.c_str());
   TEST_ASSERT_EQUAL_STRING("WAV Artist", result.artist.c_str());
   TEST_ASSERT_EQUAL_STRING("WAV Album", result.album.c_str());
+  TEST_ASSERT_EQUAL_STRING("Field Recording", result.genre.c_str());
 }
 
 void test_riff_info_no_info_chunk_returns_not_found() {
@@ -484,6 +489,54 @@ void test_tag_reader_uses_id3_when_present_for_mp3() {
   TEST_ASSERT_EQUAL_STRING("Unknown Album", result.album.c_str());
 }
 
+void test_id3v2_tcon_takes_plain_genre_text() {
+  auto file = buildId3v2Mp3({{"TIT2", "Song"}, {"TCON", "Neue Deutsche Welle"}});
+  FakeRawFile raw(file);
+
+  TagResult result = Id3v2Parser::parse(raw);
+
+  TEST_ASSERT_EQUAL_STRING("Neue Deutsche Welle", result.genre.c_str());
+}
+
+void test_id3v2_tcon_resolves_the_numbered_forms() {
+  // "(17)" and a bare "17" are the same genre by two spellings.
+  for (const char *text : {"(17)", "17"}) {
+    auto file = buildId3v2Mp3({{"TIT2", "Song"}, {"TCON", text}});
+    FakeRawFile raw(file);
+    TEST_ASSERT_EQUAL_STRING("Rock", Id3v2Parser::parse(raw).genre.c_str());
+  }
+}
+
+void test_id3v2_tcon_refining_text_wins_over_the_number() {
+  auto file = buildId3v2Mp3({{"TIT2", "Song"}, {"TCON", "(17)Hard Rock"}});
+  FakeRawFile raw(file);
+
+  TEST_ASSERT_EQUAL_STRING("Hard Rock", Id3v2Parser::parse(raw).genre.c_str());
+}
+
+void test_id3v2_tcon_remix_marker_and_unknown_number_yield_no_genre() {
+  for (const char *text : {"(RX)", "(240)"}) {
+    auto file = buildId3v2Mp3({{"TIT2", "Song"}, {"TCON", text}});
+    FakeRawFile raw(file);
+    TEST_ASSERT_TRUE(Id3v2Parser::parse(raw).genre.empty());
+  }
+}
+
+void test_id3v1_trailer_reads_the_genre_byte() {
+  auto file = buildId3v1Trailer("Title", "Artist", "Album");
+  file[file.size() - 1] = 9;  // Metal.
+  FakeRawFile raw(file);
+
+  TEST_ASSERT_EQUAL_STRING("Metal", Id3v2Parser::parse(raw).genre.c_str());
+}
+
+void test_id3v1_trailer_unset_genre_byte_yields_nothing() {
+  auto file = buildId3v1Trailer("Title", "Artist", "Album");
+  FakeRawFile raw(file);
+
+  TEST_ASSERT_TRUE(Id3v2Parser::parse(raw).genre.empty());
+}
+
 int main(int argc, char **argv) {
   UNITY_BEGIN();
   RUN_TEST(test_id3v2_parses_title_artist_album_track);
@@ -491,6 +544,12 @@ int main(int argc, char **argv) {
   RUN_TEST(test_id3v2_decodes_iso8859_1_byte_to_utf8);
   RUN_TEST(test_id3v2_missing_tag_returns_not_found);
   RUN_TEST(test_id3v2_falls_back_to_v1_trailer);
+  RUN_TEST(test_id3v2_tcon_takes_plain_genre_text);
+  RUN_TEST(test_id3v2_tcon_resolves_the_numbered_forms);
+  RUN_TEST(test_id3v2_tcon_refining_text_wins_over_the_number);
+  RUN_TEST(test_id3v2_tcon_remix_marker_and_unknown_number_yield_no_genre);
+  RUN_TEST(test_id3v1_trailer_reads_the_genre_byte);
+  RUN_TEST(test_id3v1_trailer_unset_genre_byte_yields_nothing);
   RUN_TEST(test_id3v2_truncated_frame_does_not_crash_and_yields_no_field);
   RUN_TEST(test_id3v2_extracts_embedded_jpeg_picture);
   RUN_TEST(test_id3v2_ignores_non_jpeg_picture);

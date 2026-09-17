@@ -21,3 +21,7 @@
 
 # Local music-conversion run log (scripts/convert-music-library.sh)
 .music-convert.log
+
+# Framebuffer dumps from scripts/screenshot.sh -- written to the repo
+# root, and only ever a debugging aid for one moment on the device.
+screenshot.bmp

@@ -49,6 +49,15 @@ class NavigationStack {
   // Drops everything above the root.
   void popToRoot() { depth_ = 1; }
 
+  // Replaces the root and drops everything above it. Only the Library
+  // tab uses this, to re-root Music on the chosen browse axis (ADR 0021)
+  // -- which shelf you browse by is a property of the tab, not a screen
+  // you navigate back through.
+  void setRoot(Screen root) {
+    stack_[0] = root;
+    depth_ = 1;
+  }
+
  private:
   std::array<Screen, kMaxDepth> stack_;
   std::size_t depth_;

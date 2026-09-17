@@ -29,6 +29,10 @@ struct TagResult {
   uint16_t trackNumber = 0;
   uint16_t discNumber = 0;
   uint16_t year = 0;
+  // Already resolved to a name: the numbered forms ID3 and MP4 still use
+  // are looked up by the parsers (Id3Genres.h), so callers never see a
+  // "(17)" here.
+  std::string genre;
   EmbeddedPicture picture;
 };
 
