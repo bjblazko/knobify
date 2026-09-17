@@ -85,9 +85,16 @@ gained the five menu glyphs, since the neighbour tiles draw at that size.
 
 ### The wordmark
 
-Home carries a "knobify" wordmark led by a small dial: an `ink` disc with
-the surface colour notched out as an indicator, set off vertical so it
-reads as a knob at a setting rather than a full stop.
+Home carries a "knobify" wordmark: a small dial and the word, set in an
+`ink` capsule with both drawn in `surface`. The dial is a disc with a
+pointer notched out of it, set off vertical so it reads as a knob at a
+setting rather than a full stop.
+
+The pair was first drawn in ink directly on the surface, and at that size
+it read as a bullet point in front of a word rather than as a mark (user,
+2026-09-17). Inverting it into a capsule fixes that without adding a
+colour or an effect: it becomes a name-badge on a front panel, which is
+how a Braun device says what it is.
 
 A red bullet was tried first and was wrong on the palette's own terms
 (ux-guidelines §3 rule 2): every colour in this system means something, a

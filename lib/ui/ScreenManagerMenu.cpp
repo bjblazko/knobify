@@ -116,19 +116,28 @@ constexpr lv_coord_t kDotSize = 6;
 constexpr lv_coord_t kDotSpacing = 14;
 constexpr lv_coord_t kDotsY = 252;
 
-// The wordmark, top-centre: a small dial and "knobify" in lowercase. Home
-// is the one screen with room for it -- no caption, title or back button,
-// and it is the screen the device boots into.
+// The wordmark, top-centre: a small dial and "knobify" in lowercase, set
+// in an ink capsule. Home is the one screen with room for it -- no
+// caption, title or back button, and it is the screen the device boots
+// into.
 //
-// The mark is a knob seen from above: a filled ink disc with the surface
-// colour notched out of it as a pointer, set a little past vertical so it
-// reads as a dial at a setting rather than a full stop. It carries no
-// signal colour -- every colour in this system means something (§3 rule
-// 2), and a brand mark means nothing, so it is drawn in ink like the text
-// it belongs to. Its form does the work instead, echoing the round
-// display and the rotary encoder the way the circular transport buttons
-// do (Rams #1, #7).
-constexpr lv_coord_t kWordmarkY = 44;
+// The mark is a knob seen from above: a disc with a pointer notched out
+// of it, set a little past vertical so it reads as a dial at a setting
+// rather than a full stop. Drawn light on ink, it stops reading as a
+// bullet point in front of a word (which is what the same pair looked
+// like on the bare surface, user, 2026-09-17) and starts reading as a
+// mark -- a badge stamped on a front panel, the way a Braun device names
+// itself. It carries no signal colour: every colour in this system means
+// something (§3 rule 2) and a brand mark means nothing, so the whole
+// badge is the two neutrals, ink and surface. Its form does the rest,
+// echoing the round display and the rotary encoder the way the circular
+// transport buttons do (Rams #1, #7).
+constexpr lv_coord_t kWordmarkY = 40;
+constexpr lv_coord_t kBadgeHeight = 26;
+// Enough ink around the pair that the capsule reads as a deliberate
+// shape rather than a tight box; the left inset also keeps the dial off
+// the rounded end.
+constexpr lv_coord_t kBadgePadX = 14;
 constexpr lv_coord_t kDialSize = 15;
 constexpr lv_coord_t kDialDotSize = 4;
 // The indicator sits up and to the right of centre, inside the rim. Not
@@ -137,6 +146,11 @@ constexpr lv_coord_t kDialDotSize = 4;
 constexpr lv_coord_t kDialDotX = 8;
 constexpr lv_coord_t kDialDotY = 3;
 constexpr lv_coord_t kWordmarkGap = 8;
+// A little air between the letters, so the word reads as set rather than
+// typed -- the one typographic liberty taken anywhere in this UI, and
+// only here, because this is the only string on screen that is a name
+// rather than information.
+constexpr lv_coord_t kWordmarkTracking = 1;
 constexpr const char *kWordmark = "knobify";
 
 // Which carousel slot a tile sits in. Stored in the cell's user data so
@@ -321,36 +335,50 @@ void ScreenManager::renderHome() {
   if (playback_.state() != playback::PlaybackState::Stopped) renderMiniBar();
 }
 
-// The wordmark: a red bullet and "knobify", centred as a pair. The text is
-// measured and both parts placed explicitly, rather than put in a flex
+// The wordmark: the dial and "knobify" inverted inside an ink capsule,
+// centred as one shape. The capsule is sized from the measured text and
+// both parts are placed explicitly inside it, rather than put in a flex
 // row -- every other screen here positions with lv_obj_align(), and the
 // screen the device boots into is the last place to introduce a layout
 // engine whose passes interact with the label clamping below.
 void ScreenManager::renderWordmark() {
   const lv_font_t *font = &knobify_text_font_16;
   lv_point_t textSize;
-  lv_txt_get_size(&textSize, kWordmark, font, 0, 0, LV_COORD_MAX,
-                  LV_TEXT_FLAG_NONE);
-  const lv_coord_t total =
-      static_cast<lv_coord_t>(kDialSize + kWordmarkGap + textSize.x);
-  const lv_coord_t left = static_cast<lv_coord_t>(-total / 2);
+  lv_txt_get_size(&textSize, kWordmark, font, kWordmarkTracking, 0,
+                  LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+  // LVGL adds the tracking after the last letter too; that trailing gap
+  // is not ink, so it must not count toward the capsule's width or the
+  // pair would sit a pixel left of centre inside it.
+  const lv_coord_t wordWidth =
+      static_cast<lv_coord_t>(textSize.x - kWordmarkTracking);
+  const lv_coord_t content =
+      static_cast<lv_coord_t>(kDialSize + kWordmarkGap + wordWidth);
 
-  lv_obj_t *dial = lv_obj_create(tiles_);
+  lv_obj_t *badge = lv_obj_create(tiles_);
+  lv_obj_set_size(badge, static_cast<lv_coord_t>(content + 2 * kBadgePadX),
+                  kBadgeHeight);
+  lv_obj_align(badge, LV_ALIGN_TOP_MID, 0, kWordmarkY);
+  lv_obj_set_style_radius(badge, LV_RADIUS_CIRCLE, 0);
+  lv_obj_set_style_border_width(badge, 0, 0);
+  lv_obj_set_style_pad_all(badge, 0, 0);
+  lv_obj_set_style_shadow_width(badge, 0, 0);
+  lv_obj_set_style_bg_opa(badge, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(badge, theme::ink(), 0);
+  lv_obj_clear_flag(badge, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_clear_flag(badge, LV_OBJ_FLAG_CLICKABLE);
+
+  lv_obj_t *dial = lv_obj_create(badge);
   lv_obj_set_size(dial, kDialSize, kDialSize);
-  // Optically centred on the text's own box, so the pair reads as one
-  // word rather than a mark sitting beside one.
-  lv_obj_align(dial, LV_ALIGN_TOP_MID,
-               static_cast<lv_coord_t>(left + kDialSize / 2),
-               static_cast<lv_coord_t>(kWordmarkY + (textSize.y - kDialSize) / 2 + 1));
+  lv_obj_align(dial, LV_ALIGN_LEFT_MID, kBadgePadX, 0);
   lv_obj_set_style_radius(dial, LV_RADIUS_CIRCLE, 0);
   lv_obj_set_style_border_width(dial, 0, 0);
   lv_obj_set_style_pad_all(dial, 0, 0);
   lv_obj_set_style_bg_opa(dial, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(dial, theme::ink(), 0);
+  lv_obj_set_style_bg_color(dial, theme::surface(), 0);
   lv_obj_clear_flag(dial, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_clear_flag(dial, LV_OBJ_FLAG_CLICKABLE);
 
-  // The indicator, notched out of the disc in the screen's own colour, so
+  // The indicator, notched out of the disc in the capsule's own ink, so
   // the mark stays two tones and reads at 15px.
   lv_obj_t *dot = lv_obj_create(dial);
   lv_obj_set_size(dot, kDialDotSize, kDialDotSize);
@@ -359,18 +387,18 @@ void ScreenManager::renderWordmark() {
   lv_obj_set_style_border_width(dot, 0, 0);
   lv_obj_set_style_pad_all(dot, 0, 0);
   lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
-  lv_obj_set_style_bg_color(dot, theme::surface(), 0);
+  lv_obj_set_style_bg_color(dot, theme::ink(), 0);
   lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_clear_flag(dot, LV_OBJ_FLAG_CLICKABLE);
 
-  lv_obj_t *word = lv_label_create(tiles_);
+  lv_obj_t *word = lv_label_create(badge);
   lv_obj_set_style_text_font(word, font, 0);
-  lv_obj_set_style_text_color(word, theme::ink(), 0);
+  lv_obj_set_style_text_letter_space(word, kWordmarkTracking, 0);
+  lv_obj_set_style_text_color(word, theme::surface(), 0);
   lv_label_set_text(word, kWordmark);
-  lv_obj_align(word, LV_ALIGN_TOP_MID,
-               static_cast<lv_coord_t>(left + kDialSize + kWordmarkGap +
-                                       textSize.x / 2),
-               kWordmarkY);
+  lv_obj_align(word, LV_ALIGN_LEFT_MID,
+               static_cast<lv_coord_t>(kBadgePadX + kDialSize + kWordmarkGap),
+               0);
 }
 
 // One carousel tile. The centre one is full size (96px,

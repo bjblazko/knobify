@@ -144,14 +144,17 @@ on a monitor.
 4. **No noise** — neutrals stay matte/desaturated; no shadows or
    gradients.
 5. **The brand mark carries no signal colour either.** Home's "knobify"
-   wordmark is led by a small dial — an `ink` disc with the surface colour
-   notched out as its indicator. A coloured bullet was tried first and was
-   wrong for exactly the reason rule 2 gives: a logo means nothing in the
-   functional sense, so it may not borrow a colour that does (the red it
-   used is `warning`, which elsewhere means a flat battery). The mark
-   earns its place through form instead — a knob seen from above, echoing
-   the round display and the rotary encoder the way the circular transport
-   buttons do.
+   wordmark sits in an `ink` capsule, dial and lettering both in
+   `surface` — the badge is the two neutrals and nothing else. A coloured
+   bullet was tried first and was wrong for exactly the reason rule 2
+   gives: a logo means nothing in the functional sense, so it may not
+   borrow a colour that does (the red it used is `warning`, which
+   elsewhere means a flat battery). Drawn in ink *on* the surface it read
+   as a bullet point in front of a word rather than as a mark; inverting
+   it into a capsule is what makes it read as a name-badge stamped on a
+   front panel. The mark earns its place through form, not colour — a
+   knob seen from above, echoing the round display and the rotary encoder
+   the way the circular transport buttons do.
 
 ### Why a light theme
 
