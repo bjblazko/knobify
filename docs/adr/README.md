@@ -28,3 +28,4 @@ supersedes the old one (and the old one is marked "Superseded by NNNN").
 | [0017](0017-two-audio-decode-paths.md) | Two audio decode paths (Vorbis) | Accepted |
 | [0018](0018-collections-and-menu-visibility.md) | Collections, Home carousel, configurable main menu | Accepted |
 | [0019](0019-utf8-tag-text-and-project-text-fonts.md) | UTF-8 tag text and project-generated text fonts | Accepted (supersedes 0008's and 0013's ASCII notes) |
+| [0020](0020-patching-esp32-audioi2s-m4a-seek.md) | Patching ESP32-audioI2S at build time to fix M4A seeking | Accepted (amends 0001) |
