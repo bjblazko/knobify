@@ -7,7 +7,7 @@
 
 namespace knobify::drivers {
 
-// Gets Pong's blips to the DAC when *nothing is playing* (ADR 0022).
+// Gets a game's blips to the DAC when *nothing is playing* (ADR 0022).
 //
 // While a track runs, blips are mixed into it by AudioOutputStage and the
 // library path's audio_process_i2s() hook, and this class does nothing.

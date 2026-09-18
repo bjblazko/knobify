@@ -2,11 +2,11 @@
 
 #include <cstdint>
 
-#include "PongGame.h"
+#include "TableTennisGame.h"
 
 namespace knobify::games {
 
-// Pong's three blips (ADR 0022).
+// Table Tennis's three blips (ADR 0022).
 //
 // The original has no sound chip: its tones are taps off the same counter
 // chain that divides the 7.159 MHz master clock down to video sync, so
@@ -30,13 +30,13 @@ constexpr Blip kPaddleBlip{kLineRateHz / 16, 24};  // ~982 Hz
 constexpr Blip kWallBlip{kLineRateHz / 32, 24};    // ~491 Hz
 constexpr Blip kScoreBlip{kLineRateHz / 64, 240};  // ~246 Hz
 
-constexpr Blip blipFor(PongGame::Sound sound) {
+constexpr Blip blipFor(TableTennisGame::Sound sound) {
   switch (sound) {
-    case PongGame::Sound::Paddle:
+    case TableTennisGame::Sound::Paddle:
       return kPaddleBlip;
-    case PongGame::Sound::Wall:
+    case TableTennisGame::Sound::Wall:
       return kWallBlip;
-    case PongGame::Sound::Score:
+    case TableTennisGame::Sound::Score:
       return kScoreBlip;
     default:
       return Blip{0, 0};

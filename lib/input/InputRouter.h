@@ -24,7 +24,7 @@ class KnobSink {
   virtual ~KnobSink() = default;
   // Move the highlight by this many steps: browse lists and Home tiles.
   virtual void onListMove(int16_t delta) = 0;
-  // Move Pong's paddle by this many detents (ADR 0022).
+  // Move the Table Tennis paddle by this many detents (ADR 0022).
   virtual void onPaddleMove(int16_t delta) = 0;
 };
 
@@ -68,9 +68,9 @@ class InputRouter {
       case navigation::ScreenKind::SleepTimer:
         sleepTimer_.step(delta, nowMs);
         break;
-      case navigation::ScreenKind::Pong:
-        // One detent is one paddle zone (ADR 0022) -- the knob is the
-        // controller the original was played with.
+      case navigation::ScreenKind::TableTennis:
+        // The knob is the controller the original was played with: an
+        // Atari paddle is a potentiometer (ADR 0022).
         knobSink_.onPaddleMove(delta);
         break;
       case navigation::ScreenKind::TouchCalibration:

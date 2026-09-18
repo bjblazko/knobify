@@ -49,7 +49,7 @@ enum class ScreenKind {
   // lands mid-rally is not worth restoring, and a device that woke up
   // inside a game the user never chose would be startling.
   Games,
-  Pong,
+  TableTennis,
 };
 
 // Parameters a screen needs to render itself. Only the fields relevant

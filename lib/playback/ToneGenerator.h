@@ -5,8 +5,8 @@
 
 namespace knobify::playback {
 
-// Pong's blips (ADR 0022): a gated square wave, which is literally what
-// the 1972 machine produces -- its sounds are taps off the same divider
+// A game's blips (ADR 0022): a gated square wave, which is literally what
+// the 1972 table-tennis machine produces -- its sounds are taps off the same divider
 // chain that generates the video sync, switched on for a moment. No
 // envelope, so the clicks at each end are part of the sound rather than
 // something to smooth away.

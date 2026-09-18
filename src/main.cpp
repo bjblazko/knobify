@@ -222,7 +222,7 @@ knobify::drivers::GpioEncoderDriver g_encoder(knobify::drivers::kEncoderPinA,
 knobify::drivers::NvsKeyValueStore g_nvsStore;
 knobify::playback::VolumePersistence g_volume(g_nvsStore);
 knobify::drivers::Esp32AudioI2SDriver g_audioDriver;
-// Pong's blips (ADR 0022): mixed into whatever is playing, and pushed to
+// A game's blips (ADR 0022): mixed into whatever is playing, and pushed to
 // the DAC by its own task when nothing is.
 knobify::drivers::ToneOutput g_toneOutput;
 knobify::playback::PlaybackStateMachine g_playback(g_audioDriver, g_volume);
@@ -498,7 +498,7 @@ void pollSerialCommands() {
         } else if (sscanf(buf, "KNOB %d", &x) == 1) {
           g_injectedDetents += x;
         } else if (sscanf(buf, "BLIP %d", &x) == 1) {
-          // Sounds one of Pong's blips without navigating to the game
+          // Sounds one of the game's blips without navigating to it
           // (ADR 0022) -- the pitches are assigned by ear, so tuning them
           // means hearing them back to back.
           g_toneOutput.blip(static_cast<uint16_t>(x), 240);
@@ -767,7 +767,7 @@ void loop() {
   // the knob or the screen during a long point, and once the idle timeout
   // dims the panel, pump() above stops being called at all -- the game
   // would freeze mid-point rather than merely dim.
-  if (g_screenManager.tickPong(now,
+  if (g_screenManager.tickTableTennis(now,
                                displayOn && !g_lockController.isLocked())) {
     g_idleTimer.noteActivity(now);
   }

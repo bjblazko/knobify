@@ -130,15 +130,15 @@ void ScreenManager::render() {
   shownSleepMinutes_ = UINT32_MAX;
   shownSleepSeconds_ = UINT32_MAX;
   calibrationArcHost_ = nullptr;
-  // Leaving a game must not trail a beep. pongBall_ is only set while
-  // Pong was the screen being replaced.
-  if (pongBall_ && blips_) blips_->silence();
-  pongBall_ = nullptr;
-  pongPlayerPaddle_ = nullptr;
-  pongAiPaddle_ = nullptr;
-  pongHint_ = nullptr;
-  pongPlayerScore_.detach();
-  pongAiScore_.detach();
+  // Leaving a game must not trail a beep. tableTennisBall_ is only set while
+  // Table Tennis was the screen being replaced.
+  if (tableTennisBall_ && blips_) blips_->silence();
+  tableTennisBall_ = nullptr;
+  tableTennisPlayerPaddle_ = nullptr;
+  tableTennisAiPaddle_ = nullptr;
+  tableTennisHint_ = nullptr;
+  tableTennisPlayerScore_.detach();
+  tableTennisAiScore_.detach();
   miniBar_ = nullptr;
   elapsedLabel_ = nullptr;
   coverImg_ = nullptr;
@@ -176,10 +176,10 @@ void ScreenManager::render() {
     // Modal: no back button or caption. Done, eject or unplug end it.
     renderUsbDrive();
     return;
-  } else if (current.kind == ScreenKind::Pong) {
+  } else if (current.kind == ScreenKind::TableTennis) {
     // Modal like the two below: a game fills the screen, and a swipe is
     // the way out (ADR 0022).
-    renderPong();
+    renderTableTennis();
     return;
   } else if (current.kind == ScreenKind::TouchCalibration) {
     // No back button or caption: the top target sits where they would,

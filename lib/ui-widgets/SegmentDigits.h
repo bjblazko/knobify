@@ -5,18 +5,19 @@
 
 namespace knobify::ui_widgets {
 
-// Pong's score (ADR 0022), drawn the way the original draws it: the 1972
+// Table Tennis's score (ADR 0022), drawn the way the 1972 original draws
+// it: that
 // machine has no character generator, so its score comes out of a
 // seven-segment decoder as blocky bars. After the dashed net this is the
 // most recognisable thing on the screen, and a proportional typeface --
-// this project's Montserrat included -- does not read as Pong at all.
+// this project's Montserrat included -- does not read as the game at all.
 //
 // Two digits, leading zero suppressed (the original shows "0", not "00").
-// Kept to what Pong actually needs, per ux-guidelines §7's minimal-widget
+// Kept to what the game actually needs, per ux-guidelines §7's minimal-widget
 // rule: no decimal point, no hex, no colour per digit.
 class SegmentDigits {
  public:
-  // Segment geometry, in pixels. A Pong score is read across the court,
+  // Segment geometry, in pixels. The score is read across the court,
   // so the bars are heavy relative to the digit.
   static constexpr lv_coord_t kThickness = 6;
   static constexpr lv_coord_t kDigitWidth = 26;

@@ -25,7 +25,7 @@
 #include "MessageArea.h"
 #include "PlaybackStateMachine.h"
 #include "BlipPlayer.h"
-#include "PongGame.h"
+#include "TableTennisGame.h"
 #include "SegmentDigits.h"
 #include "Shuttle.h"
 #include "SleepTimer.h"
@@ -164,11 +164,11 @@ class ScreenManager : public input::KnobSink {
   // are silent, which is all a host-side or audio-less build needs.
   void setBlipPlayer(games::BlipPlayer &blips) { blips_ = &blips; }
 
-  // Advances Pong by one frame (ADR 0022). Returns true while a rally is
+  // Advances Table Tennis by one frame (ADR 0022). Returns true while a rally is
   // actually running, which the caller turns into idle-timer activity:
   // nothing touches the knob or the screen during a long point, and a
   // dimmed display stops LVGL being pumped at all. Call every loop().
-  bool tickPong(uint32_t nowMs, bool visible);
+  bool tickTableTennis(uint32_t nowMs, bool visible);
 
 
  private:
@@ -210,10 +210,10 @@ class ScreenManager : public input::KnobSink {
   void renderSleepTimer();
   void renderTouchCalibration();
   // ScreenManagerGames.cpp.
-  void renderPong();
-  void applyPongScene();
-  void drainPongSounds();
-  static void onPongTapped(lv_event_t *e);
+  void renderTableTennis();
+  void applyTableTennisScene();
+  void drainTableTennisSounds();
+  static void onTableTennisTapped(lv_event_t *e);
   static void onCalibrationKeepClicked(lv_event_t *e);
   void startUsbDrive();
   void renderUsbDrive();
@@ -395,10 +395,10 @@ class ScreenManager : public input::KnobSink {
   // How long a shuttle hint/speed message may stay while the pill is held.
   static constexpr uint32_t kShuttleHintMs = 10000;
   static constexpr uint32_t kSpectrumFrameMs = 33;
-  // Pong redraws at the same rate as the spectrum: enough for a ball that
+  // The game redraws at the same rate as the spectrum: enough for a ball that
   // crosses the court in a second or two, and cheap enough that the audio
   // decoder keeps its share of the loop.
-  static constexpr uint32_t kPongFrameMs = 33;
+  static constexpr uint32_t kTableTennisFrameMs = 33;
   // Persisted cover-slot choice: 1 = spectrum, 0 = cover.
   static constexpr char kSpectrumSettingKey[] = "npSpectrum";
   // Persisted repeat mode (playback::RepeatMode). Shuffle isn't persisted:
@@ -476,18 +476,18 @@ class ScreenManager : public input::KnobSink {
   bool preferSpectrum_ = false;
   uint32_t lastSpectrumTickMs_ = 0;
 
-  // Pong (ADR 0022). The game itself is pure logic; these are the six
+  // Table Tennis (ADR 0022). The game itself is pure logic; these are the six
   // rectangles and two segment displays it is drawn with.
-  games::PongGame pong_;
-  lv_obj_t *pongBall_ = nullptr;
-  lv_obj_t *pongPlayerPaddle_ = nullptr;
-  lv_obj_t *pongAiPaddle_ = nullptr;
-  lv_obj_t *pongHint_ = nullptr;
-  ui_widgets::SegmentDigits pongPlayerScore_;
-  ui_widgets::SegmentDigits pongAiScore_;
+  games::TableTennisGame tableTennis_;
+  lv_obj_t *tableTennisBall_ = nullptr;
+  lv_obj_t *tableTennisPlayerPaddle_ = nullptr;
+  lv_obj_t *tableTennisAiPaddle_ = nullptr;
+  lv_obj_t *tableTennisHint_ = nullptr;
+  ui_widgets::SegmentDigits tableTennisPlayerScore_;
+  ui_widgets::SegmentDigits tableTennisAiScore_;
   games::BlipPlayer *blips_ = nullptr;
-  games::PongGame::Phase shownPongPhase_ = games::PongGame::Phase::Ready;
-  uint32_t lastPongTickMs_ = 0;
+  games::TableTennisGame::Phase shownTableTennisPhase_ = games::TableTennisGame::Phase::Ready;
+  uint32_t lastTableTennisTickMs_ = 0;
   lv_obj_t *volumeArcHost_ = nullptr;
   lv_obj_t *volumeHudPill_ = nullptr;
   lv_obj_t *volumeHudLabel_ = nullptr;

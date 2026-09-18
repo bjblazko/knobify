@@ -14,7 +14,7 @@ struct GameEntry {
 };
 
 constexpr GameEntry kGames[] = {
-    {"Pong", navigation::ScreenKind::Pong},
+    {"Table Tennis", navigation::ScreenKind::TableTennis},
 };
 
 constexpr int kGameCount = static_cast<int>(sizeof(kGames) / sizeof(kGames[0]));

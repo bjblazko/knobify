@@ -411,7 +411,7 @@ duplicating it.
   commented out in `Audio.cpp`), so the port keeps running at whatever
   rate was last set. Publishing the library's idle value as "the rate the
   DAC is clocked at" is therefore wrong: it silently overwrote the rate
-  `ToneOutput` had set for a Pong blip (ADR 0022), and the square wave was
+  `ToneOutput` had set for a game's blip (ADR 0022), and the square wave was
   generated against one rate and clocked out at another. The audio task
   now only publishes the rate while a decoder is actually producing
   (`Audio::isRunning()` -- the library's flag, not

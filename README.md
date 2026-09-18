@@ -177,12 +177,18 @@ Settings > USB drive, at about 0.8 MB/s writing and 0.9 MB/s reading
 - Gapless playback (for live albums, concept albums, etc.)
 - On-device firmware updates from a file on the SD card (no Wi-Fi
   needed, fits the offline-first goal)
-- More games beyond Pong (ADR 0022) -- the Games list is a table a row
-  wide, but each game is its own screen and its own rules
-- Difficulty levels or a high score for Pong (one well-chosen AI speed
-  cap is the whole design, and nothing persists a score today)
-- A second player over the touch screen, so Pong can be played the way
-  the 1972 arcade cabinet was
+- More games beyond Table Tennis (ADR 0022) -- the Games list is a table
+  a row wide, but each game is its own screen and its own rules. The
+  three that suit a knob and a round screen best, with names chosen to
+  avoid the trademarks the originals carry: **Echo** (repeat a growing
+  sequence of lit arcs -- the round display is the board, and the tone
+  generator is already there), **Snake** (the knob steers by turning
+  rather than by pointing), and **Gravity** (land a craft: the knob
+  rotates it, a tap gives thrust, and the fuel belongs in an `EdgeArc`)
+- Difficulty levels or a high score for Table Tennis (one well-chosen AI
+  speed cap is the whole design, and nothing persists a score today)
+- A second player over the touch screen, so Table Tennis can be played
+  the way the 1972 machines were
 
 These are acknowledged future ideas, not requirements yet — don't design around them prematurely.
 

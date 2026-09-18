@@ -79,7 +79,7 @@ void audio_process_i2s(uint32_t *sample, bool *continueI2S) {
   // out, zero clipped samples.
   auto &stage = knobify::drivers::audioOutputStage();
   const uint16_t gain = stage.outputGain();
-  // Pong's blips ride on top of whatever is playing (ADR 0022). This is
+  // The game's blips ride on top of whatever is playing (ADR 0022). This is
   // the library path's only per-sample seam, so it is where they join;
   // when nothing is playing the hook never runs and ToneOutput.cpp pushes
   // them to the DAC itself.

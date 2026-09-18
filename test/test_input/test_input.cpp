@@ -491,7 +491,7 @@ void test_calibration_flow_restarts_capture_after_rejected_fit() {
   TEST_ASSERT_EQUAL_UINT(0, flow.targetsDone());
 }
 
-void test_encoder_moves_the_paddle_on_pong_not_the_list() {
+void test_encoder_moves_the_paddle_on_tableTennis_not_the_list() {
   // The game reads the knob directly (ADR 0022); nothing about a list
   // highlight makes sense while a ball is in play.
   FakeDriver driver;
@@ -500,7 +500,7 @@ void test_encoder_moves_the_paddle_on_pong_not_the_list() {
   PlaybackStateMachine playback(driver, volume);
   TabController tabs;
   tabs.activeStack().push(Screen{ScreenKind::Games, {}});
-  tabs.activeStack().push(Screen{ScreenKind::Pong, {}});
+  tabs.activeStack().push(Screen{ScreenKind::TableTennis, {}});
   RecordingListSink sink;
   BrightnessSetting brightness(store);
   Shuttle shuttle(playback);
@@ -635,7 +635,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_calibration_flow_reverts_unconfirmed_fit);
   RUN_TEST(test_calibration_flow_restarts_capture_after_rejected_fit);
   RUN_TEST(test_encoder_cancels_touch_calibration);
-  RUN_TEST(test_encoder_moves_the_paddle_on_pong_not_the_list);
+  RUN_TEST(test_encoder_moves_the_paddle_on_tableTennis_not_the_list);
   RUN_TEST(test_the_games_list_still_moves_the_highlight);
   RUN_TEST(test_touch_latch_reports_press_that_ended_between_reads);
   RUN_TEST(test_touch_latch_passes_through_held_press);

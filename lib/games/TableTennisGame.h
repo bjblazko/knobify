@@ -6,7 +6,9 @@
 
 namespace knobify::games {
 
-// Pong (ADR 0022), as close to the 1972 original as this hardware allows.
+// Table Tennis (ADR 0022), as close to the 1972 original as this hardware
+// allows -- Magnavox Odyssey's game of that name, which Atari's better
+// known machine copied and lost a lawsuit over.
 // Pure logic over an explicit clock, like everything else in this project
 // that isn't a driver (docs/coding-guidelines.md): no LVGL, no Arduino, so
 // the whole game is host-testable under `pio test -e native`.
@@ -25,7 +27,7 @@ namespace knobify::games {
 // slices, which keeps collision detection a plain overlap test: within one
 // slice the ball never moves more than about 2 px, so it cannot tunnel
 // through a 6 px paddle even after a long stall.
-class PongGame {
+class TableTennisGame {
  public:
   // --- Court, in whole pixels (the screen layer draws these directly) ---
   static constexpr int kCourtWidth = 288;
@@ -38,11 +40,11 @@ class PongGame {
   static constexpr int kPaddleHeight = 32;
   static constexpr int kPlayerPaddleX = 8;
   // The paddle is divided into this many zones, each returning the ball
-  // at its own angle -- the mechanic Pong is actually played with.
+  // at its own angle -- the mechanic the game is actually played with.
   static constexpr int kZones = 8;
   static constexpr int kAiPaddleX = kCourtWidth - 8 - kPaddleWidth;
 
-  static constexpr int kWinningScore = 11;  // Arcade Pong plays to 11.
+  static constexpr int kWinningScore = 11;  // The arcade game plays to 11.
 
   // A detent moves the paddle a whole number of its own zones (see
   // bounceOffPaddle), never a fraction: the original's controller was a
@@ -68,8 +70,8 @@ class PongGame {
 
   // The eight-zone paddle, as a rule on its own: where the ball lands on
   // the paddle sets the return angle, steeply away at the ends and
-  // shallow -- but never flat -- at the middle. This is the mechanic Pong
-  // is actually played with, and the first thing a "nicer" physics model
+  // shallow -- but never flat -- at the middle. This is the mechanic the
+  // game is actually played with, and the first thing a "nicer" physics model
   // tends to lose, so it is a pure function that can be checked directly
   // rather than something only observable by playing a rally out.
   //

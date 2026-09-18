@@ -1,8 +1,9 @@
-# 0022: A Games menu, and Pong
+# 0022: A Games menu, and Table Tennis
 
 ## Status
 
-Accepted — 2026-09-18. Adds a sixth entry to ADR 0018's main menu, a
+Accepted — 2026-09-18, and renamed from "Pong" the same day (see "It is
+called Table Tennis, not Pong"). Adds a sixth entry to ADR 0018's main menu, a
 first non-audio screen family, and a tone path through ADR 0017's two
 decode paths. Suspends one rule of the design system
 (`docs/design/ux-guidelines.md` §3) for games only.
@@ -19,19 +20,19 @@ on this design system.
 
 **Well**, because the original's controller *was* a knob. An Atari paddle
 is a potentiometer; this board's entire input surface is one rotary
-encoder and a round touch screen. Mapping Pong onto it is not an
+encoder and a round touch screen. Mapping the game onto it is not an
 adaptation — it is the original arrangement, arrived at from the other
 direction.
 
 **Badly**, in three ways, each settled with the user on 2026-09-17:
 
-- Pong is white on black. knobify is a light system: `surface` `#F4F4F0`
+- The game is white on black. knobify is a light system: `surface` `#F4F4F0`
   on every screen, lock screen included, because the panel is a
   reflective IPS LCD on which a dark theme rendered poorly (§3).
 - The original court is 4:3 landscape with the paddles at the far left
   and right — exactly where a round bezel clips hardest (§7: "never
   anchor UI at a corner", relearned on this device repeatedly).
-- Arcade Pong is two-player, two pots. There is one knob.
+- The arcade game is two-player, two pots. There is one knob.
 
 ## Decision
 
@@ -46,7 +47,7 @@ the point — so the only things at the court's edges are the two
 horizontal walls, and they run along the top and bottom of the rectangle
 where the circle is still 288 px wide. The 4 px walls are part of the
 216, so the ball's bounce line is a wall's inner face and the play area
-is 288×208 (`PongGame::kCourtHeight`; the outer 216 is
+is 288×208 (`TableTennisGame::kCourtHeight`; the outer 216 is
 `kCourtOuterHeight`).
 
 This is the one screen whose layout is *derived* rather than measured.
@@ -54,9 +55,25 @@ Every other screen in this app got its safe bounds by being looked at on
 the device; here the geometry says where the edge is, and the device only
 has to confirm it.
 
+### It is called Table Tennis, not Pong
+
+PONG is an Atari trademark, and this is an open-source project — game
+*mechanics* are not protectable, but names are, so the risk in cloning a
+1972 game lives entirely in what you call it.
+
+The name chosen is not a euphemism. Magnavox's Odyssey shipped **Table
+Tennis** in 1972, Atari's machine followed it, and Magnavox won the
+patent suit that followed. Table Tennis is the older name for this game,
+so calling it that is more faithful than the alternative, not less.
+
+Everything is named for it: `games::TableTennisGame`,
+`ScreenKind::TableTennis`, `test/test_games/test_table_tennis.cpp`. The
+1972 machine is still referred to by name in comments where that is a
+plain factual reference to what it did, which is what the name is for.
+
 ### One screen in this app is black
 
-Pong is drawn in white on black, and `lib/ui/ScreenManagerGames.cpp` is
+The game is drawn in white on black, and `lib/ui/ScreenManagerGames.cpp` is
 the only file in the project that does not take its colours from
 `lib/ui/Theme.h`.
 
@@ -65,8 +82,8 @@ games. The argument is that the palette rule is about *controls*: colour
 in this system signals function and operability, and a screen with no
 controls on it has no function to signal. A game is a cabinet, not a
 front panel — Braun made record players and calculators in this language
-and would not have made Pong in it. A light-grey Pong is a picture of
-Pong, not Pong.
+and would not have made an arcade cabinet in it. A light-grey version of
+this game is a picture of it, not it.
 
 Rejected: rendering it in `ink` on `surface`. It keeps the rule intact
 and loses the thing that was asked for. The user chose the original,
@@ -74,7 +91,7 @@ having been shown both.
 
 ### The knob's detents are the paddle's zones
 
-Pong's defining mechanic is that the paddle is divided into eight zones,
+The game's defining mechanic is that the paddle is divided into eight zones,
 and which one the ball strikes sets the return angle — steeply away at
 the ends, shallow but never flat in the middle. It is what makes the game
 one of aim rather than reflex, and the first thing a "better" physics
@@ -95,7 +112,7 @@ the trade the device's own hardware forces.
 
 ### The way out is said once, not painted on
 
-Pong is modal: no back button, and this board has no button either, so
+The game is modal: no back button, and this board has no button either, so
 the only exit is the app-wide left-to-right swipe. That gesture is learnt
 everywhere else from a visible back button, and a game has none -- the
 first person to play it simply asked how to stop (2026-09-18).
@@ -126,11 +143,11 @@ seven-segment decoder as blocky bars. `ui_widgets::SegmentDigits` draws
 them as seven rectangles per digit with a leading zero suppressed. This
 is not nostalgia for its own sake: set in Montserrat, the score is the
 one element that would announce the screen as a modern UI pretending to
-be Pong.
+read as this game at all.
 
 ### The game is pure logic; only six rectangles are not
 
-`lib/games/PongGame.h` holds the whole game — ball, paddles, the eight
+`lib/games/TableTennisGame.h` holds the whole game — ball, paddles, the eight
 zones, the AI, serving, scoring — with no LVGL and no Arduino, over an
 explicit `nowMs` clock, per `docs/coding-guidelines.md`. All of it is
 verified host-side in `test/test_games`, including the trajectories off
@@ -153,7 +170,7 @@ the frame does as little as it can.
 `IdleTimer` is reset by touch and encoder activity only. Nothing touches
 either during a long point, and when the panel dims `src/main.cpp` stops
 calling `LvglGlue::pump()` altogether — so the game would *freeze*
-mid-point, not merely dim. `tickPong()` returns whether a rally is
+mid-point, not merely dim. `tickTableTennis()` returns whether a rally is
 running and `loop()` turns that into activity. The idle timeout still
 works between games, which is what it is for.
 
@@ -162,7 +179,7 @@ works between games, which is what it is for.
 The three sounds are gated square waves — literally what the original
 produces, since its tones are taps off the counter chain that divides the
 7.159 MHz master clock down to video sync. Every pitch is that chain's
-~15.7 kHz line rate over a power of two, and `lib/games/PongSounds.h`
+~15.7 kHz line rate over a power of two, and `lib/games/TableTennisSounds.h`
 uses those divisions. Which division drives which event is taken by ear
 and noted as tunable there; published accounts disagree and no schematic
 was consulted.
@@ -209,7 +226,7 @@ explicitly wanted the music to keep going); and a second I2S driver
 `kMenuEntries` gains a sixth, appended row, since its order is the
 `menuVis` byte's bit order (ADR 0018) — the visibility byte already
 scales to 8, and the Settings > Main menu row comes for free. `ScreenKind`
-gains `Games` and `Pong`, appended past `NowPlaying` so a resume record
+gains `Games` and `TableTennis`, appended past `NowPlaying` so a resume record
 can never restore them: waking up inside a game nobody chose would be
 startling, and a half-finished rally is not worth saving.
 
@@ -218,7 +235,8 @@ into it, so unlike `kMenuEntries` it may be reordered freely, and a second
 game is one row.
 
 `input::ListMoveSink` became `input::KnobSink` with a second method: on
-Pong the knob moves a paddle, and a sink named for list movement would
+this game's screen the knob moves a paddle, and a sink named for list
+movement would
 have been lying about it.
 
 ## Consequences

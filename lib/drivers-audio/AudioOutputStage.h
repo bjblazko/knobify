@@ -39,7 +39,7 @@ class AudioOutputStage {
   playback::SampleWindow readRecentSamples(int16_t *dst, size_t maxSamples,
                                            uint32_t sampleRate);
 
-  // Pong's blips (ADR 0022). They are mixed in here rather than played as
+  // A game's blips (ADR 0022). They are mixed in here rather than played as
   // a file because this is the one point both decode paths pass through,
   // so a blip sounds the same whatever is playing -- and can sound *over*
   // whatever is playing, which a second player could not.
