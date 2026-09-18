@@ -110,6 +110,16 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
 
   void resume() override {
     MutexGuard guard(mutex_);
+    // Whatever used the port while this track was paused -- a game's
+    // blips at 22.05 kHz, the tone generator at 48 kHz -- left its own
+    // rate on it, and neither the library's pauseResume() nor the Vorbis
+    // backend sets it again. Without this a paused track resumed after a
+    // game played at half speed (ADR 0024).
+    const uint32_t rate = vorbisActive_ ? vorbis_.sampleRate() : audio_.getSampleRate();
+    if (rate != 0) {
+      i2s_set_sample_rates(I2S_NUM_0, rate);
+      audioOutputStage().setSampleRate(rate);
+    }
     if (vorbisActive_) {
       vorbis_.setPaused(false);
       paused_ = false;

@@ -36,6 +36,18 @@ class AudioOutputStage {
   // Blocks until the DMA buffers take the frames; false on an I2S error.
   bool writeFrames(const int16_t *interleaved, size_t frames);
 
+  // The tone generator's path (ADR 0024): straight to the DAC with no
+  // volume and no output gain, because its level is stated in dBFS and
+  // must mean exactly that. Still recorded, so the scope sees it.
+  // Blocks like writeFrames(); false on an I2S error.
+  bool writeFramesUnscaled(const int16_t *interleaved, size_t frames);
+
+  // Samples kept for whoever reads them back: the Now Playing spectrum
+  // takes its 1024, the tone generator's scope up to all of them -- two
+  // periods of 20 Hz at 48 kHz need 4800, and 4096 shows most of that
+  // (ADR 0024). Power of two.
+  static constexpr size_t kSampleRingSize = 4096;
+
   playback::SampleWindow readRecentSamples(int16_t *dst, size_t maxSamples,
                                            uint32_t sampleRate);
 
@@ -80,7 +92,6 @@ class AudioOutputStage {
   }
 
  private:
-  static constexpr size_t kSampleRingSize = 1024;  // Power of two.
   static constexpr size_t kWriteChunkFrames = 256;
 
   int16_t ring_[kSampleRingSize] = {};

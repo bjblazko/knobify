@@ -55,6 +55,27 @@ bool AudioOutputStage::writeFrames(const int16_t *interleaved, size_t frames) {
   return true;
 }
 
+bool AudioOutputStage::writeFramesUnscaled(const int16_t *interleaved,
+                                           size_t frames) {
+  size_t done = 0;
+  while (done < frames) {
+    const size_t chunk = std::min(frames - done, kWriteChunkFrames);
+    for (size_t i = 0; i < chunk; ++i) {
+      noteMonoSample(static_cast<int16_t>(
+          (static_cast<int32_t>(interleaved[(done + i) * 2]) +
+           interleaved[(done + i) * 2 + 1]) /
+          2));
+    }
+    size_t bytesWritten = 0;
+    if (i2s_write(kI2sPort, interleaved + done * 2, chunk * 2 * sizeof(int16_t),
+                  &bytesWritten, portMAX_DELAY) != ESP_OK) {
+      return false;
+    }
+    done += chunk;
+  }
+  return true;
+}
+
 playback::SampleWindow AudioOutputStage::readRecentSamples(int16_t *dst,
                                                            size_t maxSamples,
                                                            uint32_t sampleRate) {

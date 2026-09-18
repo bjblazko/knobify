@@ -62,7 +62,10 @@ void ToneOutput::taskLoop() {
     // kind of thing that eventually bites, not just costs.
     if (!streamIdle) rateIsOurs_ = false;
 
-    if (!stage.tone().active() || !streamIdle) {
+    // The generator keeps writing through its fade-out after stop(), so
+    // the last thing the DAC hears is silence rather than a cut.
+    const bool generating = control_.running() || !oscillator_.idle();
+    if ((!stage.tone().active() && !generating) || !streamIdle) {
       vTaskDelay(pdMS_TO_TICKS(kPollMs));
       continue;
     }
@@ -76,17 +79,16 @@ void ToneOutput::taskLoop() {
       rateClaimStart_ = micros();
     }
 #endif
-    if (!rateIsOurs_) {
-      // The port's rate is whatever the last track set. Claim it for the
-      // duration of this blip; a decoder starting up sets its own again.
-      i2s_set_sample_rates(kI2sPort, kToneSampleRate);
-      stage.setSampleRate(kToneSampleRate);
+    const uint32_t rate = generating ? signal::kGeneratorSampleRate : kToneSampleRate;
+    if (!rateIsOurs_ || claimedRate_ != rate) {
+      // The port's rate is whatever the last track set. Claim it; a
+      // decoder starting up, or a track resumed, sets its own again.
+      i2s_set_sample_rates(kI2sPort, rate);
+      stage.setSampleRate(rate);
       rateIsOurs_ = true;
+      claimedRate_ = rate;
     }
 
-    // writeFrames() mixes the tone in itself, so the music input is
-    // silence and what reaches the DAC is the blip alone.
-    for (size_t i = 0; i < kChunkFrames * 2; ++i) chunk_[i] = 0;
 #ifdef KNOBIFY_TONE_DEBUG
     if (rateClaimStart_ != 0) {
       Serial.printf("[tone] rate claim took %luus\n",
@@ -94,8 +96,30 @@ void ToneOutput::taskLoop() {
       rateClaimStart_ = 0;
     }
 #endif
-    const bool ok = stage.writeFrames(chunk_, kChunkFrames);
-#ifdef KNOBIFY_TONE_DEBUG
+    bool ok = true;
+    if (generating) {
+      oscillator_.setParams(control_.snapshot());
+      if (control_.running()) {
+        oscillator_.start();
+      } else {
+        oscillator_.stop();
+      }
+      oscillator_.render(mono_, kChunkFrames, rate);
+      for (size_t i = 0; i < kChunkFrames; ++i) {
+        chunk_[i * 2] = mono_[i];
+        chunk_[i * 2 + 1] = mono_[i];
+      }
+#ifdef KNOBIFY_GENERATOR_DEBUG
+      logGenerator(rate);
+#endif
+      ok = stage.writeFramesUnscaled(chunk_, kChunkFrames);
+    } else {
+      // writeFrames() mixes the blip in itself, so the music input is
+      // silence and what reaches the DAC is the blip alone.
+      for (size_t i = 0; i < kChunkFrames * 2; ++i) chunk_[i] = 0;
+      ok = stage.writeFrames(chunk_, kChunkFrames);
+    }
+#if defined(KNOBIFY_TONE_DEBUG) || defined(KNOBIFY_GENERATOR_DEBUG)
     if (!ok) Serial.println("[tone] i2s write FAILED");
 #else
     (void)ok;
@@ -104,5 +128,30 @@ void ToneOutput::taskLoop() {
     lastSeenSamples_ = stage.samplesWritten();
   }
 }
+
+#ifdef KNOBIFY_GENERATOR_DEBUG
+// Once a second: the pitch and peak of what was actually written, measured
+// from the samples rather than taken from the settings -- the check that
+// the grid, the rate claim and the level all agree (ADR 0024).
+void ToneOutput::logGenerator(uint32_t rate) {
+  for (size_t i = 0; i < kChunkFrames; ++i) {
+    const int16_t s = mono_[i];
+    if (debugLast_ < 0 && s >= 0) ++debugCrossings_;
+    debugLast_ = s;
+    const int16_t magnitude = static_cast<int16_t>(s < 0 ? -s : s);
+    if (magnitude > debugPeak_) debugPeak_ = magnitude;
+  }
+  debugSamples_ += kChunkFrames;
+  if (debugSamples_ < rate) return;
+  const float seconds = static_cast<float>(debugSamples_) / rate;
+  const float dbfs = debugPeak_ > 0 ? 20.0f * log10f(debugPeak_ / 32767.0f) : -99.0f;
+  Serial.printf("[generator] %.1f Hz, peak %d (%.1f dBFS) at %lu Hz\n",
+                debugCrossings_ / seconds, debugPeak_, dbfs,
+                static_cast<unsigned long>(rate));
+  debugSamples_ = 0;
+  debugCrossings_ = 0;
+  debugPeak_ = 0;
+}
+#endif
 
 }  // namespace knobify::drivers

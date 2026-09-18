@@ -4,6 +4,8 @@
 #include <cstdint>
 
 #include "BlipPlayer.h"
+#include "GeneratorControl.h"
+#include "Oscillator.h"
 
 namespace knobify::drivers {
 
@@ -18,11 +20,14 @@ namespace knobify::drivers {
 // starts producing, so the two never fight over the I2S port for longer
 // than one small buffer.
 //
+// It also plays the tone generator (ADR 0024): while that runs, this task
+// claims the port at 48 kHz and writes the oscillator instead of blips.
+//
 // Deliberately its own FreeRTOS task on core 0 rather than work done in
 // loop(): AudioOutputStage::writeFrames() blocks until the DMA buffers
 // take the frames, and blocking loop() is what makes LVGL stutter and
 // trips the loop watchdog (AGENTS.md).
-class ToneOutput : public games::BlipPlayer {
+class ToneOutput : public games::BlipPlayer, public signal::GeneratorOutput {
  public:
   // Starts the task. Call once, after the I2S port exists (i.e. after the
   // playback driver's begin()).
@@ -34,6 +39,14 @@ class ToneOutput : public games::BlipPlayer {
 
   // Drops anything pending and stops a sounding blip, for leaving a game.
   void silence() override;
+
+  // signal::GeneratorOutput -- callable from the main loop. The audio
+  // task picks each change up at its next chunk.
+  void apply(const signal::OscillatorParams &params) override {
+    control_.publish(params);
+  }
+  void start() override { control_.setRunning(true); }
+  void stop() override { control_.setRunning(false); }
 
  private:
   static constexpr uint32_t kToneSampleRate = 22050;
@@ -52,6 +65,21 @@ class ToneOutput : public games::BlipPlayer {
   static void taskTrampoline(void *self);
 
   int16_t chunk_[kChunkFrames * 2] = {};
+  // The generator's side of the handover and its voice. The oscillator is
+  // touched only by this task.
+  signal::GeneratorControl control_;
+  signal::Oscillator oscillator_;
+  int16_t mono_[kChunkFrames] = {};
+  // The rate this task last clocked the port at, so switching between a
+  // blip and the generator reprograms it but repeating either does not.
+  uint32_t claimedRate_ = 0;
+#ifdef KNOBIFY_GENERATOR_DEBUG
+  void logGenerator(uint32_t rate);
+  uint32_t debugSamples_ = 0;
+  uint32_t debugCrossings_ = 0;
+  int16_t debugPeak_ = 0;
+  int16_t debugLast_ = 0;
+#endif
   uint32_t lastSeenSamples_ = 0;
   uint32_t lastFlowMs_ = 0;
   bool rateIsOurs_ = false;
