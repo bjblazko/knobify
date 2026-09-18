@@ -124,8 +124,16 @@ void LvglGlue::writeScreenshotToSerial() const {
 void LvglGlue::touchReadCb(lv_indev_drv_t *drv, lv_indev_data_t *data) {
   auto *self = static_cast<LvglGlue *>(drv->user_data);
   input::TouchSample touch = self->touchLatch_.read();
-  data->point.x = touch.x;
-  data->point.y = touch.y;
+  // LVGL reads the release point as where the finger lifted: a swipe's
+  // length is measured to it. A released sample carries no position of
+  // its own (it read x=11 wherever the finger had been, which made the
+  // tone generator's band swipe only ever turn one way, 2026-09-18).
+  if (touch.pressed) {
+    self->lastPressedX_ = touch.x;
+    self->lastPressedY_ = touch.y;
+  }
+  data->point.x = self->lastPressedX_;
+  data->point.y = self->lastPressedY_;
   data->state = touch.pressed ? LV_INDEV_STATE_PRESSED
                               : LV_INDEV_STATE_RELEASED;
 #ifdef KNOBIFY_TOUCH_DEBUG

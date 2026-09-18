@@ -51,6 +51,12 @@ class LvglGlue {
   lv_disp_drv_t dispDrv_{};
   lv_indev_drv_t indevDrv_{};
   input::TouchLatch touchLatch_;
+  // Where the finger last was. A released sample's own coordinates are
+  // whatever the controller left in its registers, run through the touch
+  // calibration -- not where the finger lifted -- so LVGL is told this
+  // instead (ADR 0024).
+  lv_coord_t lastPressedX_ = 0;
+  lv_coord_t lastPressedY_ = 0;
   Arduino_TFT *gfx_ = nullptr;
   // PSRAM-backed (8MB available per device.md; too big to justify from
   // the tight 320KB internal SRAM budget for a diagnostic feature).
