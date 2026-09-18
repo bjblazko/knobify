@@ -52,16 +52,18 @@ class TableTennisGame {
   // a detented knob cannot, so the two grids are lined up rather than
   // left to straddle each other.
   //
-  // Two zones per detent, not one. One zone per detent was tried first
-  // and played sluggish on the device (user, 2026-09-18): the paddle's
-  // travel is kCourtHeight - kPaddleHeight = 176 px, which at 4 px a
-  // detent is about 1.5 turns of the ~30-detent encoder. At 8 px it is
-  // 22 detents, roughly three quarters of a turn -- which is also what an
-  // Atari paddle's pot actually sweeps, so the faster setting is the more
-  // faithful one. The cost is aiming: the paddle can be placed to within
-  // two zones rather than one. The ball's own position supplies the rest,
-  // which is how the real game is played.
-  static constexpr int kZonesPerDetent = 2;
+  // Three zones per detent. Tuned on the device in two steps (user,
+  // 2026-09-18): one zone per detent put the paddle's 176 px of travel at
+  // about 1.5 turns of the ~30-detent encoder and played sluggish, two
+  // was better at 22 detents, three lands at 14 -- roughly half a turn
+  // end to end, which is where it stopped feeling like winding.
+  //
+  // The cost is aiming: the paddle can be placed to within three zones
+  // rather than one. That is affordable because the ball's own position
+  // is continuous and supplies the fine control -- choosing "the end of
+  // the paddle" still works, choosing one zone over its neighbour does
+  // not, and the first is what the game is actually played with.
+  static constexpr int kZonesPerDetent = 3;
   static constexpr int kPixelsPerDetent = kPaddleHeight / kZones * kZonesPerDetent;
 
   // Sub-pixel resolution: positions and velocities are integers in 1/16
@@ -133,11 +135,18 @@ class TableTennisGame {
     }
   }
 
-  // Knob detents, signed: clockwise moves the paddle down. Works in every
-  // phase, so the player can be in position before the serve.
+  // Knob detents, signed: clockwise (positive) moves the paddle *up*.
+  //
+  // That is the opposite sense from every list in this app, where a
+  // clockwise detent moves the highlight down. Deliberate, and judged on
+  // the device (user, 2026-09-18): a list is read top to bottom, a paddle
+  // is held, and the two do not want the same sense from the same knob.
+  //
+  // Works in every phase, so the player can be in position before the
+  // serve rather than scrambling after it.
   void movePlayerPaddle(int detents) {
     playerPaddleY_ =
-        clampPaddle(playerPaddleY_ + detents * kPixelsPerDetent * kUnit);
+        clampPaddle(playerPaddleY_ - detents * kPixelsPerDetent * kUnit);
   }
 
   void tick(uint32_t nowMs) {

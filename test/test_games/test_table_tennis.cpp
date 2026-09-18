@@ -39,7 +39,7 @@ void trackBallWithPlayerPaddle(TableTennisGame &game) {
   const int wanted = game.ballY() + TableTennisGame::kBallSize / 2 -
                      TableTennisGame::kPaddleHeight / 2;
   const int gap = wanted - game.playerPaddleY();
-  if (gap != 0) game.movePlayerPaddle(gap / TableTennisGame::kPixelsPerDetent);
+  if (gap != 0) game.movePlayerPaddle(-gap / TableTennisGame::kPixelsPerDetent);
 }
 
 int countSounds(TableTennisGame &game, Sound wanted) {
@@ -80,7 +80,7 @@ uint32_t returnBallWithZone(TableTennisGame &game, uint32_t now, int zone,
     const int gap = wanted - game.playerPaddleY();
     const int bias = gap >= 0 ? TableTennisGame::kPixelsPerDetent / 2
                               : -TableTennisGame::kPixelsPerDetent / 2;
-    game.movePlayerPaddle((gap + bias) / TableTennisGame::kPixelsPerDetent);
+    game.movePlayerPaddle(-(gap + bias) / TableTennisGame::kPixelsPerDetent);
 
     now += 8;
     game.tick(now);
@@ -272,7 +272,7 @@ void test_a_missed_ball_scores_for_the_other_side() {
   game.start(0);
   game.tap(0);
   uint32_t now = run(game, 0, 1000);
-  // Park the player's paddle at the top; the serve heads for the middle.
+  // Park the player's paddle at a wall; the serve heads for the middle.
   game.movePlayerPaddle(-100);
 
   while (game.phase() == Phase::Rally) {
@@ -338,30 +338,40 @@ void test_a_tap_after_the_match_starts_a_new_one() {
 
 // --- The paddles ---------------------------------------------------------
 
-void test_the_knob_moves_the_player_paddle_and_stops_at_the_walls() {
+void test_a_clockwise_detent_moves_the_paddle_up() {
+  // The opposite sense from a list, where clockwise moves the highlight
+  // down. Deliberate (ADR 0022), so it is pinned rather than left to be
+  // "fixed" by someone matching it to the lists.
   TableTennisGame game;
   game.start(0);
   const int start = game.playerPaddleY();
   game.movePlayerPaddle(3);
-  TEST_ASSERT_EQUAL_INT(start + 3 * TableTennisGame::kPixelsPerDetent,
+  TEST_ASSERT_EQUAL_INT(start - 3 * TableTennisGame::kPixelsPerDetent,
                         game.playerPaddleY());
+}
 
+void test_the_knob_stops_the_paddle_at_the_walls() {
+  TableTennisGame game;
+  game.start(0);
   game.movePlayerPaddle(1000);
+  TEST_ASSERT_EQUAL_INT(0, game.playerPaddleY());
+  game.movePlayerPaddle(-1000);
   TEST_ASSERT_EQUAL_INT(TableTennisGame::kCourtHeight - TableTennisGame::kPaddleHeight,
                         game.playerPaddleY());
-  game.movePlayerPaddle(-1000);
-  TEST_ASSERT_EQUAL_INT(0, game.playerPaddleY());
 }
 
 void test_the_whole_court_is_about_one_sweep_of_the_knob() {
-  // ~30 detents per revolution, and an Atari paddle's pot sweeps about
-  // three quarters of a turn end to end. Pinning the range here is what
-  // stops a later tweak to either grid from making the paddle slow again
-  // (it was, at one zone per detent) or twitchy.
+  // ~30 detents per revolution, so this is half a turn to one turn end to
+  // end. Pinning the range is what stops a later tweak to either grid
+  // from making the paddle slow again (it was, at one zone per detent) or
+  // so twitchy that a single click crosses half the court.
   const int travel = TableTennisGame::kCourtHeight - TableTennisGame::kPaddleHeight;
   const int detentsForFullTravel = travel / TableTennisGame::kPixelsPerDetent;
-  TEST_ASSERT_TRUE(detentsForFullTravel >= 15);
+  TEST_ASSERT_TRUE(detentsForFullTravel >= 12);
   TEST_ASSERT_TRUE(detentsForFullTravel <= 30);
+  // And a single detent never moves the paddle by more than its own body.
+  TEST_ASSERT_TRUE(TableTennisGame::kPixelsPerDetent <
+                   TableTennisGame::kPaddleHeight / 2);
 }
 
 void test_the_ai_paddle_never_moves_faster_than_its_cap() {
@@ -542,7 +552,8 @@ int main(int argc, char **argv) {
   RUN_TEST(test_the_next_serve_goes_to_whoever_was_scored_on);
   RUN_TEST(test_the_match_ends_at_eleven);
   RUN_TEST(test_a_tap_after_the_match_starts_a_new_one);
-  RUN_TEST(test_the_knob_moves_the_player_paddle_and_stops_at_the_walls);
+  RUN_TEST(test_a_clockwise_detent_moves_the_paddle_up);
+  RUN_TEST(test_the_knob_stops_the_paddle_at_the_walls);
   RUN_TEST(test_the_whole_court_is_about_one_sweep_of_the_knob);
   RUN_TEST(test_the_ai_paddle_never_moves_faster_than_its_cap);
   RUN_TEST(test_the_ai_paddle_stays_inside_the_court);

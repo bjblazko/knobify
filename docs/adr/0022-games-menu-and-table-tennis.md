@@ -98,17 +98,45 @@ one of aim rather than reflex, and the first thing a "better" physics
 model loses.
 
 The original's pot is continuous, so it can land the paddle anywhere. A
-detented encoder cannot. Rather than let the two grids straddle each
-other — 6 px detents across 4 px zones, where the player cannot reliably
-choose a return angle at all — **one detent is exactly one zone**
-(`kPixelsPerDetent = kPaddleHeight / kZones` = 4 px). Every click of the
-knob changes the return angle by exactly one step.
+detented encoder cannot. So the two grids are lined up rather than left
+to straddle each other: a detent moves the paddle a **whole number of
+zones**, never a fraction. At 6 px across 4 px zones — the first guess —
+the player could not reliably choose a return angle at all, which a test
+found before the device did: the zone tests could not place the ball in
+an outer zone, because no reachable paddle position put it there.
 
-This was found by a test, not by inspection: the zone tests could not
-place the ball in an outer zone at all, because no reachable paddle
-position put it there. The cost is throw — the full court is about 1.5
-turns rather than the paddle pot's three-quarters of one — and that is
-the trade the device's own hardware forces.
+How many zones took three goes, all of them on the device with someone
+playing it:
+
+| Zones per detent | Pixels | Detents, wall to wall | Verdict |
+|---|---|---|---|
+| 1 | 4 | ~44 (1.5 turns) | sluggish — "zäh" |
+| 2 | 8 | 22 (¾ turn) | better |
+| 3 | 12 | ~14 (½ turn) | right |
+
+The cost is aiming: the paddle can be placed to within three zones rather
+than one. That is affordable because the ball's own position is
+continuous and supplies the fine control — deliberately choosing "the end
+of the paddle" still works, choosing zone 3 over zone 4 does not, and the
+first is what the game is actually played with. A test pins a detent to
+under half the paddle's own height, so this cannot be tuned on into a
+control that jumps straight past the ball.
+
+Going coarser still would mean changing the paddle or the court rather
+than the detent, which is a different decision from this one.
+
+**Clockwise moves the paddle up**, the opposite sense from every list in
+this app, where a clockwise detent moves the highlight down. Judged on
+the device: a list is read top to bottom and a paddle is held, and the
+two do not want the same sense out of the same knob. A test pins it, so
+that nobody later "fixes" it into agreeing with the lists.
+
+The second and third settings also forced a change in how the zones are
+tested. Once the paddle could only be placed to within two zones, a test
+could no longer choose which side of the paddle's middle it hit, so the
+zone rule moved out of the simulation and into `TableTennisGame::
+deflection()` — a pure function checked directly at every contact point.
+The rule is exact; only the aim is coarse.
 
 ### The way out is said once, not painted on
 
