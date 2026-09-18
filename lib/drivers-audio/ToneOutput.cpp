@@ -24,6 +24,10 @@ void ToneOutput::begin() {
 }
 
 void ToneOutput::blip(uint16_t frequencyHz, uint16_t durationMs) {
+#ifdef KNOBIFY_TONE_DEBUG
+  triggeredMicros_ = micros();
+  measuring_ = true;
+#endif
   audioOutputStage().tone().trigger(frequencyHz, durationMs);
 }
 
@@ -43,20 +47,26 @@ void ToneOutput::taskLoop() {
     }
     const bool streamIdle = millis() - lastFlowMs_ > kStreamIdleMs;
 
+    // Only a decoder actually producing takes the rate back. Dropping the
+    // claim merely because the last blip ended made every blip reprogram
+    // the I2S clock again for nothing (measured at ~0.7ms each,
+    // 2026-09-18) -- and reprogramming a clock nothing has changed is the
+    // kind of thing that eventually bites, not just costs.
+    if (!streamIdle) rateIsOurs_ = false;
+
     if (!stage.tone().active() || !streamIdle) {
-      // A decoder took over (or there is nothing to play): hand the rate
-      // back, so the next track is not clocked at the blip rate.
-      rateIsOurs_ = false;
-      vTaskDelay(pdMS_TO_TICKS(5));
+      vTaskDelay(pdMS_TO_TICKS(kPollMs));
       continue;
     }
 
 #ifdef KNOBIFY_TONE_DEBUG
-    Serial.printf("[tone] idle write: rate=%u vol=%u gain=%u written=%u\n",
-                  static_cast<unsigned>(stage.sampleRate()),
-                  static_cast<unsigned>(stage.volumeStep()),
-                  static_cast<unsigned>(stage.outputGain()),
-                  static_cast<unsigned>(written));
+    if (measuring_) {
+      measuring_ = false;
+      Serial.printf("[tone] trigger->write %luus (rate claim %s)\n",
+                    static_cast<unsigned long>(micros() - triggeredMicros_),
+                    rateIsOurs_ ? "skipped" : "needed");
+      rateClaimStart_ = micros();
+    }
 #endif
     if (!rateIsOurs_) {
       // The port's rate is whatever the last track set. Claim it for the
@@ -69,6 +79,13 @@ void ToneOutput::taskLoop() {
     // writeFrames() mixes the tone in itself, so the music input is
     // silence and what reaches the DAC is the blip alone.
     for (size_t i = 0; i < kChunkFrames * 2; ++i) chunk_[i] = 0;
+#ifdef KNOBIFY_TONE_DEBUG
+    if (rateClaimStart_ != 0) {
+      Serial.printf("[tone] rate claim took %luus\n",
+                    static_cast<unsigned long>(micros() - rateClaimStart_));
+      rateClaimStart_ = 0;
+    }
+#endif
     const bool ok = stage.writeFrames(chunk_, kChunkFrames);
 #ifdef KNOBIFY_TONE_DEBUG
     if (!ok) Serial.println("[tone] i2s write FAILED");

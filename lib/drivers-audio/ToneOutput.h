@@ -42,6 +42,10 @@ class ToneOutput : public games::BlipPlayer {
   // One buffer's worth: short enough that a decoder starting mid-blip
   // only overlaps briefly, long enough not to spin.
   static constexpr size_t kChunkFrames = 128;
+  // How often the task looks for something to play. A blip is a response
+  // to something the player did, so this is latency, not idling: measured
+  // trigger-to-write is under 2.5ms with this (2026-09-18).
+  static constexpr uint32_t kPollMs = 2;
 
   [[noreturn]] void taskLoop();
   static void taskTrampoline(void *self);
@@ -50,6 +54,11 @@ class ToneOutput : public games::BlipPlayer {
   uint32_t lastSeenSamples_ = 0;
   uint32_t lastFlowMs_ = 0;
   bool rateIsOurs_ = false;
+#ifdef KNOBIFY_TONE_DEBUG
+  volatile uint32_t triggeredMicros_ = 0;
+  volatile bool measuring_ = false;
+  uint32_t rateClaimStart_ = 0;
+#endif
 };
 
 }  // namespace knobify::drivers

@@ -149,7 +149,7 @@ void ScreenManager::renderTableTennis() {
 
   tableTennis_.start(lv_tick_get());
   shownTableTennisPhase_ = TableTennisGame::Phase::Rally;  // Force the first hint update.
-  lastTableTennisTickMs_ = lv_tick_get();
+  lastTableTennisDrawMs_ = lv_tick_get();
   applyTableTennisScene();
 }
 
@@ -216,16 +216,29 @@ bool ScreenManager::tickTableTennis(uint32_t nowMs, bool visible) {
   if (tabs_.activeStack().current().kind != navigation::ScreenKind::TableTennis) {
     return false;
   }
-  if (!visible) {
-    lastTableTennisTickMs_ = nowMs;
-    return false;
-  }
-  if (nowMs - lastTableTennisTickMs_ < kTableTennisFrameMs) return false;
-  lastTableTennisTickMs_ = nowMs;
+  if (!visible) return false;
 
+  // Physics and sound run every loop, drawing only every kTableTennisFrameMs.
+  //
+  // They used to share the frame gate, which made every blip up to a frame
+  // late: a hit is detected inside one of tick()'s sub-steps, but nothing
+  // was told about it until the next redraw 33ms later. Measured on the
+  // device (2026-09-18), the audio path from trigger to the DAC is under
+  // 2.5ms -- so the gate was most of the delay, and it was the half nobody
+  // would look at, because both halves of a frame moved together and the
+  // picture looked right.
+  //
+  // This costs nothing: tick() splits its elapsed time into fixed sub-steps
+  // either way, so the same physics runs, just announced sooner. The
+  // expensive half -- repositioning LVGL objects, which is what starves the
+  // audio decoder if it runs too often (ADR 0006) -- keeps its own rate.
   tableTennis_.tick(nowMs);
   drainTableTennisSounds();
-  applyTableTennisScene();
+
+  if (nowMs - lastTableTennisDrawMs_ >= kTableTennisFrameMs) {
+    lastTableTennisDrawMs_ = nowMs;
+    applyTableTennisScene();
+  }
 
   // A rally has to hold the display awake by itself: nothing here touches
   // the screen or the knob while the ball is in play, and once the idle

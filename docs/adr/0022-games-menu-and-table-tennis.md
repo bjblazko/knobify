@@ -165,6 +165,30 @@ LVGL's own partial invalidation touches only what moved. Heavy redraw
 activity is what starves the audio decoder on this board (ADR 0006), so
 the frame does as little as it can.
 
+### Physics and sound run faster than the picture
+
+`tickTableTennis()` advances the game and drains its sounds **every loop
+iteration** (~5 ms), and repositions the LVGL objects only every
+`kTableTennisFrameMs` (33 ms).
+
+They shared the frame gate at first, and the blips were audibly late. The
+cause was not where it looked: measured on the device, the whole audio
+path from `blip()` to the DAC write is under 2.5 ms. The delay was the
+gate — a hit is found inside one of `tick()`'s sub-steps, but nothing was
+told about it until the next redraw, up to 33 ms later.
+
+What makes that hard to see is that both halves of a frame moved
+together, so the picture looked right: the ball is drawn where it is at
+the *end* of the frame, and the sound arrives then too. The impact itself
+falls between frames and is never drawn, so the eye places it earlier
+than the ear does. Watching for a lag between them finds nothing; only
+the numbers do.
+
+Splitting the two costs nothing, because `tick()` divides its elapsed
+time into fixed sub-steps either way — the same physics runs, just
+announced sooner. The expensive half keeps its own rate, which is the
+half ADR 0006 cares about.
+
 ### A rally holds the display awake
 
 `IdleTimer` is reset by touch and encoder activity only. Nothing touches

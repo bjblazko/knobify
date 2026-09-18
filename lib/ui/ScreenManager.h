@@ -395,9 +395,10 @@ class ScreenManager : public input::KnobSink {
   // How long a shuttle hint/speed message may stay while the pill is held.
   static constexpr uint32_t kShuttleHintMs = 10000;
   static constexpr uint32_t kSpectrumFrameMs = 33;
-  // The game redraws at the same rate as the spectrum: enough for a ball that
-  // crosses the court in a second or two, and cheap enough that the audio
-  // decoder keeps its share of the loop.
+  // How often the game is *drawn*. Its physics and its sounds run every
+  // loop instead -- see tickTableTennis(). This rate is enough for a ball
+  // that crosses the court in a second or two, and cheap enough that the
+  // audio decoder keeps its share of the loop.
   static constexpr uint32_t kTableTennisFrameMs = 33;
   // Persisted cover-slot choice: 1 = spectrum, 0 = cover.
   static constexpr char kSpectrumSettingKey[] = "npSpectrum";
@@ -487,7 +488,7 @@ class ScreenManager : public input::KnobSink {
   ui_widgets::SegmentDigits tableTennisAiScore_;
   games::BlipPlayer *blips_ = nullptr;
   games::TableTennisGame::Phase shownTableTennisPhase_ = games::TableTennisGame::Phase::Ready;
-  uint32_t lastTableTennisTickMs_ = 0;
+  uint32_t lastTableTennisDrawMs_ = 0;
   lv_obj_t *volumeArcHost_ = nullptr;
   lv_obj_t *volumeHudPill_ = nullptr;
   lv_obj_t *volumeHudLabel_ = nullptr;

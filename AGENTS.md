@@ -405,6 +405,14 @@ duplicating it.
   host-side in `pio test -e native` fails inside the firmware build with a
   baffling error pointing at Arduino.h itself, not at your code. Found
   2026-09-16 writing `navigation::MenuVisibility`.
+- **Build with `-DKNOBIFY_TONE_DEBUG` to time a game's blip** (ADR 0022):
+  it logs microseconds from `ToneOutput::blip()` to the first DAC write,
+  and whether the I2S rate had to be reclaimed. Measured 2026-09-18 that
+  path is under 2.5 ms, which is worth knowing before blaming it: a blip
+  that sounds late is far more likely to have been *triggered* late. It
+  was -- the game's sounds were gated behind its 33 ms redraw, and both
+  halves of a frame moving together made the picture look correct while
+  the ear heard the gap.
 - **ESP32-audioI2S reports a sample rate while stopped that nothing is
   clocked at.** `Audio::getSampleRate()` returns 16000 with no song
   playing, and the library never calls its own `I2Sstop()` (the line is
