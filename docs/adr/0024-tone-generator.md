@@ -93,6 +93,37 @@ when fast) and the shape parameters (1 % per detent, up to 5) use the
 same speed tiers with their own step sizes. The waveform always moves one
 at a time. The user tried the tiers on the device and changed none.
 
+### Noise comes in five colours
+
+Noise has a **Color** chip, like Duty on a square: brown, pink, white,
+blue, violet, i.e. −6, −3, 0, +3 and +6 dB an octave. The user asked for
+white, pink "and whatever else", and chose all five over the three common
+ones. They are a chip and not five more waveforms, which keeps the
+waveform list short. The knob turns **darker to brighter**, so turning
+right makes noise hiss more, as it raises a pitch. It moves one colour a
+detent however fast it is turned. White stays the default.
+
+- **Equally loud.** Every colour is built from the same Gaussian white
+  (four uniforms summed) and filtered back to the same RMS. Switching
+  colour therefore does not switch loudness.
+- **The level still means the peak.** The RMS sits 12 dB under the level,
+  and the rare sample past 4 sigma (about one in 16,000) is clipped. For
+  noise, as for a tone, −20 dB means "never above −20 dBFS". The first
+  noise was uniform white at full level, which was louder. It changed to
+  this when the colours came.
+- **Filters:** Paul Kellet's refined pink filter (−3 dB an octave to
+  within 0.05 dB above 9 Hz). A leaky integrator for brown (leak 0.998,
+  so it falls from ~8 Hz and never drifts to a rail). Blue and violet
+  are pink and white differentiated. Each filter's gain back to unit RMS
+  was measured over 100 s of its own input.
+- The tests hold every colour to its slope over four octaves (±3 dB) and
+  to the same RMS (±1.5 dB), and none past its level.
+
+On the spectrum page a colour shows as a tilt. The page draws the loudest
+bin in each column, and high columns hold more bins, so noise reads a
+few dB brighter there than its true density. An RTA-style band-power
+view, on which pink is flat, would be the analyzer's decision.
+
 ### The level is dBFS, not a volume
 
 Level runs from −60 to 0 dBFS in whole dB. It is **independent of the
@@ -285,4 +316,4 @@ measured from the samples it wrote, once a second:
   for the analyzer.
 - Serial gained `SWIPE x1 y1 x2 y2`, a dragged finger, next to `TAP` and
   `KNOB`. It is how the band's swipe was checked on the device.
-- Not done: a frequency sweep, stereo channel selection, pink noise.
+- Not done: a frequency sweep, stereo channel selection.

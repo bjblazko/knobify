@@ -69,7 +69,7 @@ screens described below.
   (`METADATA_BLOCK_PICTURE`) isn't read; a folder `cover.jpg` still works
   — see [ADR 0017](docs/adr/0017-two-audio-decode-paths.md).
 - Tones, a tone generator: sine, square (duty), saw (rising → triangle →
-  falling) and noise, 20 Hz – 20 kHz, level in dBFS independent of the
+  falling) and noise (brown, pink, white, blue, violet), 20 Hz – 20 kHz, level in dBFS independent of the
   volume, out of the 3.5 mm jack at 48 kHz. Chips pick what the knob
   sets; a live oscilloscope shows what actually reaches the DAC, on
   stepped scales so a doubled pitch or +6 dB is visibly doubled, and
@@ -161,7 +161,7 @@ Settings > USB drive, at about 0.8 MB/s writing and 0.9 MB/s reading
 - Voice memo / dictation recording via the onboard PDM microphone, and
   a spectrum analyzer (microphone or knobify's own output) -- both on
   `lib/signal/`'s oscillator, scope and `SampleSource` (ADR 0024)
-- For Tones: a frequency sweep, stereo channel selection, pink noise
+- For Tones: a frequency sweep, stereo channel selection
 - A richer Now Playing screen (more detail/interactivity beyond the
   current controls + elapsed time)
 - Using the rotary encoder as a jog dial for scrolling long lists/menus
