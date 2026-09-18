@@ -68,6 +68,13 @@ screens described below.
   no Vorbis decoder). Embedded Ogg cover art
   (`METADATA_BLOCK_PICTURE`) isn't read; a folder `cover.jpg` still works
   — see [ADR 0017](docs/adr/0017-two-audio-decode-paths.md).
+- Tones, a tone generator: sine, square (duty), saw (rising → triangle →
+  falling) and noise, 20 Hz – 20 kHz, level in dBFS independent of the
+  volume, out of the 3.5 mm jack at 48 kHz. Chips pick what the knob
+  sets; a live oscilloscope shows what actually reaches the DAC. Its
+  oscillator and scope live in `lib/signal/`, built to be reused by a
+  recorder and an analyzer — see
+  [ADR 0024](docs/adr/0024-tone-generator.md).
 
 ## Preparing an SD card
 
@@ -150,7 +157,10 @@ Settings > USB drive, at about 0.8 MB/s writing and 0.9 MB/s reading
 - Theming (selectable color schemes / customizable look)
 - General visual polish and animation ("eye candy") beyond the planned
   one-time gesture-hint nudge and screen-transition slide
-- Voice memo / dictation recording via the onboard PDM microphone
+- Voice memo / dictation recording via the onboard PDM microphone, and
+  a spectrum analyzer (microphone or knobify's own output) -- both on
+  `lib/signal/`'s oscillator, scope and `SampleSource` (ADR 0024)
+- For Tones: a frequency sweep, stereo channel selection, pink noise
 - A richer Now Playing screen (more detail/interactivity beyond the
   current controls + elapsed time)
 - Using the rotary encoder as a jog dial for scrolling long lists/menus
@@ -221,7 +231,8 @@ collections and the main menu, and
 UTF-8 tag decoding and the project's own text fonts, which is what lets
 umlauts and accents render as written, and
 [ADR 0021](docs/adr/0021-jump-by-letter-and-music-browse-axes.md) for
-jump-by-letter and Music's browse axes.
+jump-by-letter and Music's browse axes, and
+[ADR 0024](docs/adr/0024-tone-generator.md) for the tone generator.
 
 ### What goes on the SD card
 

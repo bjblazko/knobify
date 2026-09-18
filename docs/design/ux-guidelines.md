@@ -243,9 +243,12 @@ Full architecture: [ADR 0004](../adr/0004-navigation-library-and-index-architect
   or back button, and it is the screen the device boots into — so it is
   where the product gets to say its name, and the only screen that does.
 - **The device boots into the main menu** — a carousel of large round
-  tiles (icon + label): Music, Audiobooks, Radio Plays, Settings, Sleep
+  tiles (icon + label): Music, Audiobooks, Radio Plays, Settings, Sleep,
+  Games, Tones
   ([ADR 0010](../adr/0010-main-menu-and-settings.md),
-  [ADR 0018](../adr/0018-collections-and-menu-visibility.md)). The selected
+  [ADR 0018](../adr/0018-collections-and-menu-visibility.md),
+  [ADR 0022](../adr/0022-games-menu-and-table-tennis.md),
+  [ADR 0024](../adr/0024-tone-generator.md)). The selected
   destination sits in the middle at full size with its two neighbours
   shrunk and dimmed either side; a row of dots above says how many there
   are. The knob rotates, a tap on the centre opens, a tap on a neighbour
@@ -281,9 +284,11 @@ Full architecture: [ADR 0004](../adr/0004-navigation-library-and-index-architect
 - **Context-sensitive encoder.** On browse screens, rotating scrolls the
   highlighted list item; on Now Playing, rotating adjusts volume (or
   shuttles through the track while the time pill is held, ADR 0013); on
-  Home it moves the tile selection; on Brightness it sets brightness. The
-  mapping is unambiguous per screen since no mode button exists to switch
-  it explicitly.
+  Home it moves the tile selection; on Brightness it sets brightness; on
+  Tones it sets whichever chip is selected, where the chips *are* the
+  mode buttons this board lacks, shown only where they act and selected on
+  the press so hold-and-turn works (ADR 0024). The mapping is unambiguous
+  per screen since no hardware mode button exists to switch it.
 - **Scope comes from where you start.** In Music, Artists, Albums and
   Tracks lists begin with a Shuffle row that shuffles the whole
   collection, the artist or the album. Spoken-word collections have no

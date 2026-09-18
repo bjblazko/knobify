@@ -96,6 +96,13 @@ duplicating it.
   but the fix reliably works, so: **whenever "many/most files fail to
   open" shows up again, reformat the card properly before suspecting
   anything else.**
+- **The I2S sample rate is one shared setting, and whoever writes last
+  owns it.** Game blips (22.05 kHz) and the tone generator (48 kHz) claim
+  the port while music is paused, and neither ESP32-audioI2S's
+  `pauseResume()` nor the Vorbis backend sets the track's rate again, so a
+  resumed track played at the wrong speed until `Esp32AudioI2SDriver::
+  resume()` restored it (2026-09-18). Anything new that writes to the
+  port while a track is paused relies on that. See ADR 0024.
 - **ESP32-audioI2S's own internal info/error logging (routed through the
   `audio_info()` weak-symbol override in `Esp32AudioI2SDriver.cpp`) is
   silent by default** even when a file plays or fails to play -- add

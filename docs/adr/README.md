@@ -30,3 +30,6 @@ supersedes the old one (and the old one is marked "Superseded by NNNN").
 | [0019](0019-utf8-tag-text-and-project-text-fonts.md) | UTF-8 tag text and project-generated text fonts | Accepted (supersedes 0008's and 0013's ASCII notes) |
 | [0020](0020-patching-esp32-audioi2s-m4a-seek.md) | Patching ESP32-audioI2S at build time to fix M4A seeking | Accepted (amends 0001) |
 | [0021](0021-jump-by-letter-and-music-browse-axes.md) | Jump by letter, and Music browse axes | Accepted (extends 0004, 0018; IndexCache v5) |
+| [0022](0022-games-menu-and-table-tennis.md) | A Games menu, and Table Tennis | Accepted |
+| [0023](0023-gravity.md) | Gravity, and drawing a game in lines | Accepted (extends 0022) |
+| [0024](0024-tone-generator.md) | Tones, a tone generator, and the shared signal layer | Accepted (extends 0018, 0022) |
