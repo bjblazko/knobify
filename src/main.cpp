@@ -442,6 +442,7 @@ void setup() {
   if (displayOk) {
     g_screenManager.setBlipPlayer(g_toneOutput);
     g_screenManager.setToneSession(g_toneSession);
+    g_screenManager.setScopeSource(g_toneOutput);
     g_screenManager.begin();
     // Created after the first screen so it's above it on LVGL's top
     // layer from the start -- see LockOverlay.h.

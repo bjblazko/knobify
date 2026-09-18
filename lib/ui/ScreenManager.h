@@ -27,6 +27,7 @@
 #include "BlipPlayer.h"
 #include "GravityGame.h"
 #include "TableTennisGame.h"
+#include "SampleSource.h"
 #include "ScopeTrace.h"
 #include "SegmentDigits.h"
 #include "Shuttle.h"
@@ -181,6 +182,8 @@ class ScreenManager : public input::KnobSink {
   // The tone generator (ADR 0024). Optional like the blips: without a
   // session the screen shows nothing to play.
   void setToneSession(signal::ToneSession &session) { toneSession_ = &session; }
+  // What the scope draws: the samples that actually reached the DAC.
+  void setScopeSource(signal::SampleSource &source) { scopeSource_ = &source; }
 
   // Cheap redraw of the value and chips after a knob turn -- a no-op on
   // every other screen. Call after any encoder tick.
@@ -569,6 +572,7 @@ class ScreenManager : public input::KnobSink {
     signal::ToneParam param = signal::ToneParam::Frequency;
   };
   signal::ToneSession *toneSession_ = nullptr;
+  signal::SampleSource *scopeSource_ = nullptr;
   std::array<lv_obj_t *, signal::kToneParamCount> toneChips_{};
   std::array<ToneChipContext, signal::kToneParamCount> toneChipContexts_{};
   lv_obj_t *toneValueLabel_ = nullptr;

@@ -162,9 +162,11 @@ void ScreenManager::tickToneGenerator(uint32_t nowMs, bool visible) {
   if (nowMs - lastToneScopeMs_ < kToneScopeFrameMs) return;
   lastToneScopeMs_ = nowMs;
 
-  const playback::SampleWindow window = playback_.readRecentSamples(
-      toneScopeSamples_.data(), toneScopeSamples_.size());
-  if (window.count == 0) {
+  const size_t count =
+      scopeSource_ ? scopeSource_->readRecent(toneScopeSamples_.data(),
+                                              toneScopeSamples_.size())
+                   : 0;
+  if (count == 0) {
     // Nothing new reached the DAC: stopped (or never started).
     if (!toneSession_->running()) toneScope_.clear();
     return;
@@ -172,7 +174,7 @@ void ScreenManager::tickToneGenerator(uint32_t nowMs, bool visible) {
   const signal::OscillatorParams params = toneSession_->settings().params();
   const float hint =
       params.waveform == Waveform::Noise ? kNoiseTimebaseHz : params.frequencyHz;
-  signal::TriggeredScope::trace(toneScopeSamples_.data(), window.count,
+  signal::TriggeredScope::trace(toneScopeSamples_.data(), count,
                                 signal::kGeneratorSampleRate, hint,
                                 toneScopeTrace_.data(), toneScopeTrace_.size());
   // Scaled to the set level, so the shape fills the band at any level --

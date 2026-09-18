@@ -41,6 +41,12 @@ void ToneOutput::noise(uint16_t clockHz, uint16_t durationMs, int16_t level) {
 
 void ToneOutput::silence() { audioOutputStage().tone().silence(); }
 
+size_t ToneOutput::readRecent(int16_t *dst, size_t maxSamples) {
+  return audioOutputStage()
+      .readRecentSamples(dst, maxSamples, signal::kGeneratorSampleRate)
+      .count;
+}
+
 void ToneOutput::taskTrampoline(void *self) {
   static_cast<ToneOutput *>(self)->taskLoop();
 }

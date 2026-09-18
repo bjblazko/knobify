@@ -6,6 +6,7 @@
 #include "BlipPlayer.h"
 #include "GeneratorControl.h"
 #include "Oscillator.h"
+#include "SampleSource.h"
 
 namespace knobify::drivers {
 
@@ -27,7 +28,9 @@ namespace knobify::drivers {
 // loop(): AudioOutputStage::writeFrames() blocks until the DMA buffers
 // take the frames, and blocking loop() is what makes LVGL stutter and
 // trips the loop watchdog (AGENTS.md).
-class ToneOutput : public games::BlipPlayer, public signal::GeneratorOutput {
+class ToneOutput : public games::BlipPlayer,
+                   public signal::GeneratorOutput,
+                   public signal::SampleSource {
  public:
   // Starts the task. Call once, after the I2S port exists (i.e. after the
   // playback driver's begin()).
@@ -47,6 +50,10 @@ class ToneOutput : public games::BlipPlayer, public signal::GeneratorOutput {
   }
   void start() override { control_.setRunning(true); }
   void stop() override { control_.setRunning(false); }
+
+  // signal::SampleSource -- what this task (or anything else) last wrote
+  // to the DAC, for the tone generator's scope. Main loop only.
+  size_t readRecent(int16_t *dst, size_t maxSamples) override;
 
  private:
   static constexpr uint32_t kToneSampleRate = 22050;
