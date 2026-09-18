@@ -69,6 +69,33 @@ void test_a_period_longer_than_the_window_still_draws() {
   TEST_ASSERT_TRUE(moved);
 }
 
+void test_a_high_tone_is_reconstructed_not_joined_up() {
+  // 15 kHz at 48 kHz is 3.2 samples a period: joining them with straight
+  // lines draws a zigzag, but the DAC's output is a sine, and so must the
+  // trace be.
+  auto s = sine(15000, 10000, 5);
+  const float span = 2.0f * kRate / 15000.0f;  // Two periods.
+  std::vector<int16_t> out(kWidth);
+  TriggeredScope::traceWindow(s.data(), s.size(), span, out.data(), kWidth);
+  for (size_t i = 0; i < kWidth; ++i) {
+    const double expected =
+        10000.0 * std::sin(2.0 * kPi * 2.0 * i / (kWidth - 1));
+    TEST_ASSERT_INT_WITHIN(500, static_cast<int>(expected), out[i]);
+  }
+}
+
+void test_an_explicit_window_shows_that_many_samples() {
+  // 10 ms of 400 Hz is four periods: the trace crosses zero rising four
+  // times (the first at its left edge).
+  auto s = sine(400, 10000, 3);
+  std::vector<int16_t> out(kWidth);
+  TriggeredScope::traceWindow(s.data(), s.size(), kRate / 100.0f, out.data(), kWidth);
+  int rising = out[0] >= 0 && std::abs(out[0]) < 400 ? 1 : 0;
+  // Not the last point: it sits exactly on the fifth crossing.
+  for (size_t i = 1; i + 1 < kWidth; ++i) rising += out[i - 1] < 0 && out[i] >= 0;
+  TEST_ASSERT_EQUAL_INT(4, rising);
+}
+
 int main(int argc, char **argv) {
   UNITY_BEGIN();
   RUN_TEST(test_a_sine_starts_on_its_rising_zero_crossing);
@@ -76,5 +103,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_without_a_hint_the_period_is_estimated);
   RUN_TEST(test_silence_is_the_zero_line);
   RUN_TEST(test_a_period_longer_than_the_window_still_draws);
+  RUN_TEST(test_a_high_tone_is_reconstructed_not_joined_up);
+  RUN_TEST(test_an_explicit_window_shows_that_many_samples);
   return UNITY_END();
 }
