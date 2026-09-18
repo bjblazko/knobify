@@ -62,8 +62,21 @@ class Spectrum {
       count = kFftSize;
     }
     const size_t pad = kFftSize - count;
+    // 0 Hz is off the axis, but a window smears it across the lowest
+    // columns: an off-centre square read as a hump of bass at 20-45 Hz on
+    // the device. Taken out first, as analyzers do -- weighted by the
+    // window, since a plain mean over a window that holds no whole number
+    // of periods left a -53 dB hump behind.
+    float weighted = 0.0f;
+    float weights = 0.0f;
+    for (size_t i = 0; i < count; ++i) {
+      weighted += static_cast<float>(samples[i]) * window_[i + pad];
+      weights += window_[i + pad];
+    }
+    const float mean = weights > 0.0f ? weighted / weights : 0.0f;
     for (size_t i = 0; i < kFftSize; ++i) {
-      const float s = i < pad ? 0.0f : static_cast<float>(samples[i - pad]) / 32768.0f;
+      const float s =
+          i < pad ? 0.0f : (static_cast<float>(samples[i - pad]) - mean) / 32768.0f;
       re_[i] = s * window_[i];
       im_[i] = 0.0f;
     }

@@ -86,11 +86,24 @@ void test_a_tone_that_stops_falls_away_rather_than_vanishing() {
                            levelAt(spectrum, 1000));
 }
 
+void test_a_lopsided_square_shows_no_bass_it_does_not_have() {
+  // A 75 % duty square has a large DC offset. 0 Hz is off the axis, but a
+  // window smears it across the lowest columns, where it read on the
+  // device as a hump of bass at 20-45 Hz (2026-09-18).
+  Spectrum spectrum(kColumns);
+  std::vector<int16_t> s(4096);
+  for (size_t i = 0; i < s.size(); ++i) s[i] = (i % 48) < 36 ? 16000 : -16000;
+  spectrum.update(s.data(), s.size(), kRate, 33);
+  for (float hz : {20.0f, 30.0f, 45.0f}) TEST_ASSERT_TRUE(levelAt(spectrum, hz) < -60.0f);
+  TEST_ASSERT_TRUE(levelAt(spectrum, 1000) > -12.0f);
+}
+
 int main(int argc, char **argv) {
   UNITY_BEGIN();
   RUN_TEST(test_columns_span_the_audible_band_on_a_log_axis);
   RUN_TEST(test_a_tone_stands_at_its_level_and_nowhere_else);
   RUN_TEST(test_a_square_shows_its_odd_harmonics_only);
+  RUN_TEST(test_a_lopsided_square_shows_no_bass_it_does_not_have);
   RUN_TEST(test_silence_is_the_floor);
   RUN_TEST(test_a_tone_that_stops_falls_away_rather_than_vanishing);
   return UNITY_END();
