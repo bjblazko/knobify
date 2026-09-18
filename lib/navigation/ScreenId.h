@@ -52,6 +52,10 @@ enum class ScreenKind {
   TableTennis,
   // Appended, like everything above: the order is a stored resume value.
   Gravity,
+  // The tone generator (ADR 0024). Appended like everything above; past
+  // NowPlaying, so a resume never lands on it -- a device that woke up
+  // about to make a noise would be startling.
+  ToneGenerator,
 };
 
 // Parameters a screen needs to render itself. Only the fields relevant

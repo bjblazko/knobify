@@ -9,6 +9,7 @@
 #include "Shuttle.h"
 #include "SleepTimer.h"
 #include "TabController.h"
+#include "ToneSession.h"
 #include "TouchCalibrator.h"
 
 namespace knobify::input {
@@ -78,6 +79,11 @@ class InputRouter {
         // (ADR 0023).
         knobSink_.onGameKnob(delta);
         break;
+      case navigation::ScreenKind::ToneGenerator:
+        // Whichever chip is selected (ADR 0024). Held here like brightness:
+        // it is plain logic, and loop() only needs to redraw afterwards.
+        if (toneSession_) toneSession_->turn(delta, nowMs);
+        break;
       case navigation::ScreenKind::TouchCalibration:
         // The way out that never depends on touch: restores the previous
         // calibration and leaves (TouchCalibrator.h).
@@ -99,6 +105,10 @@ class InputRouter {
     // routed here.
   }
 
+  // Optional, like a game's sounds: without one the knob does nothing on
+  // the tone generator, which is all a host-side build needs.
+  void setToneSession(signal::ToneSession &session) { toneSession_ = &session; }
+
  private:
   navigation::TabController &tabs_;
   playback::PlaybackStateMachine &playback_;
@@ -107,6 +117,7 @@ class InputRouter {
   power::SleepTimer &sleepTimer_;
   TouchCalibrationFlow &calibration_;
   KnobSink &knobSink_;
+  signal::ToneSession *toneSession_ = nullptr;
 };
 
 }  // namespace knobify::input

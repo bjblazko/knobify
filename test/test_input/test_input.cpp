@@ -13,6 +13,8 @@
 #include "TouchCalibration.h"
 #include "TouchCalibrator.h"
 #include "TouchLatch.h"
+#include "GeneratorControl.h"
+#include "ToneSession.h"
 
 using knobify::input::CalibrationOutcome;
 using knobify::input::CalibrationPhase;
@@ -36,6 +38,9 @@ using knobify::playback::PlaybackDriver;
 using knobify::playback::PlaybackStateMachine;
 using knobify::playback::Shuttle;
 using knobify::playback::VolumePersistence;
+using knobify::signal::GeneratorOutput;
+using knobify::signal::OscillatorParams;
+using knobify::signal::ToneSession;
 
 void setUp() {}
 void tearDown() {}
@@ -607,8 +612,45 @@ void test_gesture_carries_where_the_finger_went_down() {
   TEST_ASSERT_EQUAL_INT16(160, event->x);
 }
 
+namespace {
+class NullGeneratorOutput : public GeneratorOutput {
+ public:
+  void apply(const OscillatorParams &) override {}
+  void start() override {}
+  void stop() override {}
+};
+}  // namespace
+
+void test_encoder_turns_the_tone_generators_selected_value() {
+  FakeDriver driver;
+  FakeStore store;
+  VolumePersistence volume(store);
+  PlaybackStateMachine playback(driver, volume);
+  TabController tabs;
+  tabs.activeStack().push(Screen{ScreenKind::ToneGenerator, {}});
+  RecordingListSink sink;
+  BrightnessSetting brightness(store);
+  Shuttle shuttle(playback);
+  FakeBlobStore blobs;
+  TouchCalibrationFlow calibration(blobs);
+  SleepTimer sleepTimer;
+  InputRouter router(tabs, playback, shuttle, brightness, sleepTimer,
+                     calibration, sink);
+  NullGeneratorOutput output;
+  ToneSession session(output, store);
+  session.begin();
+  router.setToneSession(session);
+
+  const uint8_t volumeBefore = playback.volume();
+  router.onEncoderDelta(1, 1000);
+  TEST_ASSERT_EQUAL_INT(1, session.settings().frequencyStep());
+  TEST_ASSERT_EQUAL_UINT8(volumeBefore, playback.volume());
+  TEST_ASSERT_EQUAL_INT(0, sink.calls);
+}
+
 int main(int argc, char **argv) {
   UNITY_BEGIN();
+  RUN_TEST(test_encoder_turns_the_tone_generators_selected_value);
   RUN_TEST(test_encoder_scrolls_list_on_browse_screen);
   RUN_TEST(test_encoder_adjusts_volume_on_now_playing_screen);
   RUN_TEST(test_encoder_shuttles_instead_of_volume_while_held);
