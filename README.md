@@ -162,6 +162,12 @@ Settings > USB drive, at about 0.8 MB/s writing and 0.9 MB/s reading
   a spectrum analyzer (microphone or knobify's own output) -- both on
   `lib/signal/`'s oscillator, scope and `SampleSource` (ADR 0024)
 - For Tones: a frequency sweep, stereo channel selection
+- DOOM (v1 shareware, the WAD supplied on the SD card) via a prboom port,
+  after the recorder and analyzer. Likely feasible on the S3's CPU and
+  8 MB PSRAM; the real work is controls on one knob plus touch zones, the
+  320x200 picture inside the round screen (~305x191 fits), and OPL music
+  (skip at first). Start with a spike: the demo loop from SD, measured
+  fps. The trademark needs a deliberate naming decision (cf. ADR 0022)
 - A richer Now Playing screen (more detail/interactivity beyond the
   current controls + elapsed time)
 - Using the rotary encoder as a jog dial for scrolling long lists/menus
