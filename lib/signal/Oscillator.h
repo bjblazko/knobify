@@ -99,14 +99,73 @@ class Oscillator {
                         : 1.0f - 2.0f * (t - rise) / (1.0f - rise);
       }
       case Waveform::Noise:
-        // xorshift32: white enough to test a speaker with, and cheap.
-        noise_ ^= noise_ << 13;
-        noise_ ^= noise_ >> 17;
-        noise_ ^= noise_ << 5;
-        return static_cast<float>(static_cast<int32_t>(noise_)) *
-               (1.0f / 2147483648.0f);
+        return noise();
     }
     return 0.0f;
+  }
+
+  // One sample of the chosen colour, unit RMS, scaled so its RMS sits
+  // kNoiseCrestDb under full scale, then limited to full scale. Every
+  // colour is built from the same Gaussian white, so they are equally
+  // loud, and the rare peak past 4 sigma is clipped rather than letting
+  // the level mean something else for noise than for a tone.
+  float noise() {
+    const float white = gaussian();
+    float coloured = white;
+    switch (params_.noise) {
+      case NoiseColor::White:
+        break;
+      case NoiseColor::Pink:
+        coloured = pink(white) * kPinkGain;
+        break;
+      case NoiseColor::Brown:
+        // A leaky integrator: -6 dB an octave down to ~8 Hz, and no
+        // wandering off to one rail.
+        brown_ = kBrownLeak * brown_ + white;
+        coloured = brown_ * kBrownGain;
+        break;
+      case NoiseColor::Blue: {
+        // Differentiating adds +6 dB an octave: pink's -3 becomes +3.
+        const float p = pink(white);
+        coloured = (p - lastPink_) * kBlueGain;
+        lastPink_ = p;
+        break;
+      }
+      case NoiseColor::Violet:
+        coloured = (white - lastWhite_) * kVioletGain;
+        lastWhite_ = white;
+        break;
+    }
+    return std::clamp(coloured * kNoiseRms, -1.0f, 1.0f);
+  }
+
+  // xorshift32, as a uniform sample in [-1, 1).
+  float uniform() {
+    noise_ ^= noise_ << 13;
+    noise_ ^= noise_ >> 17;
+    noise_ ^= noise_ << 5;
+    return static_cast<float>(static_cast<int32_t>(noise_)) * (1.0f / 2147483648.0f);
+  }
+
+  // Four uniforms summed: close enough to Gaussian for noise that is
+  // listened to and looked at, and unit variance after scaling.
+  float gaussian() {
+    return (uniform() + uniform() + uniform() + uniform()) * kGaussianScale;
+  }
+
+  // Paul Kellet's refined pink filter: -3 dB an octave to within 0.05 dB
+  // above 9 Hz.
+  float pink(float white) {
+    pink_[0] = 0.99886f * pink_[0] + white * 0.0555179f;
+    pink_[1] = 0.99332f * pink_[1] + white * 0.0750759f;
+    pink_[2] = 0.96900f * pink_[2] + white * 0.1538520f;
+    pink_[3] = 0.86650f * pink_[3] + white * 0.3104856f;
+    pink_[4] = 0.55000f * pink_[4] + white * 0.5329522f;
+    pink_[5] = -0.7616f * pink_[5] - white * 0.0168980f;
+    const float out = pink_[0] + pink_[1] + pink_[2] + pink_[3] + pink_[4] +
+                      pink_[5] + pink_[6] + white * 0.5362f;
+    pink_[6] = white * 0.115926f;
+    return out;
   }
 
   float sine() const {
@@ -131,7 +190,24 @@ class Oscillator {
     return 0.0f;
   }
 
+  // RMS 12 dB under the level: Gaussian noise then passes 4 sigma -- and
+  // is clipped -- about once in 16,000 samples.
+  static constexpr float kNoiseRms = 0.25f;
+  static constexpr float kGaussianScale = 0.8660254f;  // 1 / sqrt(4/3)
+  static constexpr float kBrownLeak = 0.998f;
+  // Each colour's filter output back to unit RMS: 1/sigma of the filter
+  // fed unit Gaussian white, measured over 100 s (brown's is also
+  // sqrt(1 - leak^2)). test_oscillator holds every colour to the same RMS.
+  static constexpr float kPinkGain = 0.32764f;
+  static constexpr float kBrownGain = 0.06317f;
+  static constexpr float kBlueGain = 0.55137f;
+  static constexpr float kVioletGain = 0.70741f;
+
   std::array<float, kSineTableSize + 1> sine_{};
+  std::array<float, 7> pink_{};
+  float brown_ = 0.0f;
+  float lastPink_ = 0.0f;
+  float lastWhite_ = 0.0f;
   OscillatorParams params_;
   uint32_t phase_ = 0;
   uint32_t noise_ = 0x9E3779B9u;

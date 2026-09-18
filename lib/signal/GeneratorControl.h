@@ -36,6 +36,7 @@ class GeneratorControl {
                    std::memory_order_relaxed);
     amplitude_.store(toUnit(p.amplitude), std::memory_order_relaxed);
     shape_.store(toUnit(p.shape), std::memory_order_relaxed);
+    noise_.store(static_cast<uint8_t>(p.noise), std::memory_order_relaxed);
   }
 
   void setRunning(bool running) { running_.store(running, std::memory_order_relaxed); }
@@ -47,6 +48,7 @@ class GeneratorControl {
     p.frequencyHz = centiHz_.load(std::memory_order_relaxed) / 100.0f;
     p.amplitude = fromUnit(amplitude_.load(std::memory_order_relaxed));
     p.shape = fromUnit(shape_.load(std::memory_order_relaxed));
+    p.noise = static_cast<NoiseColor>(noise_.load(std::memory_order_relaxed));
     return p;
   }
 
@@ -63,6 +65,7 @@ class GeneratorControl {
   std::atomic<uint32_t> centiHz_{100000};
   std::atomic<uint32_t> amplitude_{0};
   std::atomic<uint32_t> shape_{500000};
+  std::atomic<uint8_t> noise_{0};
   std::atomic<bool> running_{false};
 };
 

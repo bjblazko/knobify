@@ -1,12 +1,14 @@
 #include <unity.h>
 
 #include <cstdint>
+#include <cmath>
 #include <cstdlib>
 #include <set>
 #include <vector>
 
 #include "Oscillator.h"
 
+using knobify::signal::NoiseColor;
 using knobify::signal::Oscillator;
 using knobify::signal::OscillatorParams;
 using knobify::signal::Waveform;
@@ -44,6 +46,44 @@ int risingCrossings(const std::vector<int16_t> &s) {
     if (s[i - 1] < 0 && s[i] >= 0) ++n;
   }
   return n;
+}
+
+OscillatorParams noise(NoiseColor color, float amplitude) {
+  OscillatorParams p = params(Waveform::Noise, 1000, amplitude);
+  p.noise = color;
+  return p;
+}
+
+// Average power per DFT bin between loHz and hiHz, in dB, over several
+// Hann-windowed blocks: a noise colour is a slope of exactly this.
+double bandDensityDb(const std::vector<int16_t> &s, double loHz, double hiHz) {
+  constexpr size_t kN = 4096;
+  static std::vector<double> cosT, sinT, window;
+  if (cosT.empty()) {
+    for (size_t i = 0; i < kN; ++i) {
+      cosT.push_back(std::cos(2.0 * 3.141592653589793 * i / kN));
+      sinT.push_back(std::sin(2.0 * 3.141592653589793 * i / kN));
+      window.push_back(0.5 - 0.5 * std::cos(2.0 * 3.141592653589793 * i / (kN - 1)));
+    }
+  }
+  const size_t loBin = static_cast<size_t>(loHz * kN / kRate);
+  const size_t hiBin = static_cast<size_t>(hiHz * kN / kRate);
+  double total = 0.0;
+  size_t terms = 0;
+  for (size_t start = 0; start + kN <= s.size(); start += kN) {
+    for (size_t k = loBin; k < hiBin; ++k) {
+      double re = 0.0, im = 0.0;
+      for (size_t n = 0; n < kN; ++n) {
+        const double v = s[start + n] * window[n];
+        const size_t t = (k * n) % kN;
+        re += v * cosT[t];
+        im -= v * sinT[t];
+      }
+      total += re * re + im * im;
+      ++terms;
+    }
+  }
+  return 10.0 * std::log10(total / terms);
 }
 }  // namespace
 
@@ -147,6 +187,41 @@ void test_start_and_stop_ramp_instead_of_clicking() {
   TEST_ASSERT_EQUAL_INT16(0, tail.back());
 }
 
+void test_every_noise_colour_is_as_loud_and_never_past_its_level() {
+  // The level is the peak, as for every waveform; the RMS sits 12 dB
+  // under it, the same for every colour, so switching colour does not
+  // switch loudness.
+  for (int c = 0; c < knobify::signal::kNoiseColorCount; ++c) {
+    Oscillator osc;
+    osc.setParams(noise(static_cast<NoiseColor>(c), 0.5f));
+    auto s = steady(osc, kRate * 2);
+    double sumSquares = 0.0;
+    for (int16_t v : s) {
+      TEST_ASSERT_TRUE(std::abs(static_cast<int>(v)) <= 16384);
+      sumSquares += static_cast<double>(v) * v;
+    }
+    const double rmsDb = 20.0 * std::log10(std::sqrt(sumSquares / s.size()) / 4096.0);
+    TEST_ASSERT_FLOAT_WITHIN(1.5f, 0.0f, static_cast<float>(rmsDb));
+  }
+}
+
+void test_each_noise_colour_has_its_slope() {
+  // Four octaves apart: brown -6, pink -3, white 0, blue +3, violet +6
+  // dB an octave.
+  const NoiseColor colours[] = {NoiseColor::Brown, NoiseColor::Pink,
+                                NoiseColor::White, NoiseColor::Blue,
+                                NoiseColor::Violet};
+  const double perOctave[] = {-6.0, -3.0, 0.0, 3.0, 6.0};
+  for (int i = 0; i < 5; ++i) {
+    Oscillator osc;
+    osc.setParams(noise(colours[i], 0.5f));
+    auto s = steady(osc, 4096 * 8);
+    const double slope = bandDensityDb(s, 4000, 8000) - bandDensityDb(s, 250, 500);
+    TEST_ASSERT_FLOAT_WITHIN(3.0f, static_cast<float>(4 * perOctave[i]),
+                             static_cast<float>(slope));
+  }
+}
+
 int main(int argc, char **argv) {
   UNITY_BEGIN();
   RUN_TEST(test_a_stopped_oscillator_is_silent_and_idle);
@@ -155,6 +230,8 @@ int main(int argc, char **argv) {
   RUN_TEST(test_a_square_honours_its_duty_cycle);
   RUN_TEST(test_a_saw_rises_falls_or_does_both_by_its_shape);
   RUN_TEST(test_noise_is_centred_bounded_and_not_a_pattern);
+  RUN_TEST(test_every_noise_colour_is_as_loud_and_never_past_its_level);
+  RUN_TEST(test_each_noise_colour_has_its_slope);
   RUN_TEST(test_a_pitch_change_does_not_jump);
   RUN_TEST(test_start_and_stop_ramp_instead_of_clicking);
   return UNITY_END();

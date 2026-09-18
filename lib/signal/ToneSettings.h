@@ -47,6 +47,13 @@ class ToneSettings {
   static constexpr char kLevelKey[] = "tgLevel";
   static constexpr char kDutyKey[] = "tgDuty";
   static constexpr char kSymmetryKey[] = "tgSym";
+  static constexpr char kNoiseKey[] = "tgNoise";
+
+  // The colour chip turns darker to brighter: turning right makes the
+  // noise hiss more, as it does the pitch.
+  static constexpr NoiseColor kNoiseOrder[kNoiseColorCount] = {
+      NoiseColor::Brown, NoiseColor::Pink, NoiseColor::White, NoiseColor::Blue,
+      NoiseColor::Violet};
 
   Waveform waveform() const { return waveform_; }
   int frequencyStep() const { return frequencyStep_; }
@@ -57,6 +64,7 @@ class ToneSettings {
   int dutyPercent() const { return dutyPercent_; }
   // 0 = rising saw, 50 = triangle, 100 = falling saw.
   int symmetryPercent() const { return symmetryPercent_; }
+  NoiseColor noiseColor() const { return kNoiseOrder[noiseIndex_]; }
 
   // A chip is shown only where it does something (ux-guidelines §7).
   static bool visible(ToneParam param, Waveform wave) {
@@ -64,7 +72,8 @@ class ToneSettings {
       case ToneParam::Frequency:
         return wave != Waveform::Noise;
       case ToneParam::Shape:
-        return wave == Waveform::Square || wave == Waveform::Saw;
+        // Duty, symmetry or colour; a sine has no shape to set.
+        return wave != Waveform::Sine;
       default:
         return true;
     }
@@ -96,6 +105,10 @@ class ToneSettings {
       case ToneParam::Level:
         return set(levelDb_, std::clamp(levelDb_ + step, kMinLevelDb, kMaxLevelDb));
       case ToneParam::Shape:
+        if (waveform_ == Waveform::Noise) {
+          // One colour a detent however fast, like the waveform.
+          return set(noiseIndex_, std::clamp(noiseIndex_ + delta, 0, kNoiseColorCount - 1));
+        }
         if (waveform_ == Waveform::Square) {
           return set(dutyPercent_, std::clamp(dutyPercent_ + step, kMinDutyPercent,
                                               kMaxDutyPercent));
@@ -110,6 +123,7 @@ class ToneSettings {
     p.waveform = waveform_;
     p.frequencyHz = frequencyHz();
     p.amplitude = dbToLinear(levelDb_);
+    p.noise = noiseColor();
     if (waveform_ == Waveform::Square) {
       p.shape = dutyPercent_ / 100.0f;
     } else if (waveform_ == Waveform::Saw) {
@@ -133,12 +147,25 @@ class ToneSettings {
     return "";
   }
 
+  static const char *noiseColorName(NoiseColor color) {
+    switch (color) {
+      case NoiseColor::White: return "White";
+      case NoiseColor::Pink: return "Pink";
+      case NoiseColor::Brown: return "Brown";
+      case NoiseColor::Blue: return "Blue";
+      case NoiseColor::Violet: return "Violet";
+    }
+    return "";
+  }
+
   static const char *chipLabel(ToneParam param, Waveform wave) {
     switch (param) {
       case ToneParam::Waveform: return waveformName(wave);
       case ToneParam::Frequency: return "Hz";
       case ToneParam::Level: return "dB";
-      case ToneParam::Shape: return wave == Waveform::Square ? "Duty" : "Shape";
+      case ToneParam::Shape:
+        if (wave == Waveform::Noise) return "Color";
+        return wave == Waveform::Square ? "Duty" : "Shape";
     }
     return "";
   }
@@ -165,7 +192,9 @@ class ToneSettings {
         snprintf(out, size, "%d dB", levelDb_);
         return;
       case ToneParam::Shape:
-        if (waveform_ == Waveform::Square) {
+        if (waveform_ == Waveform::Noise) {
+          snprintf(out, size, "%s noise", noiseColorName(noiseColor()));
+        } else if (waveform_ == Waveform::Square) {
           snprintf(out, size, "Duty %d%%", dutyPercent_);
         } else if (symmetryPercent_ == 0) {
           snprintf(out, size, "Rising");
@@ -198,6 +227,11 @@ class ToneSettings {
       dutyPercent_ = v;
     }
     if (store.getU8(kSymmetryKey, v) && v <= 100) symmetryPercent_ = v;
+    if (store.getU8(kNoiseKey, v) && v < kNoiseColorCount) {
+      for (int i = 0; i < kNoiseColorCount; ++i) {
+        if (kNoiseOrder[i] == static_cast<NoiseColor>(v)) noiseIndex_ = i;
+      }
+    }
   }
 
   void save(playback::KeyValueStore &store) const {
@@ -208,6 +242,7 @@ class ToneSettings {
     store.setU8(kLevelKey, static_cast<uint8_t>(-levelDb_));
     store.setU8(kDutyKey, static_cast<uint8_t>(dutyPercent_));
     store.setU8(kSymmetryKey, static_cast<uint8_t>(symmetryPercent_));
+    store.setU8(kNoiseKey, static_cast<uint8_t>(noiseColor()));
   }
 
  private:
@@ -249,6 +284,8 @@ class ToneSettings {
   int levelDb_ = kDefaultLevelDb;
   int dutyPercent_ = 50;
   int symmetryPercent_ = 0;
+  // Into kNoiseOrder; White.
+  int noiseIndex_ = 2;
   ToneParam selected_ = ToneParam::Frequency;
   uint32_t lastTurnMs_ = 0;
   bool turnedBefore_ = false;

@@ -7,6 +7,7 @@
 #include "ToneSettings.h"
 
 using knobify::playback::KeyValueStore;
+using knobify::signal::NoiseColor;
 using knobify::signal::ToneParam;
 using knobify::signal::ToneSettings;
 using knobify::signal::Waveform;
@@ -186,6 +187,59 @@ void test_settings_survive_a_round_trip_and_garbage_is_ignored() {
   TEST_ASSERT_EQUAL_INT(-20, c.levelDb());
 }
 
+void test_noise_gets_a_colour_chip_that_turns_darker_to_brighter() {
+  ToneSettings s;
+  s.select(ToneParam::Waveform);
+  uint32_t now = 0;
+  turnSlowly(s, 3, now);  // Noise.
+  TEST_ASSERT_TRUE(ToneSettings::visible(ToneParam::Shape, Waveform::Noise));
+  TEST_ASSERT_EQUAL_STRING("Color", ToneSettings::chipLabel(ToneParam::Shape, Waveform::Noise));
+  TEST_ASSERT_EQUAL(NoiseColor::White, s.noiseColor());
+  TEST_ASSERT_EQUAL_STRING("White noise", text(s, ToneParam::Shape).c_str());
+
+  s.select(ToneParam::Shape);
+  turnSlowly(s, -1, now);
+  TEST_ASSERT_EQUAL(NoiseColor::Pink, s.noiseColor());
+  turnSlowly(s, -5, now);  // No wrapping.
+  TEST_ASSERT_EQUAL(NoiseColor::Brown, s.noiseColor());
+  TEST_ASSERT_EQUAL_STRING("Brown noise", text(s, ToneParam::Shape).c_str());
+  turnSlowly(s, 3, now);
+  TEST_ASSERT_EQUAL(NoiseColor::Blue, s.noiseColor());
+  turnSlowly(s, 9, now);
+  TEST_ASSERT_EQUAL(NoiseColor::Violet, s.noiseColor());
+  TEST_ASSERT_EQUAL(NoiseColor::Violet, s.params().noise);
+}
+
+void test_a_fast_turn_never_skips_a_colour() {
+  ToneSettings s;
+  s.select(ToneParam::Waveform);
+  uint32_t now = 0;
+  turnSlowly(s, 3, now);
+  s.select(ToneParam::Shape);
+  turnSlowly(s, -2, now);  // Brown.
+  s.turn(1, now + 1000);   // Slow: Pink.
+  s.turn(1, now + 1020);   // Fast -- still only one step: White.
+  TEST_ASSERT_EQUAL(NoiseColor::White, s.noiseColor());
+}
+
+void test_the_noise_colour_survives_a_round_trip() {
+  FakeStore store;
+  ToneSettings a;
+  uint32_t now = 0;
+  a.select(ToneParam::Waveform);
+  turnSlowly(a, 3, now);
+  a.select(ToneParam::Shape);
+  turnSlowly(a, -1, now);  // Pink.
+  a.save(store);
+  ToneSettings b;
+  b.load(store);
+  TEST_ASSERT_EQUAL(NoiseColor::Pink, b.noiseColor());
+  store.values[ToneSettings::kNoiseKey] = 7;
+  ToneSettings c;
+  c.load(store);
+  TEST_ASSERT_EQUAL(NoiseColor::White, c.noiseColor());
+}
+
 int main(int argc, char **argv) {
   UNITY_BEGIN();
   RUN_TEST(test_defaults);
@@ -196,6 +250,9 @@ int main(int argc, char **argv) {
   RUN_TEST(test_the_waveform_steps_without_wrapping_and_selection_follows);
   RUN_TEST(test_duty_and_symmetry_clamp_and_map_to_the_oscillator);
   RUN_TEST(test_value_text);
+  RUN_TEST(test_noise_gets_a_colour_chip_that_turns_darker_to_brighter);
+  RUN_TEST(test_a_fast_turn_never_skips_a_colour);
+  RUN_TEST(test_the_noise_colour_survives_a_round_trip);
   RUN_TEST(test_settings_survive_a_round_trip_and_garbage_is_ignored);
   return UNITY_END();
 }

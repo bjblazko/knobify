@@ -112,6 +112,7 @@ void test_the_control_hands_parameters_across_intact() {
   p.frequencyHz = 439.61f;
   p.amplitude = 0.001f;
   p.shape = 0.35f;
+  p.noise = knobify::signal::NoiseColor::Blue;
   control.publish(p);
   control.setRunning(true);
   const OscillatorParams q = control.snapshot();
@@ -120,6 +121,7 @@ void test_the_control_hands_parameters_across_intact() {
   TEST_ASSERT_FLOAT_WITHIN(0.01f, 439.61f, q.frequencyHz);
   TEST_ASSERT_FLOAT_WITHIN(0.00005f, 0.001f, q.amplitude);
   TEST_ASSERT_FLOAT_WITHIN(0.0001f, 0.35f, q.shape);
+  TEST_ASSERT_EQUAL(knobify::signal::NoiseColor::Blue, q.noise);
 }
 
 int main(int argc, char **argv) {
