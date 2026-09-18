@@ -461,10 +461,16 @@ void setup() {
 
 // A tap injected over Serial ("TAP x y", screen coordinates): held for
 // kInjectedTapMs of loop() iterations in place of the real touch sample.
+// "SWIPE x1 y1 x2 y2" is the same finger moving from one point to the
+// other over kInjectedSwipeMs; a tap is a swipe that goes nowhere.
 constexpr uint32_t kInjectedTapMs = 120;
+constexpr uint32_t kInjectedSwipeMs = 250;
 uint32_t g_injectedTapUntilMs = 0;
+uint32_t g_injectedTapStartMs = 0;
 int16_t g_injectedTapX = 0;
 int16_t g_injectedTapY = 0;
+int16_t g_injectedTapToX = 0;
+int16_t g_injectedTapToY = 0;
 // Knob detents injected over Serial ("KNOB n"), added to the next read.
 int g_injectedDetents = 0;
 
@@ -472,7 +478,8 @@ int g_injectedDetents = 0;
 // display contents (see LvglGlue::writeScreenshotToSerial(), decoded by
 // scripts/screenshot.py into a BMP) -- lets a UI bug be diagnosed from an
 // actual capture instead of a description or a phone photo. "TAP x y"
-// taps the screen and "KNOB n" turns the knob n detents, so a flow can be
+// taps the screen, "SWIPE x1 y1 x2 y2" drags across it, and "KNOB n"
+// turns the knob n detents, so a flow can be
 // driven without a hand on the device. "INFO" prints the reset reason:
 // after a crash the TinyUSB serial port comes back too late to show the
 // panic itself.
@@ -486,16 +493,28 @@ void pollSerialCommands() {
         buf[len] = '\0';
         int x = 0;
         int y = 0;
+        int toX = 0;
+        int toY = 0;
         // Screenshots and INFO write a lot; not while the USB drive is
         // busy (UsbMscStorage::exporting()), where that would hang.
         if (strcmp(buf, "SCREENSHOT") == 0) {
           if (!knobify::drivers::UsbMscStorage::exporting()) {
             g_lvglGlue.writeScreenshotToSerial();
           }
+        } else if (sscanf(buf, "SWIPE %d %d %d %d", &x, &y, &toX, &toY) == 4) {
+          g_injectedTapX = static_cast<int16_t>(x);
+          g_injectedTapY = static_cast<int16_t>(y);
+          g_injectedTapToX = static_cast<int16_t>(toX);
+          g_injectedTapToY = static_cast<int16_t>(toY);
+          g_injectedTapStartMs = millis();
+          g_injectedTapUntilMs = g_injectedTapStartMs + kInjectedSwipeMs;
         } else if (sscanf(buf, "TAP %d %d", &x, &y) == 2) {
           g_injectedTapX = static_cast<int16_t>(x);
           g_injectedTapY = static_cast<int16_t>(y);
-          g_injectedTapUntilMs = millis() + kInjectedTapMs;
+          g_injectedTapToX = g_injectedTapX;
+          g_injectedTapToY = g_injectedTapY;
+          g_injectedTapStartMs = millis();
+          g_injectedTapUntilMs = g_injectedTapStartMs + kInjectedTapMs;
         } else if (strcmp(buf, "INFO") == 0 &&
                    !knobify::drivers::UsbMscStorage::exporting()) {
           // A reset reason of 4 is a panic: read the core dump (AGENTS.md).
@@ -573,10 +592,16 @@ void loop() {
   const knobify::input::TouchSample rawTouchSample = touchSample;
   touchSample = g_touchCalibration.active().apply(rawTouchSample);
   if (g_injectedTapUntilMs != 0) {
-    if (millis() < g_injectedTapUntilMs) {
+    const uint32_t nowMs = millis();
+    if (nowMs < g_injectedTapUntilMs) {
+      const int32_t done = static_cast<int32_t>(nowMs - g_injectedTapStartMs);
+      const int32_t total =
+          static_cast<int32_t>(g_injectedTapUntilMs - g_injectedTapStartMs);
       touchSample.pressed = true;
-      touchSample.x = g_injectedTapX;
-      touchSample.y = g_injectedTapY;
+      touchSample.x = static_cast<int16_t>(
+          g_injectedTapX + (g_injectedTapToX - g_injectedTapX) * done / total);
+      touchSample.y = static_cast<int16_t>(
+          g_injectedTapY + (g_injectedTapToY - g_injectedTapY) * done / total);
     } else {
       g_injectedTapUntilMs = 0;
     }

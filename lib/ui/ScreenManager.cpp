@@ -142,6 +142,9 @@ void ScreenManager::render() {
   gravityWidgets_ = GravityWidgets{};
   gravityThrustSounding_ = false;
   toneChips_.fill(nullptr);
+  toneDots_.fill(nullptr);
+  toneBand_ = nullptr;
+  toneScaleLabel_ = nullptr;
   toneValueLabel_ = nullptr;
   tonePlayButton_ = nullptr;
   toneScope_.detach();
@@ -170,6 +173,7 @@ void ScreenManager::render() {
     if (toneSession_ && toneSession_->running()) toneSession_->stop();
     toneScopeSamples_.clear();
     toneScopeSamples_.shrink_to_fit();
+    toneSpectrum_.release();
   }
   if (current.kind != renderedKind_) {
     renderedKind_ = current.kind;
@@ -882,14 +886,21 @@ void ScreenManager::tickLetterJump(uint32_t nowMs) {
 }
 
 bool ScreenManager::swipeStartsOnControl(int16_t x, int16_t y) const {
-  if (!caption_) return false;
-  lv_area_t area;
-  lv_obj_get_coords(caption_, &area);
   // The same slop the chip's own hit area uses (LvglButtonHelpers.h):
   // calibrated touch still scatters around the finger.
   constexpr lv_coord_t kSlop = 10;
-  return x >= area.x1 - kSlop && x <= area.x2 + kSlop &&
-         y >= area.y1 - kSlop && y <= area.y2 + kSlop;
+  // The tone generator's band takes swipes of its own: they turn its
+  // page between scope and spectrum (ADR 0024).
+  for (lv_obj_t *control : {caption_, toneBand_}) {
+    if (!control) continue;
+    lv_area_t area;
+    lv_obj_get_coords(control, &area);
+    if (x >= area.x1 - kSlop && x <= area.x2 + kSlop &&
+        y >= area.y1 - kSlop && y <= area.y2 + kSlop) {
+      return true;
+    }
+  }
+  return false;
 }
 
 

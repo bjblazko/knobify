@@ -9,7 +9,8 @@
 
 namespace knobify::ui_widgets {
 
-// An oscilloscope trace (ADR 0024): one lv_line over a zero line. A line
+// An oscilloscope trace (ADR 0024): one lv_line over a zero line. Also
+// draws the spectrum, which is a line over the same band. A line
 // rather than a canvas, for the reason ADR 0022 gives -- LVGL redraws only
 // the line's area, where a canvas would re-blit its whole buffer.
 // lv_line keeps a pointer to the points, so they live here.
@@ -31,18 +32,36 @@ class ScopeTrace {
   }
 
   // `values` holds kPoints samples; `fullScale` is the value drawn at the
-  // band's top edge.
+  // band's top edge (and its negative at the bottom).
   void setSamples(const int16_t *values, size_t count, int32_t fullScale) {
-    if (!line_ || count < 2 || fullScale <= 0) return;
+    if (fullScale <= 0) return;
+    setPoints(values, count, -fullScale, fullScale);
+  }
+
+  // Any values, `minValue` at the band's bottom edge and `maxValue` at its
+  // top -- the spectrum's levels in tenths of a dB, for one.
+  void setPoints(const int16_t *values, size_t count, int32_t minValue,
+                 int32_t maxValue) {
+    if (!line_ || count < 2 || maxValue <= minValue) return;
     const size_t n = std::min(count, kPoints);
-    const int32_t mid = height_ / 2;
-    const int32_t half = height_ / 2 - 1;
+    const int32_t range = maxValue - minValue;
+    const int32_t bottom = height_ - 1;
     for (size_t i = 0; i < n; ++i) {
-      const int32_t v = std::clamp<int32_t>(values[i] * half / fullScale, -half, half);
+      const int32_t v = std::clamp<int32_t>(values[i], minValue, maxValue);
       points_[i].x = static_cast<lv_coord_t>(i * (width_ - 1) / (n - 1));
-      points_[i].y = static_cast<lv_coord_t>(mid - v);
+      points_[i].y = static_cast<lv_coord_t>(bottom - (v - minValue) * bottom / range);
     }
     lv_line_set_points(line_, points_.data(), static_cast<uint16_t>(n));
+  }
+
+  // The zero line means nothing under a spectrum.
+  void setZeroLineVisible(bool visible) {
+    if (!zero_) return;
+    if (visible) {
+      lv_obj_clear_flag(zero_, LV_OBJ_FLAG_HIDDEN);
+    } else {
+      lv_obj_add_flag(zero_, LV_OBJ_FLAG_HIDDEN);
+    }
   }
 
   // Flat on the zero line: nothing is sounding.

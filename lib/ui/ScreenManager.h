@@ -28,10 +28,12 @@
 #include "GravityGame.h"
 #include "TableTennisGame.h"
 #include "SampleSource.h"
+#include "ScopeScale.h"
 #include "ScopeTrace.h"
 #include "SegmentDigits.h"
 #include "Shuttle.h"
 #include "SleepTimer.h"
+#include "Spectrum.h"
 #include "SpectrumAnalyzer.h"
 #include "St77916Driver.h"
 #include "TabController.h"
@@ -250,6 +252,14 @@ class ScreenManager : public input::KnobSink {
   void renderToneGenerator();
   void layoutToneChips();
   void applyTonePlayButton();
+  // Scope or spectrum in the band, and everything that says which (ADR
+  // 0024): the page dots, the label, the zero line.
+  void applyToneView();
+  void applyToneLabel();
+  void drawToneScope(size_t count);
+  void drawToneSpectrum(size_t count, uint32_t dtMs);
+  static void onToneBandPressed(lv_event_t *e);
+  static void onToneBandReleased(lv_event_t *e);
   static void onToneChipPressed(lv_event_t *e);
   static void onTonePlayClicked(lv_event_t *e);
   void applyTableTennisScene();
@@ -584,6 +594,18 @@ class ScreenManager : public input::KnobSink {
   std::array<int16_t, ui_widgets::ScopeTrace::kPoints> toneScopeTrace_{};
   uint32_t lastToneScopeMs_ = 0;
   bool shownToneRunning_ = false;
+  // The band shows the scope or, swiped, the spectrum. Kept across
+  // renders, so a chip tap that re-renders nothing still finds it.
+  enum class ToneView : uint8_t { Scope, Spectrum };
+  ToneView toneView_ = ToneView::Scope;
+  // A transparent target over the band that takes the swipe, so the
+  // app-wide back swipe does not (swipeStartsOnControl()).
+  lv_obj_t *toneBand_ = nullptr;
+  lv_coord_t toneSwipeStartX_ = 0;
+  lv_obj_t *toneScaleLabel_ = nullptr;
+  std::array<lv_obj_t *, 2> toneDots_{};
+  signal::ScopeScale toneScale_;
+  signal::Spectrum toneSpectrum_{ui_widgets::ScopeTrace::kPoints};
   static constexpr uint32_t kToneScopeFrameMs = 33;
   uint32_t lastTableTennisDrawMs_ = 0;
   lv_obj_t *volumeArcHost_ = nullptr;
