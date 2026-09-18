@@ -294,8 +294,15 @@ void ScreenManager::tickToneGenerator(uint32_t nowMs, bool visible) {
   static int64_t worstUs = 0;
   worstUs = std::max(worstUs, esp_timer_get_time() - startUs);
   if (++frames % 90 == 0) {
-    Serial.printf("[tones] %s frame worst %lldus\n",
-                  toneView_ == ToneView::Scope ? "scope" : "spectrum", worstUs);
+    // Dropped rather than blocking when the port is not being drained
+    // (AGENTS.md: USBCDC::write() has no timeout).
+    char line[48];
+    const int length = snprintf(line, sizeof(line), "[tones] %s frame worst %lldus\n",
+                                toneView_ == ToneView::Scope ? "scope" : "spectrum",
+                                worstUs);
+    if (length > 0 && Serial.availableForWrite() >= length) {
+      Serial.write(reinterpret_cast<const uint8_t *>(line), length);
+    }
     worstUs = 0;
   }
 #endif

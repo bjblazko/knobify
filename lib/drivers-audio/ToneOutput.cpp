@@ -151,9 +151,18 @@ void ToneOutput::logGenerator(uint32_t rate) {
   if (debugSamples_ < rate) return;
   const float seconds = static_cast<float>(debugSamples_) / rate;
   const float dbfs = debugPeak_ > 0 ? 20.0f * log10f(debugPeak_ / 32767.0f) : -99.0f;
-  Serial.printf("[generator] %.1f Hz, peak %d (%.1f dBFS) at %lu Hz\n",
-                debugCrossings_ / seconds, debugPeak_, dbfs,
-                static_cast<unsigned long>(rate));
+  // Never Serial.printf() from here: USBCDC::write() waits without a
+  // timeout whenever the host is not draining the port (AGENTS.md), and
+  // this is the audio task -- it tripped the task watchdog during a
+  // SCREENSHOT transfer (2026-09-18). A line that does not fit is dropped.
+  char line[80];
+  const int length = snprintf(line, sizeof(line),
+                              "[generator] %.1f Hz, peak %d (%.1f dBFS) at %lu Hz\n",
+                              debugCrossings_ / seconds, debugPeak_, dbfs,
+                              static_cast<unsigned long>(rate));
+  if (length > 0 && Serial.availableForWrite() >= length) {
+    Serial.write(reinterpret_cast<const uint8_t *>(line), length);
+  }
   debugSamples_ = 0;
   debugCrossings_ = 0;
   debugPeak_ = 0;

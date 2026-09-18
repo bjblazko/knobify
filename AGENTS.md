@@ -333,7 +333,14 @@ duplicating it.
   - The port drops on every USB drive start/stop (re-enumeration):
     `UsbMscStorage::printEvents()` prints the drive's host events later.
   - Serial commands for driving the device without a hand on it:
-    `TAP x y`, `KNOB n`, `INFO`, `BLIP <hz>`, `SCREENSHOT`.
+    `TAP x y`, `SWIPE x1 y1 x2 y2`, `KNOB n`, `INFO`, `BLIP <hz>`,
+    `SCREENSHOT`.
+  - **Never `Serial.printf()` from the audio task (core 0)**, not even in a
+    debug build. A `[generator]` line from `ToneOutput` spun in
+    `USBCDC::write` during a `SCREENSHOT` transfer until the task watchdog
+    reset the board (reset reason 6, core dump in `tud_cdc_n_write_available`,
+    2026-09-18). Format into a buffer and write only if
+    `Serial.availableForWrite()` has room, otherwise drop the line.
   - **`SCREENSHOT` is no longer safe to rely on** since the TinyUSB switch:
     it pushes a 259 KB framebuffer (360x360 RGB565) through the same CDC
     that `Serial.write()` spins forever on when the endpoint can't drain.
