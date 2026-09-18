@@ -36,9 +36,14 @@ bool AudioOutputStage::writeFrames(const int16_t *interleaved, size_t frames) {
           playback::AudioGain::applyVolume(interleaved[(done + i) * 2], step, gain);
       const int16_t right =
           playback::AudioGain::applyVolume(interleaved[(done + i) * 2 + 1], step, gain);
-      scratch_[i * 2] = left;
-      scratch_[i * 2 + 1] = right;
-      noteMonoSample(static_cast<int16_t>((static_cast<int32_t>(left) + right) / 2));
+      // One tone sample per frame, mixed on top of the music (ADR 0022).
+      const int16_t toneSample = nextToneSample();
+      scratch_[i * 2] = mixTone(left, toneSample);
+      scratch_[i * 2 + 1] = mixTone(right, toneSample);
+      noteMonoSample(
+          static_cast<int16_t>((static_cast<int32_t>(scratch_[i * 2]) +
+                                scratch_[i * 2 + 1]) /
+                               2));
     }
     size_t bytesWritten = 0;
     if (i2s_write(kI2sPort, scratch_, chunk * 2 * sizeof(int16_t), &bytesWritten,

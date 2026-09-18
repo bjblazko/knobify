@@ -7,6 +7,7 @@
 #include <cstdlib>
 
 #include "BookmarkKeeper.h"
+#include "GameCatalog.h"
 #include "IconFont.h"
 #include "LvglButtonHelpers.h"
 #include "PlaylistBuilder.h"
@@ -129,6 +130,15 @@ void ScreenManager::render() {
   shownSleepMinutes_ = UINT32_MAX;
   shownSleepSeconds_ = UINT32_MAX;
   calibrationArcHost_ = nullptr;
+  // Leaving a game must not trail a beep. pongBall_ is only set while
+  // Pong was the screen being replaced.
+  if (pongBall_ && blips_) blips_->silence();
+  pongBall_ = nullptr;
+  pongPlayerPaddle_ = nullptr;
+  pongAiPaddle_ = nullptr;
+  pongHint_ = nullptr;
+  pongPlayerScore_.detach();
+  pongAiScore_.detach();
   miniBar_ = nullptr;
   elapsedLabel_ = nullptr;
   coverImg_ = nullptr;
@@ -165,6 +175,11 @@ void ScreenManager::render() {
   } else if (current.kind == ScreenKind::UsbDrive) {
     // Modal: no back button or caption. Done, eject or unplug end it.
     renderUsbDrive();
+    return;
+  } else if (current.kind == ScreenKind::Pong) {
+    // Modal like the two below: a game fills the screen, and a swipe is
+    // the way out (ADR 0022).
+    renderPong();
     return;
   } else if (current.kind == ScreenKind::TouchCalibration) {
     // No back button or caption: the top target sits where they would,
@@ -276,6 +291,12 @@ void ScreenManager::render() {
       case ScreenKind::BrowseAxis:
         for (int i = 0; i < kBrowseAxisCount; ++i) {
           items.emplace_back(kBrowseAxes[i].label, i);
+        }
+        break;
+      case ScreenKind::Games:
+        // A static table, like the Settings rows: the id is the row.
+        for (int i = 0; i < games::kGameCount; ++i) {
+          items.emplace_back(games::kGames[i].label, i);
         }
         break;
       default:
@@ -672,6 +693,8 @@ std::string ScreenManager::captionTextFor(
       return "Rescan";
     case ScreenKind::MenuVisibility:
       return "Main menu";
+    case ScreenKind::Games:
+      return "Games";
     case ScreenKind::Brightness:
       return "Brightness";
     case ScreenKind::SleepTimer:
@@ -1700,6 +1723,13 @@ void ScreenManager::onListItemClicked(lv_event_t *e) {
       break;
     case ScreenKind::BrowseAxis:
       self->openBrowseAxis(ctx->index);
+      break;
+    case ScreenKind::Games:
+      if (ctx->index >= 0 && ctx->index < games::kGameCount) {
+        self->tabs_.activeStack().push(
+            Screen{games::kGames[ctx->index].screen, {}});
+        self->render();
+      }
       break;
     case ScreenKind::AlbumsFlat: {
       const auto albums = self->shelfAlbums(current);

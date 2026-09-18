@@ -13,14 +13,19 @@
 
 namespace knobify::input {
 
-// Consumes encoder deltas and lists don't own their own scrolling here --
-// this sink just forwards "move the highlight by this many steps" to
-// whichever list UI is currently showing (lib/ui/), so InputRouter
-// doesn't need to know about LVGL widgets.
-class ListMoveSink {
+// What the knob does on a screen that reads it directly, forwarded to
+// whichever UI is currently showing (lib/ui/) so InputRouter never needs
+// to know about LVGL widgets. Screens that give the knob a meaning of
+// their own -- volume, brightness, the sleep timer -- are handled inside
+// InputRouter instead, because those targets are plain logic objects it
+// already holds.
+class KnobSink {
  public:
-  virtual ~ListMoveSink() = default;
+  virtual ~KnobSink() = default;
+  // Move the highlight by this many steps: browse lists and Home tiles.
   virtual void onListMove(int16_t delta) = 0;
+  // Move Pong's paddle by this many detents (ADR 0022).
+  virtual void onPaddleMove(int16_t delta) = 0;
 };
 
 // The context-sensitive piece (decision 3, ADR 0004): routes encoder
@@ -28,7 +33,7 @@ class ListMoveSink {
 // brightness, the sleep timer or cancelling touch calibration depending on
 // the current screen, and routes the one recognized gesture (left-to-right
 // swipe) to TabController's pop-or-switch-tab logic.
-// Pure logic over TabController/PlaybackStateMachine/Shuttle/ListMoveSink --
+// Pure logic over TabController/PlaybackStateMachine/Shuttle/KnobSink --
 // host-testable, no hardware or LVGL involved.
 class InputRouter {
  public:
@@ -37,14 +42,14 @@ class InputRouter {
               playback::Shuttle &shuttle,
               power::BrightnessSetting &brightness,
               power::SleepTimer &sleepTimer,
-              TouchCalibrationFlow &calibration, ListMoveSink &listSink)
+              TouchCalibrationFlow &calibration, KnobSink &knobSink)
       : tabs_(tabs),
         playback_(playback),
         shuttle_(shuttle),
         brightness_(brightness),
         sleepTimer_(sleepTimer),
         calibration_(calibration),
-        listSink_(listSink) {}
+        knobSink_(knobSink) {}
 
   void onEncoderDelta(int16_t delta, uint32_t nowMs) {
     switch (tabs_.activeStack().current().kind) {
@@ -63,6 +68,11 @@ class InputRouter {
       case navigation::ScreenKind::SleepTimer:
         sleepTimer_.step(delta, nowMs);
         break;
+      case navigation::ScreenKind::Pong:
+        // One detent is one paddle zone (ADR 0022) -- the knob is the
+        // controller the original was played with.
+        knobSink_.onPaddleMove(delta);
+        break;
       case navigation::ScreenKind::TouchCalibration:
         // The way out that never depends on touch: restores the previous
         // calibration and leaves (TouchCalibrator.h).
@@ -71,7 +81,7 @@ class InputRouter {
         break;
       default:
         // Browse lists and the Home tiles alike.
-        listSink_.onListMove(delta);
+        knobSink_.onListMove(delta);
         break;
     }
   }
@@ -91,7 +101,7 @@ class InputRouter {
   power::BrightnessSetting &brightness_;
   power::SleepTimer &sleepTimer_;
   TouchCalibrationFlow &calibration_;
-  ListMoveSink &listSink_;
+  KnobSink &knobSink_;
 };
 
 }  // namespace knobify::input

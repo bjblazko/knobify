@@ -320,7 +320,7 @@ duplicating it.
   - The port drops on every USB drive start/stop (re-enumeration):
     `UsbMscStorage::printEvents()` prints the drive's host events later.
   - Serial commands for driving the device without a hand on it:
-    `TAP x y`, `KNOB n`, `INFO`, `SCREENSHOT`.
+    `TAP x y`, `KNOB n`, `INFO`, `BLIP <hz>`, `SCREENSHOT`.
   - **`SCREENSHOT` is no longer safe to rely on** since the TinyUSB switch:
     it pushes a 259 KB framebuffer (360x360 RGB565) through the same CDC
     that `Serial.write()` spins forever on when the endpoint can't drain.
@@ -405,6 +405,20 @@ duplicating it.
   host-side in `pio test -e native` fails inside the firmware build with a
   baffling error pointing at Arduino.h itself, not at your code. Found
   2026-09-16 writing `navigation::MenuVisibility`.
+- **ESP32-audioI2S reports a sample rate while stopped that nothing is
+  clocked at.** `Audio::getSampleRate()` returns 16000 with no song
+  playing, and the library never calls its own `I2Sstop()` (the line is
+  commented out in `Audio.cpp`), so the port keeps running at whatever
+  rate was last set. Publishing the library's idle value as "the rate the
+  DAC is clocked at" is therefore wrong: it silently overwrote the rate
+  `ToneOutput` had set for a Pong blip (ADR 0022), and the square wave was
+  generated against one rate and clocked out at another. The audio task
+  now only publishes the rate while a decoder is actually producing
+  (`Audio::isRunning()` -- the library's flag, not
+  `Esp32AudioI2SDriver::isRunning()`, which takes the same mutex the task
+  already holds). Found 2026-09-18 by logging the writer's own state over
+  serial; every value involved looked correct read in isolation, which is
+  why guessing would not have found it.
 - **knobify decodes audio two ways**: ESP32-audioI2S for MP3/M4A/WAV/FLAC,
   and knobify's own stb_vorbis-based backend for Ogg Vorbis, dispatched by
   file extension in `Esp32AudioI2SDriver`. `AudioGain` and

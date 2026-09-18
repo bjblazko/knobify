@@ -96,6 +96,14 @@ it read as a bullet point in front of a word rather than as a mark (user,
 colour or an effect: it becomes a name-badge on a front panel, which is
 how a Braun device says what it is.
 
+The letters are tracked out (3px at 16px, about 0.2em). At the default
+spacing the word read as typed rather than set, which is not what a badge
+on a front panel looks like (user, 2026-09-18). It is the one typographic
+liberty taken anywhere in this UI, and only here, because the wordmark is
+the only string on screen that is a name rather than information. The
+capsule is measured from the text, so the tracking is a single constant
+with nothing else to keep in step.
+
 A red bullet was tried first and was wrong on the palette's own terms
 (ux-guidelines §3 rule 2): every colour in this system means something, a
 brand mark means nothing in that sense, and the red it borrowed is

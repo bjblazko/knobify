@@ -24,6 +24,9 @@
 #include "LockController.h"
 #include "MessageArea.h"
 #include "PlaybackStateMachine.h"
+#include "BlipPlayer.h"
+#include "PongGame.h"
+#include "SegmentDigits.h"
 #include "Shuttle.h"
 #include "SleepTimer.h"
 #include "SpectrumAnalyzer.h"
@@ -36,7 +39,7 @@ namespace knobify::ui {
 
 // Renders whatever screen TabController's active stack currently shows,
 // and forwards taps into navigation/playback. Also implements
-// ListMoveSink so InputRouter can move the highlighted list item on
+// KnobSink so InputRouter can move the highlighted list item on
 // browse screens (see lib/input/InputRouter.h).
 //
 // Deliberately one file covering all screen kinds for this first cut,
@@ -45,7 +48,7 @@ namespace knobify::ui {
 // that happens would be premature. Revisit the split once the layout is
 // validated on the device (round-display safe areas, touch target
 // sizes, etc. per docs/adr/0004).
-class ScreenManager : public input::ListMoveSink {
+class ScreenManager : public input::KnobSink {
  public:
   ScreenManager(navigation::TabController &tabs,
                 collection::CollectionSet &collections,
@@ -96,6 +99,7 @@ class ScreenManager : public input::ListMoveSink {
   void render();
 
   void onListMove(int16_t delta) override;
+  void onPaddleMove(int16_t delta) override;
 
   // Whether a swipe that began at this point belongs to a control rather
   // than to the screen behind it. The caption chip is up to 220px wide,
@@ -156,6 +160,17 @@ class ScreenManager : public input::ListMoveSink {
   // Call every loop().
   void tickUsbDrive(uint32_t nowMs);
 
+  // Where a game's sounds go (ADR 0022). Optional: without one the games
+  // are silent, which is all a host-side or audio-less build needs.
+  void setBlipPlayer(games::BlipPlayer &blips) { blips_ = &blips; }
+
+  // Advances Pong by one frame (ADR 0022). Returns true while a rally is
+  // actually running, which the caller turns into idle-timer activity:
+  // nothing touches the knob or the screen during a long point, and a
+  // dimmed display stops LVGL being pumped at all. Call every loop().
+  bool tickPong(uint32_t nowMs, bool visible);
+
+
  private:
   void renderList(const std::vector<std::pair<std::string, int>> &items,
                    bool showMiniBar);
@@ -194,6 +209,11 @@ class ScreenManager : public input::ListMoveSink {
   void renderBrightness();
   void renderSleepTimer();
   void renderTouchCalibration();
+  // ScreenManagerGames.cpp.
+  void renderPong();
+  void applyPongScene();
+  void drainPongSounds();
+  static void onPongTapped(lv_event_t *e);
   static void onCalibrationKeepClicked(lv_event_t *e);
   void startUsbDrive();
   void renderUsbDrive();
@@ -375,6 +395,10 @@ class ScreenManager : public input::ListMoveSink {
   // How long a shuttle hint/speed message may stay while the pill is held.
   static constexpr uint32_t kShuttleHintMs = 10000;
   static constexpr uint32_t kSpectrumFrameMs = 33;
+  // Pong redraws at the same rate as the spectrum: enough for a ball that
+  // crosses the court in a second or two, and cheap enough that the audio
+  // decoder keeps its share of the loop.
+  static constexpr uint32_t kPongFrameMs = 33;
   // Persisted cover-slot choice: 1 = spectrum, 0 = cover.
   static constexpr char kSpectrumSettingKey[] = "npSpectrum";
   // Persisted repeat mode (playback::RepeatMode). Shuffle isn't persisted:
@@ -451,6 +475,19 @@ class ScreenManager : public input::ListMoveSink {
   std::array<int16_t, visualizer::SpectrumAnalyzer::kFftSize> spectrumSamples_{};
   bool preferSpectrum_ = false;
   uint32_t lastSpectrumTickMs_ = 0;
+
+  // Pong (ADR 0022). The game itself is pure logic; these are the six
+  // rectangles and two segment displays it is drawn with.
+  games::PongGame pong_;
+  lv_obj_t *pongBall_ = nullptr;
+  lv_obj_t *pongPlayerPaddle_ = nullptr;
+  lv_obj_t *pongAiPaddle_ = nullptr;
+  lv_obj_t *pongHint_ = nullptr;
+  ui_widgets::SegmentDigits pongPlayerScore_;
+  ui_widgets::SegmentDigits pongAiScore_;
+  games::BlipPlayer *blips_ = nullptr;
+  games::PongGame::Phase shownPongPhase_ = games::PongGame::Phase::Ready;
+  uint32_t lastPongTickMs_ = 0;
   lv_obj_t *volumeArcHost_ = nullptr;
   lv_obj_t *volumeHudPill_ = nullptr;
   lv_obj_t *volumeHudLabel_ = nullptr;

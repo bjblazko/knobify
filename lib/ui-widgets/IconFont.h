@@ -41,6 +41,10 @@ LV_FONT_DECLARE(knobify_icon_font_48);
 // tile seen out of the corner of the eye has to do.
 #define KNOBIFY_ICON_MENU_BOOK "\xEE\xA8\x99"      // U+EA19
 #define KNOBIFY_ICON_THEATER_COMEDY "\xEE\xA9\xA6"  // U+EA66
+// Games ("sports_esports"), ADR 0022. A game controller is the one thing
+// on this menu that is not played through the speaker, and it has to say
+// so from the corner of the eye like the rest of the tiles do.
+#define KNOBIFY_ICON_GAMES "\xEE\xA8\xA8"           // U+EA28
 
 // 16px fast_rewind/fast_forward for Now Playing's time pill shuttle marks
 // (ADR 0013) -- IconFont16.c, same source font. Only carries these two

@@ -292,6 +292,24 @@ class Esp32AudioI2SDriver : public playback::PlaybackDriver {
       {
         MutexGuard guard(mutex_);
         audio_.loop();
+        // The blip generator needs the rate the DAC is actually clocked
+        // at (ADR 0022), and audio_process_i2s() -- a free function --
+        // has no way to ask. Stored here because this is the one place
+        // that runs continuously while audio flows and already holds the
+        // mutex; the reads below are plain fields.
+        //
+        // Only while a decoder is really producing. Idle, the library
+        // still reports a rate (16000) that nothing is clocked at, and
+        // publishing it every millisecond overwrote the rate ToneOutput
+        // had just set for a blip -- so blips played at the wrong pitch
+        // whenever nothing was playing (found by serial capture,
+        // 2026-09-18). audio_.isRunning() is the library's own flag, not
+        // this class's mutex-taking isRunning().
+        const bool producing = vorbisActive_ ? vorbis_.running() : audio_.isRunning();
+        if (producing) {
+          audioOutputStage().setSampleRate(vorbisActive_ ? vorbis_.sampleRate()
+                                                         : audio_.getSampleRate());
+        }
       }
       // Yields to the idle task (feeds core 0's watchdog) between
       // chunks; short enough not to reintroduce underrun risk, long

@@ -177,6 +177,12 @@ Settings > USB drive, at about 0.8 MB/s writing and 0.9 MB/s reading
 - Gapless playback (for live albums, concept albums, etc.)
 - On-device firmware updates from a file on the SD card (no Wi-Fi
   needed, fits the offline-first goal)
+- More games beyond Pong (ADR 0022) -- the Games list is a table a row
+  wide, but each game is its own screen and its own rules
+- Difficulty levels or a high score for Pong (one well-chosen AI speed
+  cap is the whole design, and nothing persists a score today)
+- A second player over the touch screen, so Pong can be played the way
+  the 1972 arcade cabinet was
 
 These are acknowledged future ideas, not requirements yet — don't design around them prematurely.
 

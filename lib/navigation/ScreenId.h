@@ -44,6 +44,12 @@ enum class ScreenKind {
   Years,
   Genres,
   BrowseAxis,
+  // Games (ADR 0022), appended for the same reason as everything above.
+  // Being past NowPlaying is exactly right here: a resume record that
+  // lands mid-rally is not worth restoring, and a device that woke up
+  // inside a game the user never chose would be startling.
+  Games,
+  Pong,
 };
 
 // Parameters a screen needs to render itself. Only the fields relevant

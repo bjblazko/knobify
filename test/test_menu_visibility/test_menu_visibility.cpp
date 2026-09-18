@@ -10,9 +10,11 @@ void tearDown() {}
 
 namespace {
 
-// The shape of the real menu table: five entries, Settings (index 3)
-// pinned -- see kMenuEntries in ScreenManagerMenu.cpp.
-constexpr int kEntries = 5;
+// The shape of the real menu table: six entries, Settings (index 3)
+// pinned -- see kMenuEntries in ScreenManagerMenu.cpp. That table is
+// append-only, so this count grows at the end and the pinned bit stays
+// put; a mismatch here means the two have drifted apart.
+constexpr int kEntries = 6;
 constexpr uint8_t kSettingsPinned = 1u << 3;
 
 MenuVisibility makeMenu() { return MenuVisibility(kEntries, kSettingsPinned); }

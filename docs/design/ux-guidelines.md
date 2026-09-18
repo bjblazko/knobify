@@ -156,6 +156,15 @@ on a monitor.
    knob seen from above, echoing the round display and the rotary encoder
    the way the circular transport buttons do.
 
+6. **A game is the one exception, and only a game.** Pong (ADR 0022) is
+   white on black, and its screen is the only place in the app that does
+   not take its colours from `Theme.h`. The rule above is about controls
+   — colour here signals function and operability, and a screen with no
+   controls on it has no function to signal. A game is a cabinet, not a
+   front panel; a light-grey Pong is a picture of Pong. The exception is
+   bounded to games on purpose: the next screen that wants to be dark
+   argues its own case rather than citing this one.
+
 ### Why a light theme
 
 This display is a reflective IPS LCD, not an OLED — a dark theme (tried

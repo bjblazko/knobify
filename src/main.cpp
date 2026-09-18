@@ -17,6 +17,7 @@
 #include "Cst816Driver.h"
 #include "EncoderPins.h"
 #include "Esp32AudioI2SDriver.h"
+#include "ToneOutput.h"
 #include "GestureRecognizer.h"
 #include "GpioEncoderDriver.h"
 #include "IdleTimer.h"
@@ -221,6 +222,9 @@ knobify::drivers::GpioEncoderDriver g_encoder(knobify::drivers::kEncoderPinA,
 knobify::drivers::NvsKeyValueStore g_nvsStore;
 knobify::playback::VolumePersistence g_volume(g_nvsStore);
 knobify::drivers::Esp32AudioI2SDriver g_audioDriver;
+// Pong's blips (ADR 0022): mixed into whatever is playing, and pushed to
+// the DAC by its own task when nothing is.
+knobify::drivers::ToneOutput g_toneOutput;
 knobify::playback::PlaybackStateMachine g_playback(g_audioDriver, g_volume);
 knobify::playback::Shuttle g_shuttle(g_playback);
 knobify::navigation::TabController g_tabs;
@@ -330,6 +334,8 @@ void setup() {
   g_encoder.begin();
   g_batteryAdc.begin();
   g_audioDriver.begin();
+  // After the driver: the I2S port it installs is the one this writes to.
+  g_toneOutput.begin();
   // Must run after g_audioDriver.begin() (needs a real driver to push the
   // loaded volume into) -- see PlaybackStateMachine's constructor comment
   // for why this isn't done eagerly in the constructor itself.
@@ -427,6 +433,7 @@ void setup() {
   }
 
   if (displayOk) {
+    g_screenManager.setBlipPlayer(g_toneOutput);
     g_screenManager.begin();
     // Created after the first screen so it's above it on LVGL's top
     // layer from the start -- see LockOverlay.h.
@@ -490,6 +497,11 @@ void pollSerialCommands() {
                         uxTaskGetStackHighWaterMark(nullptr));
         } else if (sscanf(buf, "KNOB %d", &x) == 1) {
           g_injectedDetents += x;
+        } else if (sscanf(buf, "BLIP %d", &x) == 1) {
+          // Sounds one of Pong's blips without navigating to the game
+          // (ADR 0022) -- the pitches are assigned by ear, so tuning them
+          // means hearing them back to back.
+          g_toneOutput.blip(static_cast<uint16_t>(x), 240);
         }
         len = 0;
       }
@@ -751,6 +763,14 @@ void loop() {
   // ~30 fps while the Now Playing spectrum is on screen and actually seen;
   // skipped entirely otherwise (ADR 0009).
   g_screenManager.tickSpectrum(now, displayOn && !g_lockController.isLocked());
+  // A rally holds the display awake by itself (ADR 0022): nothing touches
+  // the knob or the screen during a long point, and once the idle timeout
+  // dims the panel, pump() above stops being called at all -- the game
+  // would freeze mid-point rather than merely dim.
+  if (g_screenManager.tickPong(now,
+                               displayOn && !g_lockController.isLocked())) {
+    g_idleTimer.noteActivity(now);
+  }
 
   // Detect track-finished as a Playing->not-running transition. Pausing
   // also makes isRunning() report false, so this only applies while we

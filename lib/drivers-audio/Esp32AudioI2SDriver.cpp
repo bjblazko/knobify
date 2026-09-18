@@ -79,8 +79,15 @@ void audio_process_i2s(uint32_t *sample, bool *continueI2S) {
   // out, zero clipped samples.
   auto &stage = knobify::drivers::audioOutputStage();
   const uint16_t gain = stage.outputGain();
-  const int16_t left = compensate(static_cast<int16_t>(*sample >> 16), gain);
-  const int16_t right = compensate(static_cast<int16_t>(*sample & 0xFFFF), gain);
+  // Pong's blips ride on top of whatever is playing (ADR 0022). This is
+  // the library path's only per-sample seam, so it is where they join;
+  // when nothing is playing the hook never runs and ToneOutput.cpp pushes
+  // them to the DAC itself.
+  const int16_t toneSample = stage.nextToneSample();
+  const int16_t left = knobify::drivers::AudioOutputStage::mixTone(
+      compensate(static_cast<int16_t>(*sample >> 16), gain), toneSample);
+  const int16_t right = knobify::drivers::AudioOutputStage::mixTone(
+      compensate(static_cast<int16_t>(*sample & 0xFFFF), gain), toneSample);
   stage.noteMonoSample(static_cast<int16_t>((static_cast<int32_t>(left) + right) / 2));
   *sample = (static_cast<uint32_t>(static_cast<uint16_t>(left)) << 16) |
             static_cast<uint16_t>(right);

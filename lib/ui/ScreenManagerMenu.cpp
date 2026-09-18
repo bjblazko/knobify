@@ -108,6 +108,10 @@ constexpr MenuEntry kMenuEntries[] = {
        tabs.activeStack().push(Screen{ScreenKind::SleepTimer, {}});
      },
      /*showsSleepTimer=*/true},
+    {KNOBIFY_ICON_GAMES, "Games",
+     [](navigation::TabController &tabs) {
+       tabs.activeStack().push(Screen{ScreenKind::Games, {}});
+     }},
 };
 constexpr int kMenuEntryCount =
     static_cast<int>(sizeof(kMenuEntries) / sizeof(kMenuEntries[0]));
@@ -194,11 +198,19 @@ constexpr lv_coord_t kDialDotSize = 4;
 constexpr lv_coord_t kDialDotX = 8;
 constexpr lv_coord_t kDialDotY = 3;
 constexpr lv_coord_t kWordmarkGap = 8;
-// A little air between the letters, so the word reads as set rather than
-// typed -- the one typographic liberty taken anywhere in this UI, and
-// only here, because this is the only string on screen that is a name
-// rather than information.
-constexpr lv_coord_t kWordmarkTracking = 1;
+// Air between the letters, so the word reads as set rather than typed --
+// the one typographic liberty taken anywhere in this UI, and only here,
+// because this is the only string on screen that is a name rather than
+// information. Widened from 1px to 3px (user, 2026-09-18): at 1px the
+// letters still read as a default-spaced word, and a name badge on a
+// front panel is tracked out on purpose. About 0.2em at this size, which
+// is spaced enough to look deliberate and not so far that the word comes
+// apart into letters.
+//
+// Everything else about the badge is measured from this: the capsule's
+// width comes from lv_txt_get_size() with this value, so changing it
+// needs no other number touched.
+constexpr lv_coord_t kWordmarkTracking = 3;
 constexpr const char *kWordmark = "knobify";
 
 // Which carousel slot a tile sits in. Stored in the cell's user data so

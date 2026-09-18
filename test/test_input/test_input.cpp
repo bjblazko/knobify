@@ -22,7 +22,7 @@ using knobify::resume::BlobStore;
 using knobify::input::GestureRecognizer;
 using knobify::input::GestureType;
 using knobify::input::InputRouter;
-using knobify::input::ListMoveSink;
+using knobify::input::KnobSink;
 using knobify::input::TouchCalibration;
 using knobify::input::TouchLatch;
 using knobify::input::TouchSample;
@@ -68,14 +68,20 @@ class FakeStore : public KeyValueStore {
   void setU8(const std::string &, uint8_t) override {}
 };
 
-class RecordingListSink : public ListMoveSink {
+class RecordingListSink : public KnobSink {
  public:
   void onListMove(int16_t delta) override {
     calls++;
     lastDelta = delta;
   }
+  void onPaddleMove(int16_t delta) override {
+    paddleCalls++;
+    lastPaddleDelta = delta;
+  }
   int calls = 0;
   int16_t lastDelta = 0;
+  int paddleCalls = 0;
+  int16_t lastPaddleDelta = 0;
 };
 
 class FakeBlobStore : public BlobStore {
@@ -485,6 +491,56 @@ void test_calibration_flow_restarts_capture_after_rejected_fit() {
   TEST_ASSERT_EQUAL_UINT(0, flow.targetsDone());
 }
 
+void test_encoder_moves_the_paddle_on_pong_not_the_list() {
+  // The game reads the knob directly (ADR 0022); nothing about a list
+  // highlight makes sense while a ball is in play.
+  FakeDriver driver;
+  FakeStore store;
+  VolumePersistence volume(store);
+  PlaybackStateMachine playback(driver, volume);
+  TabController tabs;
+  tabs.activeStack().push(Screen{ScreenKind::Games, {}});
+  tabs.activeStack().push(Screen{ScreenKind::Pong, {}});
+  RecordingListSink sink;
+  BrightnessSetting brightness(store);
+  Shuttle shuttle(playback);
+  FakeBlobStore blobs;
+  TouchCalibrationFlow calibration(blobs);
+  SleepTimer sleepTimer;
+  InputRouter router(tabs, playback, shuttle, brightness, sleepTimer,
+                     calibration, sink);
+
+  router.onEncoderDelta(-3, 0);
+
+  TEST_ASSERT_EQUAL_INT(1, sink.paddleCalls);
+  TEST_ASSERT_EQUAL_INT16(-3, sink.lastPaddleDelta);
+  TEST_ASSERT_EQUAL_INT(0, sink.calls);
+}
+
+void test_the_games_list_still_moves_the_highlight() {
+  // Only the game itself takes the knob over -- the list in front of it
+  // is an ordinary list.
+  FakeDriver driver;
+  FakeStore store;
+  VolumePersistence volume(store);
+  PlaybackStateMachine playback(driver, volume);
+  TabController tabs;
+  tabs.activeStack().push(Screen{ScreenKind::Games, {}});
+  RecordingListSink sink;
+  BrightnessSetting brightness(store);
+  Shuttle shuttle(playback);
+  FakeBlobStore blobs;
+  TouchCalibrationFlow calibration(blobs);
+  SleepTimer sleepTimer;
+  InputRouter router(tabs, playback, shuttle, brightness, sleepTimer,
+                     calibration, sink);
+
+  router.onEncoderDelta(2, 0);
+
+  TEST_ASSERT_EQUAL_INT(1, sink.calls);
+  TEST_ASSERT_EQUAL_INT(0, sink.paddleCalls);
+}
+
 void test_encoder_cancels_touch_calibration() {
   FakeDriver driver;
   FakeStore store;
@@ -579,6 +635,8 @@ int main(int argc, char **argv) {
   RUN_TEST(test_calibration_flow_reverts_unconfirmed_fit);
   RUN_TEST(test_calibration_flow_restarts_capture_after_rejected_fit);
   RUN_TEST(test_encoder_cancels_touch_calibration);
+  RUN_TEST(test_encoder_moves_the_paddle_on_pong_not_the_list);
+  RUN_TEST(test_the_games_list_still_moves_the_highlight);
   RUN_TEST(test_touch_latch_reports_press_that_ended_between_reads);
   RUN_TEST(test_touch_latch_passes_through_held_press);
   return UNITY_END();
