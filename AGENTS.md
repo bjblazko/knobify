@@ -96,6 +96,12 @@ duplicating it.
   but the fix reliably works, so: **whenever "many/most files fail to
   open" shows up again, reformat the card properly before suspecting
   anything else.**
+- **A released touch sample has no position.** Its coordinates are
+  leftovers (x=11 wherever the finger was). `LvglGlue` therefore reports
+  the last pressed point on release. Anything that measures a swipe from
+  LVGL's release point depends on that (2026-09-18, ADR 0024). To drive a
+  swipe without a hand on the device, send `SWIPE x1 y1 x2 y2` over
+  serial.
 - **The I2S sample rate is one shared setting, and whoever writes last
   owns it.** Game blips (22.05 kHz) and the tone generator (48 kHz) claim
   the port while music is paused, and neither ESP32-audioI2S's

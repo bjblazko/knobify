@@ -38,7 +38,9 @@ namespace `knobify::signal`, with no Arduino and no LVGL, host-tested:
 | Piece | What it does | Reused by |
 |---|---|---|
 | `Oscillator` | Sine, square, saw, noise into a buffer at any rate | recorder (monitor tone), analyzer (test signal) |
-| `TriggeredScope` | Sample window → a trace that stands still | recorder, analyzer |
+| `TriggeredScope` | Sample window → a reconstructed trace that stands still | recorder, analyzer |
+| `ScopeScale` | Stepped timebase and level range, with hysteresis | recorder, analyzer |
+| `Spectrum` | Absolute dBFS, log axis 20 Hz – 20 kHz | analyzer |
 | `SampleSource` | "the newest samples, if any are new" | the microphone will implement it |
 | `GeneratorControl` / `GeneratorOutput` | Lock-free handover to the audio task | — |
 | `ToneSettings`, `ToneSession` | This screen's model and lifecycle | — |
@@ -140,25 +142,97 @@ start, stop, fast turning or a waveform change.
 
 The scope draws the samples that actually went out, from the output
 stage's ring. It does not draw an idealised picture of the waveform. It
-triggers on a rising zero crossing with hysteresis, placed between samples
-by interpolation, and spans two periods of the set frequency. Noise has
-no period, so its timebase is fixed at 20 ms.
+triggers on a rising zero crossing with hysteresis, so a periodic signal
+draws the same picture frame after frame.
 
 - **The ring grew from 1024 to 4096 samples** (+6 KB internal RAM) so
-  low tones fit: two periods of 20 Hz need 4800 samples at 48 kHz, so
-  4096 shows about 1.7. Measured after the change: 96 KB of internal RAM
-  still free.
-- **The trace is scaled to the set level.** The shape fills the band at
-  −60 dB as well as at 0 dB; the number below it says how loud it is.
+  low tones fit: 4096 samples at 48 kHz are 85 ms. Measured after the
+  change: 96 KB of internal RAM still free.
 - **It reads through `SampleSource`, not the player.**
   `PlaybackStateMachine::readRecentSamples()` answers only while music
   plays, and the generator pauses music before it sounds, so the scope
   was first seen flat under a measured 1 kHz tone. `ToneOutput`
   implements `SampleSource` over the ring. The microphone will implement
   the same interface.
-- At the top of the range the trace shows what 48 kHz really gives:
-  about 2.4 points per period at 19.9 kHz. That is the signal as the DAC
-  receives it, not a drawing fault.
+
+### The scales step like a bench scope's knobs
+
+The first scope always fitted the signal: two periods wide, the set level
+tall. So 200 Hz and 400 Hz, or −20 dB and −26 dB, drew the same picture,
+and only the number said anything had changed. The user asked to *see* a
+doubling. `ScopeScale` now holds both scales in steps, the way a bench
+scope's time/div and volts/div knobs do:
+
+- **Timebase in 1-2-5 steps** from 100 µs to 50 ms (the band's full
+  width). A fresh choice shows 2 to 5 periods. Within a step, doubling
+  the pitch doubles the waves on screen. The step changes only once the
+  picture gets too sparse (under 1.6 periods) or too crowded (over 6.25).
+- **Level range in 10 dB steps**: the band's edge sits at 0, −10 … −60
+  dBFS. Within a range, +6 dB draws twice as tall. The range steps up as
+  soon as the level passes its edge, and steps down only once the level
+  is 13 dB under it (a quarter of the height). A level turned back and
+  forth across a boundary therefore does not make the picture jump back
+  and forth.
+- **A label under the band names both scales**, e.g. `5 ms · -20 dB`:
+  the band's width and the level at its edge.
+- Noise has no period, so its timebase is chosen as if it were 100 Hz
+  (20 ms).
+
+### Between samples the trace is reconstructed
+
+Straight lines between samples drew a 15 kHz sine (3.2 samples a period)
+as a zigzag, and 19.9 kHz as barely a wave. The trace is now a
+**windowed-sinc reconstruction**: 16 taps either side under a squared
+Welch window, which is what the DAC's own reconstruction filter does. So
+the trace shows what comes out of the jack: 19.9 kHz is a clean sine at
+the 200 µs step.
+
+The trigger position is refined on the reconstructed signal as well.
+Placed by a straight line between two far-apart samples, it made high
+tones shimmer. The cost is 32 multiplies per point, 160 points a frame:
+the worst scope frame measured 3.8 ms.
+
+This is honest in both directions. A 15 kHz square reads almost as a
+sine, because its harmonics above 24 kHz do not exist at 48 kHz. A square
+or saw edge shows the ringing the reconstruction filter really puts on
+it.
+
+### Swiping the band turns it to a spectrum
+
+The band has a second page: a spectrum (`signal::Spectrum`) from 20 Hz to
+20 kHz on a log axis, in absolute dBFS from 0 at the top to −80 at the
+bottom. A −20 dB tone stands at −20 dB, and a square's odd harmonics
+stand where the maths puts them. It is not the Now Playing analyzer,
+which lights twelve bands of a dot matrix to music with the volume
+divided out.
+
+- **Hann window over 2048 samples**, i.e. 23 Hz a bin. That is coarse in
+  the bottom octaves, where a column falls between bins and is
+  interpolated, and plenty everywhere else. A tone off a bin's centre
+  reads up to ~1.4 dB low.
+- **DC is removed first, weighted by the window.** 0 Hz is off the axis,
+  but the window smeared an off-centre square's DC across the lowest
+  columns, where it read on the device as a hump of bass at 20–45 Hz. A
+  plain mean still left −53 dB there.
+- **Levels fall at 60 dB/s** rather than vanishing.
+- **Cost:** ~5 ms a frame on the device. The first frame takes 50 ms
+  once, while the ~32 KB of buffers are allocated. They are allocated
+  on first use and released when the screen is left, so they come from
+  PSRAM.
+- **The gesture:** swiping right to left inside the band shows the
+  spectrum, left to right the scope, like turning a page. Two page dots
+  under the label say there are two. The band takes its own swipes: it
+  is reported by `swipeStartsOnControl()`, so the app-wide back swipe
+  does not start there. Back stays on the chevron, or on a swipe
+  anywhere else. The user chose this over tapping the band.
+
+### The touch release point is where the finger lifted
+
+The swipe first turned only one way. `LvglGlue` passed LVGL the
+coordinates of the *released* touch sample, which carries no position of
+its own (it read x=11 wherever the finger had been). LVGL takes the
+release point as where the finger lifted. The glue now reports the last
+pressed point on release, as touch drivers do. This applies app-wide.
 
 ### A tone plays alone, and never on its own
 
@@ -207,4 +281,8 @@ measured from the samples it wrote, once a second:
   font.
 - The generator is the one sound source that ignores the volume, and it
   says so: its level is labelled in dB.
+- `lib/signal` now also holds `ScopeScale` and `Spectrum`, both ready
+  for the analyzer.
+- Serial gained `SWIPE x1 y1 x2 y2`, a dragged finger, next to `TAP` and
+  `KNOB`. It is how the band's swipe was checked on the device.
 - Not done: a frequency sweep, stereo channel selection, pink noise.

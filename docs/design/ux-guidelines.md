@@ -287,7 +287,9 @@ Full architecture: [ADR 0004](../adr/0004-navigation-library-and-index-architect
   Home it moves the tile selection; on Brightness it sets brightness; on
   Tones it sets whichever chip is selected, where the chips *are* the
   mode buttons this board lacks, shown only where they act and selected on
-  the press so hold-and-turn works (ADR 0024). The mapping is unambiguous
+  the press so hold-and-turn works (ADR 0024). Its scope band is the one
+  place a sideways swipe does not mean "back": swiped, it turns to a
+  spectrum (two page dots say so), and back stays on the chevron. The mapping is unambiguous
   per screen since no hardware mode button exists to switch it.
 - **Scope comes from where you start.** In Music, Artists, Albums and
   Tracks lists begin with a Shuffle row that shuffles the whole

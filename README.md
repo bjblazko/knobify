@@ -71,9 +71,10 @@ screens described below.
 - Tones, a tone generator: sine, square (duty), saw (rising → triangle →
   falling) and noise, 20 Hz – 20 kHz, level in dBFS independent of the
   volume, out of the 3.5 mm jack at 48 kHz. Chips pick what the knob
-  sets; a live oscilloscope shows what actually reaches the DAC. Its
-  oscillator and scope live in `lib/signal/`, built to be reused by a
-  recorder and an analyzer — see
+  sets; a live oscilloscope shows what actually reaches the DAC, on
+  stepped scales so a doubled pitch or +6 dB is visibly doubled, and
+  swiping it shows a spectrum. Its oscillator, scope and spectrum live in
+  `lib/signal/`, built to be reused by a recorder and an analyzer — see
   [ADR 0024](docs/adr/0024-tone-generator.md).
 
 ## Preparing an SD card
