@@ -45,6 +45,9 @@ LV_FONT_DECLARE(knobify_icon_font_48);
 // on this menu that is not played through the speaker, and it has to say
 // so from the corner of the eye like the rest of the tiles do.
 #define KNOBIFY_ICON_GAMES "\xEE\xA8\xA8"           // U+EA28
+// The tone generator ("airwave"), ADR 0024: one wave line, which says
+// "a tone" where the equalizer bars would say "spectrum".
+#define KNOBIFY_ICON_TONES "\xEF\x85\x94"           // U+F154
 
 // 16px fast_rewind/fast_forward for Now Playing's time pill shuttle marks
 // (ADR 0013) -- IconFont16.c, same source font. Only carries these two

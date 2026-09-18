@@ -27,12 +27,14 @@
 #include "BlipPlayer.h"
 #include "GravityGame.h"
 #include "TableTennisGame.h"
+#include "ScopeTrace.h"
 #include "SegmentDigits.h"
 #include "Shuttle.h"
 #include "SleepTimer.h"
 #include "SpectrumAnalyzer.h"
 #include "St77916Driver.h"
 #include "TabController.h"
+#include "ToneSession.h"
 #include "TouchCalibrator.h"
 #include "UsbDriveSession.h"
 
@@ -176,6 +178,19 @@ class ScreenManager : public input::KnobSink {
   // progress so loop() can hold the display awake through a long descent.
   bool tickGravity(uint32_t nowMs, bool visible);
 
+  // The tone generator (ADR 0024). Optional like the blips: without a
+  // session the screen shows nothing to play.
+  void setToneSession(signal::ToneSession &session) { toneSession_ = &session; }
+
+  // Cheap redraw of the value and chips after a knob turn -- a no-op on
+  // every other screen. Call after any encoder tick.
+  void updateToneGeneratorDisplay();
+
+  // Keeps the play button in step with the session (a lock can stop it)
+  // and redraws the scope at ~30 fps while it is actually seen. Call
+  // every loop().
+  void tickToneGenerator(uint32_t nowMs, bool visible);
+
 
  private:
   void renderList(const std::vector<std::pair<std::string, int>> &items,
@@ -228,6 +243,12 @@ class ScreenManager : public input::KnobSink {
   static void onGravityPressed(lv_event_t *e);
   static void onGravityReleased(lv_event_t *e);
   static void onGravityTapped(lv_event_t *e);
+  // ScreenManagerToneGenerator.cpp.
+  void renderToneGenerator();
+  void layoutToneChips();
+  void applyTonePlayButton();
+  static void onToneChipPressed(lv_event_t *e);
+  static void onTonePlayClicked(lv_event_t *e);
   void applyTableTennisScene();
   void drainTableTennisSounds();
   static void onTableTennisTapped(lv_event_t *e);
@@ -539,6 +560,27 @@ class ScreenManager : public input::KnobSink {
       games::GravityGame::Phase::Ready;
   uint32_t lastGravityDrawMs_ = 0;
   bool gravityThrustSounding_ = false;
+
+  // Tone generator (ADR 0024). Chips are created once per render in
+  // kToneChipOrder and shown or hidden per waveform, never recreated on a
+  // knob turn -- a chip being held while the knob turns must survive.
+  struct ToneChipContext {
+    ScreenManager *self = nullptr;
+    signal::ToneParam param = signal::ToneParam::Frequency;
+  };
+  signal::ToneSession *toneSession_ = nullptr;
+  std::array<lv_obj_t *, signal::kToneParamCount> toneChips_{};
+  std::array<ToneChipContext, signal::kToneParamCount> toneChipContexts_{};
+  lv_obj_t *toneValueLabel_ = nullptr;
+  lv_obj_t *tonePlayButton_ = nullptr;
+  ui_widgets::ScopeTrace toneScope_;
+  // Over 4 KB, so it lands in PSRAM (see setup()'s allocation note);
+  // allocated while the screen is shown, released when it is left.
+  std::vector<int16_t> toneScopeSamples_;
+  std::array<int16_t, ui_widgets::ScopeTrace::kPoints> toneScopeTrace_{};
+  uint32_t lastToneScopeMs_ = 0;
+  bool shownToneRunning_ = false;
+  static constexpr uint32_t kToneScopeFrameMs = 33;
   uint32_t lastTableTennisDrawMs_ = 0;
   lv_obj_t *volumeArcHost_ = nullptr;
   lv_obj_t *volumeHudPill_ = nullptr;

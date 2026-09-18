@@ -141,6 +141,10 @@ void ScreenManager::render() {
   if (gravityWidgets_.craft && blips_) blips_->silence();
   gravityWidgets_ = GravityWidgets{};
   gravityThrustSounding_ = false;
+  toneChips_.fill(nullptr);
+  toneValueLabel_ = nullptr;
+  tonePlayButton_ = nullptr;
+  toneScope_.detach();
   tableTennisPlayerScore_.detach();
   tableTennisAiScore_.detach();
   miniBar_ = nullptr;
@@ -161,6 +165,12 @@ void ScreenManager::render() {
   durationSeconds_ = 0;
 
   Screen current = tabs_.activeStack().current();
+  // Leaving the tone generator silences it, whatever took you away.
+  if (current.kind != ScreenKind::ToneGenerator) {
+    if (toneSession_ && toneSession_->running()) toneSession_->stop();
+    toneScopeSamples_.clear();
+    toneScopeSamples_.shrink_to_fit();
+  }
   if (current.kind != renderedKind_) {
     renderedKind_ = current.kind;
     messages_.dismissScreenMessage();
@@ -176,6 +186,8 @@ void ScreenManager::render() {
     renderBrightness();
   } else if (current.kind == ScreenKind::SleepTimer) {
     renderSleepTimer();
+  } else if (current.kind == ScreenKind::ToneGenerator) {
+    renderToneGenerator();
   } else if (current.kind == ScreenKind::UsbDrive) {
     // Modal: no back button or caption. Done, eject or unplug end it.
     renderUsbDrive();
@@ -703,6 +715,8 @@ std::string ScreenManager::captionTextFor(
       return "Main menu";
     case ScreenKind::Games:
       return "Games";
+    case ScreenKind::ToneGenerator:
+      return "Tones";
     case ScreenKind::Brightness:
       return "Brightness";
     case ScreenKind::SleepTimer:

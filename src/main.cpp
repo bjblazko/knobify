@@ -18,6 +18,7 @@
 #include "EncoderPins.h"
 #include "Esp32AudioI2SDriver.h"
 #include "ToneOutput.h"
+#include "ToneSession.h"
 #include "GestureRecognizer.h"
 #include "GpioEncoderDriver.h"
 #include "IdleTimer.h"
@@ -225,6 +226,9 @@ knobify::drivers::Esp32AudioI2SDriver g_audioDriver;
 // A game's blips (ADR 0022): mixed into whatever is playing, and pushed to
 // the DAC by its own task when nothing is.
 knobify::drivers::ToneOutput g_toneOutput;
+// The tone generator (ADR 0024): its settings and whether it sounds. The
+// sound itself goes through g_toneOutput's task.
+knobify::signal::ToneSession g_toneSession(g_toneOutput, g_nvsStore);
 knobify::playback::PlaybackStateMachine g_playback(g_audioDriver, g_volume);
 knobify::playback::Shuttle g_shuttle(g_playback);
 knobify::navigation::TabController g_tabs;
@@ -299,6 +303,7 @@ void SdCollectionSet::rescan(knobify::collection::CollectionId id,
   if (g_playback.state() == knobify::playback::PlaybackState::Playing) {
     g_playback.togglePlayPause(now);
   }
+  g_toneSession.stop();
   g_resumeScheduler.saveNow(now);
   g_bookmarkKeeper.saveNow(now);
   // Volume and brightness changes still inside their save debounce.
@@ -344,6 +349,8 @@ void setup() {
   // RNG, seeded from RF/bootloader entropy).
   g_playback.setRandomSeed(esp_random());
   g_brightness.begin();
+  g_toneSession.begin();
+  g_inputRouter.setToneSession(g_toneSession);
   g_touchCalibration.begin();
 
   if (!g_touch.begin()) {
@@ -434,6 +441,7 @@ void setup() {
 
   if (displayOk) {
     g_screenManager.setBlipPlayer(g_toneOutput);
+    g_screenManager.setToneSession(g_toneSession);
     g_screenManager.begin();
     // Created after the first screen so it's above it on LVGL's top
     // layer from the start -- see LockOverlay.h.
@@ -654,6 +662,9 @@ void loop() {
         g_sleepFading = true;
         Serial.println("[sleep] fading out");
         g_messageArea.show("Going to sleep", kCenter, now);
+        // The generator bypasses the output gain the fade works through
+        // (its level is dBFS), so it stops rather than fades.
+        g_toneSession.stop();
       }
       g_playback.setOutputGain(g_sleepTimer.fadeGain(now));
     }
@@ -708,6 +719,7 @@ void loop() {
       // other than Now Playing, and skipped while the knob shuttles.
       if (!g_shuttle.isHeld()) g_screenManager.updateVolumeDisplay(now);
       g_screenManager.updateBrightnessDisplay();
+      g_screenManager.updateToneGeneratorDisplay();
     }
   }
   g_screenManager.tickVolumeHud(now);
@@ -757,6 +769,11 @@ void loop() {
   g_resumeScheduler.tick(now);
   g_bookmarkKeeper.tick(now);
   g_brightness.tick(now);
+  g_toneSession.tick(now);
+  // Locking silences a tone: the lock screen shows no Stop button, and a
+  // pocket is no place for a 1 kHz sine.
+  if (g_lockController.isLocked() && g_toneSession.running()) g_toneSession.stop();
+  g_screenManager.tickToneGenerator(now, displayOn && !g_lockController.isLocked());
   // Cheap (no full re-render), a no-op on any screen other than Now
   // Playing -- see ScreenManager::updateElapsedTimeDisplay().
   if (displayOn) g_screenManager.updateElapsedTimeDisplay();

@@ -112,6 +112,10 @@ constexpr MenuEntry kMenuEntries[] = {
      [](navigation::TabController &tabs) {
        tabs.activeStack().push(Screen{ScreenKind::Games, {}});
      }},
+    {KNOBIFY_ICON_TONES, "Tones",
+     [](navigation::TabController &tabs) {
+       tabs.activeStack().push(Screen{ScreenKind::ToneGenerator, {}});
+     }},
 };
 constexpr int kMenuEntryCount =
     static_cast<int>(sizeof(kMenuEntries) / sizeof(kMenuEntries[0]));
