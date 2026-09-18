@@ -767,8 +767,12 @@ void loop() {
   // the knob or the screen during a long point, and once the idle timeout
   // dims the panel, pump() above stops being called at all -- the game
   // would freeze mid-point rather than merely dim.
-  if (g_screenManager.tickTableTennis(now,
-                               displayOn && !g_lockController.isLocked())) {
+  if (g_screenManager.tickTableTennis(
+          now, displayOn && !g_lockController.isLocked())) {
+    g_idleTimer.noteActivity(now);
+  }
+  if (g_screenManager.tickGravity(now,
+                                  displayOn && !g_lockController.isLocked())) {
     g_idleTimer.noteActivity(now);
   }
 

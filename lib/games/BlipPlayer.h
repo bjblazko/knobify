@@ -12,7 +12,12 @@ class BlipPlayer {
  public:
   virtual ~BlipPlayer() = default;
   virtual void blip(uint16_t frequencyHz, uint16_t durationMs) = 0;
-  // Stops anything sounding: leaving the game should not trail a beep.
+  // Noise rather than a tone, for an engine rather than a blip (ADR
+  // 0023). durationMs == 0 holds it until silence() -- thrust lasts as
+  // long as the finger does, which no fixed duration can express.
+  virtual void noise(uint16_t clockHz, uint16_t durationMs, int16_t level) = 0;
+  // Stops anything sounding: leaving the game should not trail a beep,
+  // and letting go of the throttle should not trail an engine.
   virtual void silence() = 0;
 };
 

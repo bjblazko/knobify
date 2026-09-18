@@ -137,6 +137,10 @@ void ScreenManager::render() {
   tableTennisPlayerPaddle_ = nullptr;
   tableTennisAiPaddle_ = nullptr;
   tableTennisHint_ = nullptr;
+  // Same for Gravity: an engine must not keep running into the next screen.
+  if (gravityWidgets_.craft && blips_) blips_->silence();
+  gravityWidgets_ = GravityWidgets{};
+  gravityThrustSounding_ = false;
   tableTennisPlayerScore_.detach();
   tableTennisAiScore_.detach();
   miniBar_ = nullptr;
@@ -175,6 +179,10 @@ void ScreenManager::render() {
   } else if (current.kind == ScreenKind::UsbDrive) {
     // Modal: no back button or caption. Done, eject or unplug end it.
     renderUsbDrive();
+    return;
+  } else if (current.kind == ScreenKind::Gravity) {
+    // Modal like the others (ADR 0023).
+    renderGravity();
     return;
   } else if (current.kind == ScreenKind::TableTennis) {
     // Modal like the two below: a game fills the screen, and a swipe is
@@ -1512,6 +1520,28 @@ std::string ScreenManager::friendlyName(const std::string &path) {
     name = name.substr(0, dot);
   }
   return name;
+}
+
+// A detent on a game screen means whatever that game makes of it: a
+// paddle in one, a heading in the other. KnobSink deliberately carries
+// one method for all of them (ADR 0023), so the dispatch belongs here,
+// next to the screens, rather than in InputRouter -- which would
+// otherwise have to learn every game.
+//
+// This was missing at first, and the symptom was the knob doing nothing
+// at all in Gravity: the one implementation still checked for Table
+// Tennis's ball and gave up (user, 2026-09-18).
+void ScreenManager::onGameKnob(int16_t delta) {
+  switch (tabs_.activeStack().current().kind) {
+    case ScreenKind::TableTennis:
+      onTableTennisKnob(delta);
+      break;
+    case ScreenKind::Gravity:
+      onGravityKnob(delta);
+      break;
+    default:
+      break;
+  }
 }
 
 void ScreenManager::onListMove(int16_t delta) {

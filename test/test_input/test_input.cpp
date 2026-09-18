@@ -74,7 +74,7 @@ class RecordingListSink : public KnobSink {
     calls++;
     lastDelta = delta;
   }
-  void onPaddleMove(int16_t delta) override {
+  void onGameKnob(int16_t delta) override {
     paddleCalls++;
     lastPaddleDelta = delta;
   }

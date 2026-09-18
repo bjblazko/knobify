@@ -177,16 +177,20 @@ Settings > USB drive, at about 0.8 MB/s writing and 0.9 MB/s reading
 - Gapless playback (for live albums, concept albums, etc.)
 - On-device firmware updates from a file on the SD card (no Wi-Fi
   needed, fits the offline-first goal)
-- More games beyond Table Tennis (ADR 0022) -- the Games list is a table
-  a row wide, but each game is its own screen and its own rules. The
-  three that suit a knob and a round screen best, with names chosen to
-  avoid the trademarks the originals carry: **Echo** (repeat a growing
-  sequence of lit arcs -- the round display is the board, and the tone
-  generator is already there), **Snake** (the knob steers by turning
-  rather than by pointing), and **Gravity** (land a craft: the knob
-  rotates it, a tap gives thrust, and the fuel belongs in an `EdgeArc`)
-- Difficulty levels or a high score for Table Tennis (one well-chosen AI
-  speed cap is the whole design, and nothing persists a score today)
+- More games beyond Table Tennis and Gravity (ADR 0022, ADR 0023) -- the
+  Games list is a table a row wide, but each game is its own screen and
+  its own rules. The two that still suit a knob and a round screen best,
+  with names chosen to avoid the trademarks the originals carry:
+  **Echo** (repeat a growing sequence of lit arcs -- the round display is
+  the board, and the tone generator is already there) and **Snake** (the
+  knob steers by turning rather than by pointing)
+- Gravity's scrolling, magnifying landscape (ADR 0023). The arcade's
+  world is wider than its screen and zooms in as you descend; here it is
+  one screen, which at least means every pad is visible while you choose
+  one
+- Persisting any game's score across a reboot
+- Difficulty levels for Table Tennis (one well-chosen AI speed cap is the
+  whole design)
 - A second player over the touch screen, so Table Tennis can be played
   the way the 1972 machines were
 

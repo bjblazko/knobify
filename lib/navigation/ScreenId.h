@@ -50,6 +50,8 @@ enum class ScreenKind {
   // inside a game the user never chose would be startling.
   Games,
   TableTennis,
+  // Appended, like everything above: the order is a stored resume value.
+  Gravity,
 };
 
 // Parameters a screen needs to render itself. Only the fields relevant

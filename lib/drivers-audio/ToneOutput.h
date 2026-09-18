@@ -30,6 +30,7 @@ class ToneOutput : public games::BlipPlayer {
 
   // games::BlipPlayer -- callable from any task.
   void blip(uint16_t frequencyHz, uint16_t durationMs) override;
+  void noise(uint16_t clockHz, uint16_t durationMs, int16_t level) override;
 
   // Drops anything pending and stops a sounding blip, for leaving a game.
   void silence() override;

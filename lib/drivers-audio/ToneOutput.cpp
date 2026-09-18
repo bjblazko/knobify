@@ -31,6 +31,14 @@ void ToneOutput::blip(uint16_t frequencyHz, uint16_t durationMs) {
   audioOutputStage().tone().trigger(frequencyHz, durationMs);
 }
 
+void ToneOutput::noise(uint16_t clockHz, uint16_t durationMs, int16_t level) {
+#ifdef KNOBIFY_TONE_DEBUG
+  triggeredMicros_ = micros();
+  measuring_ = true;
+#endif
+  audioOutputStage().tone().triggerNoise(clockHz, durationMs, level);
+}
+
 void ToneOutput::silence() { audioOutputStage().tone().silence(); }
 
 void ToneOutput::taskTrampoline(void *self) {

@@ -24,8 +24,11 @@ class KnobSink {
   virtual ~KnobSink() = default;
   // Move the highlight by this many steps: browse lists and Home tiles.
   virtual void onListMove(int16_t delta) = 0;
-  // Move the Table Tennis paddle by this many detents (ADR 0022).
-  virtual void onPaddleMove(int16_t delta) = 0;
+  // The knob on a game screen, which reads it directly: a paddle in Table
+  // Tennis, the craft's heading in Gravity. One method rather than one per
+  // game -- the sink would otherwise grow a name for every game added, and
+  // only the screen showing knows what a detent means there.
+  virtual void onGameKnob(int16_t delta) = 0;
 };
 
 // The context-sensitive piece (decision 3, ADR 0004): routes encoder
@@ -69,9 +72,11 @@ class InputRouter {
         sleepTimer_.step(delta, nowMs);
         break;
       case navigation::ScreenKind::TableTennis:
-        // The knob is the controller the original was played with: an
-        // Atari paddle is a potentiometer (ADR 0022).
-        knobSink_.onPaddleMove(delta);
+      case navigation::ScreenKind::Gravity:
+        // The knob is the controller both originals were played with: an
+        // Atari paddle is a potentiometer (ADR 0022), and a lander turns
+        // (ADR 0023).
+        knobSink_.onGameKnob(delta);
         break;
       case navigation::ScreenKind::TouchCalibration:
         // The way out that never depends on touch: restores the previous

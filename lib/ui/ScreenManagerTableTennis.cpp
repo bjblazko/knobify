@@ -1,18 +1,16 @@
-// ScreenManager's Games screens (ADR 0022), kept apart from the music
-// screens the way ScreenManagerMenu.cpp keeps the menu ones: a court has
-// nothing in common with a list, and ScreenManager.cpp is long enough
-// already (docs/coding-guidelines.md).
+// ScreenManager's Table Tennis screen (ADR 0022) -- one file per game,
+// kept apart from the music screens the way ScreenManagerMenu.cpp keeps
+// the menu ones: a court has nothing in common with a list, and
+// ScreenManager.cpp is long enough already (docs/coding-guidelines.md).
 //
-// This is the one place in the app that does not use lib/ui/Theme.h's
-// palette. This game is white on black, and a light-grey one is a picture
-// of the game rather than the game; ux-guidelines §3's "every screen is
-// `surface`" rule is suspended here and only here, for a screen that is a
-// cabinet rather than a control. See ADR 0022 for the argument.
+// Its colours come from GameScreenStyle.h, which is where the games'
+// exception to the palette is argued, not from lib/ui/Theme.h.
 
 #include <lvgl.h>
 
 #include "TableTennisGame.h"
 #include "TableTennisSounds.h"
+#include "GameScreenStyle.h"
 #include "ScreenManager.h"
 #include "St77916Driver.h"
 #include "TextFont.h"
@@ -23,9 +21,9 @@ using games::TableTennisGame;
 
 namespace {
 
-// White phosphor on a dark screen -- the only two colours in the game.
-lv_color_t phosphor() { return lv_color_hex(0xFFFFFF); }
-lv_color_t vacuum() { return lv_color_hex(0x000000); }
+using game_style::makeBlock;
+using game_style::phosphor;
+using game_style::vacuum;
 
 // The court is centred in the framebuffer; its corners touch the bezel
 // exactly, which is why nothing is ever drawn at one (the original has no
@@ -55,33 +53,6 @@ constexpr lv_coord_t kHintWidth = 220;
 // below: the calmest wide spot on a screen that is otherwise all game.
 constexpr ui_widgets::MessageAnchor kTableTennisMessageAnchor{drivers::kLcdHorRes / 2,
                                                        236};
-
-// A short line of white text, centred, for the hint the game draws.
-lv_obj_t *makeHintLabel(lv_obj_t *parent, lv_coord_t top) {
-  lv_obj_t *label = lv_label_create(parent);
-  lv_obj_set_width(label, kHintWidth);
-  lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
-  lv_obj_set_style_text_color(label, phosphor(), 0);
-  lv_obj_set_style_text_font(label, &knobify_text_font_14, 0);
-  lv_obj_set_pos(label, (drivers::kLcdHorRes - kHintWidth) / 2, top);
-  return label;
-}
-
-// A plain filled rectangle: every moving part of this game is one.
-lv_obj_t *makeBlock(lv_obj_t *parent, lv_coord_t x, lv_coord_t y, lv_coord_t w,
-                    lv_coord_t h) {
-  lv_obj_t *block = lv_obj_create(parent);
-  lv_obj_set_size(block, w, h);
-  lv_obj_set_pos(block, x, y);
-  lv_obj_set_style_bg_color(block, phosphor(), 0);
-  lv_obj_set_style_bg_opa(block, LV_OPA_COVER, 0);
-  lv_obj_set_style_border_width(block, 0, 0);
-  lv_obj_set_style_radius(block, 0, 0);  // Nothing here is rounded.
-  lv_obj_set_style_pad_all(block, 0, 0);
-  lv_obj_clear_flag(block, LV_OBJ_FLAG_CLICKABLE);
-  lv_obj_clear_flag(block, LV_OBJ_FLAG_SCROLLABLE);
-  return block;
-}
 
 }  // namespace
 
@@ -138,7 +109,9 @@ void ScreenManager::renderTableTennis() {
   tableTennisBall_ = makeBlock(screen_, kCourtLeft, kPlayTop, TableTennisGame::kBallSize,
                         TableTennisGame::kBallSize);
 
-  tableTennisHint_ = makeHintLabel(screen_, kHintTop);
+  tableTennisHint_ = game_style::makeLabel(
+      screen_, (drivers::kLcdHorRes - kHintWidth) / 2, kHintTop, kHintWidth,
+      &knobify_text_font_14);
 
   // This board has no button, the game has no back button, and a modal
   // screen whose only way out is an unannounced gesture is exactly the
@@ -160,7 +133,7 @@ void ScreenManager::onTableTennisTapped(lv_event_t *e) {
   self->applyTableTennisScene();
 }
 
-void ScreenManager::onPaddleMove(int16_t delta) {
+void ScreenManager::onTableTennisKnob(int16_t delta) {
   if (!tableTennisBall_) return;
   tableTennis_.movePlayerPaddle(delta);
   applyTableTennisScene();

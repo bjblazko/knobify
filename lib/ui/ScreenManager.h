@@ -25,6 +25,7 @@
 #include "MessageArea.h"
 #include "PlaybackStateMachine.h"
 #include "BlipPlayer.h"
+#include "GravityGame.h"
 #include "TableTennisGame.h"
 #include "SegmentDigits.h"
 #include "Shuttle.h"
@@ -99,7 +100,7 @@ class ScreenManager : public input::KnobSink {
   void render();
 
   void onListMove(int16_t delta) override;
-  void onPaddleMove(int16_t delta) override;
+  void onGameKnob(int16_t delta) override;
 
   // Whether a swipe that began at this point belongs to a control rather
   // than to the screen behind it. The caption chip is up to 220px wide,
@@ -170,6 +171,11 @@ class ScreenManager : public input::KnobSink {
   // dimmed display stops LVGL being pumped at all. Call every loop().
   bool tickTableTennis(uint32_t nowMs, bool visible);
 
+  // The same for Gravity (ADR 0023): physics and sound every loop, the
+  // picture on its own slower gate, and true while a flight is in
+  // progress so loop() can hold the display awake through a long descent.
+  bool tickGravity(uint32_t nowMs, bool visible);
+
 
  private:
   void renderList(const std::vector<std::pair<std::string, int>> &items,
@@ -211,6 +217,17 @@ class ScreenManager : public input::KnobSink {
   void renderTouchCalibration();
   // ScreenManagerGames.cpp.
   void renderTableTennis();
+  void onTableTennisKnob(int16_t delta);
+  // ScreenManagerGravity.cpp.
+  void renderGravity();
+  void onGravityKnob(int16_t delta);
+  void applyGravityScene();
+  void rebuildGravityTerrain();
+  void drainGravitySounds();
+  const char *gravityFailureText() const;
+  static void onGravityPressed(lv_event_t *e);
+  static void onGravityReleased(lv_event_t *e);
+  static void onGravityTapped(lv_event_t *e);
   void applyTableTennisScene();
   void drainTableTennisSounds();
   static void onTableTennisTapped(lv_event_t *e);
@@ -400,6 +417,7 @@ class ScreenManager : public input::KnobSink {
   // that crosses the court in a second or two, and cheap enough that the
   // audio decoder keeps its share of the loop.
   static constexpr uint32_t kTableTennisFrameMs = 33;
+  static constexpr uint32_t kGravityFrameMs = 33;
   // Persisted cover-slot choice: 1 = spectrum, 0 = cover.
   static constexpr char kSpectrumSettingKey[] = "npSpectrum";
   // Persisted repeat mode (playback::RepeatMode). Shuffle isn't persisted:
@@ -488,6 +506,39 @@ class ScreenManager : public input::KnobSink {
   ui_widgets::SegmentDigits tableTennisAiScore_;
   games::BlipPlayer *blips_ = nullptr;
   games::TableTennisGame::Phase shownTableTennisPhase_ = games::TableTennisGame::Phase::Ready;
+
+  // Gravity (ADR 0023). Its widgets are grouped rather than listed one by
+  // one: a game drawn in lines needs the point arrays alive alongside the
+  // objects that reference them, so the two belong together.
+  struct GravityWidgets {
+    lv_obj_t *terrain = nullptr;
+    // The filled hillside under the ridge line, one narrow column each.
+    // LVGL 8 has no polygon fill outside a canvas, and a canvas big
+    // enough for this landscape would be 100 KB of PSRAM re-blitted on
+    // every overlapping redraw; columns this narrow step by less than the
+    // ridge line drawn over them is wide.
+    lv_obj_t *fill[90] = {};
+    lv_obj_t *craft = nullptr;
+    lv_obj_t *flame = nullptr;
+    lv_obj_t *hint = nullptr;
+    lv_obj_t *legend = nullptr;
+    lv_obj_t *padLabels[games::GravityTerrain::kMaxPads] = {};
+    lv_obj_t *altitude = nullptr;
+    lv_obj_t *vertical = nullptr;
+    lv_obj_t *horizontal = nullptr;
+    lv_obj_t *fuel = nullptr;
+    // lv_line keeps a pointer to the caller's points, so these outlive
+    // each frame rather than being rebuilt into temporaries.
+    lv_point_t terrainPoints[games::GravityTerrain::kPoints] = {};
+    lv_point_t craftPoints[8] = {};
+    lv_point_t flamePoints[3] = {};
+  };
+  games::GravityGame gravity_;
+  GravityWidgets gravityWidgets_;
+  games::GravityGame::Phase shownGravityPhase_ =
+      games::GravityGame::Phase::Ready;
+  uint32_t lastGravityDrawMs_ = 0;
+  bool gravityThrustSounding_ = false;
   uint32_t lastTableTennisDrawMs_ = 0;
   lv_obj_t *volumeArcHost_ = nullptr;
   lv_obj_t *volumeHudPill_ = nullptr;
