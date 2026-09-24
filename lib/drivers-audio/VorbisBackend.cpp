@@ -45,44 +45,60 @@ bool VorbisBackend::open(const std::string &path, uint32_t startSample) {
     close();
     return false;
   }
-  // Exact here: resuming a track (ADR 0012) happens once and should land
-  // where the listener stopped, not up to 23 ms earlier.
-  if (startSample != 0) stb_vorbis_seek(stream_, startSample);
+  if (!ensureTask()) {
+    close();
+    return false;
+  }
+  // Applied by the decode task before its first chunk: stb_vorbis_seek()
+  // needs the task's stack, and open() runs on the main loop's. Exact here:
+  // resuming a track (ADR 0012) happens once and should land where the
+  // listener stopped, not up to 23 ms earlier.
+  startSample_ = startSample;
   currentSample_.store(startSample, std::memory_order_relaxed);
+  seekRequest_.store(kNoSeek, std::memory_order_relaxed);
   stopRequested_.store(false, std::memory_order_relaxed);
   paused_.store(false, std::memory_order_relaxed);
-  running_.store(true, std::memory_order_relaxed);
-  // Program the port's clock before the decode task exists: reprogramming
-  // it once the task may already be blocked in i2s_write() stops and
-  // restarts the channel out from under that writer, and is also the one
-  // way close()'s wait loop below could hang. Audio::setSampleRate() does
-  // the equivalent i2s_set_sample_rates() call but is private in this
-  // library version.
+  // Program the port's clock before the session starts: reprogramming it
+  // once the task may already be blocked in i2s_write() stops and restarts
+  // the channel out from under that writer. Audio::setSampleRate() does the
+  // equivalent i2s_set_sample_rates() call but is private in this library
+  // version.
   if (i2s_set_sample_rates(I2S_NUM_0, sampleRate_) != ESP_OK) {
     Serial.println("[vorbis] could not program the I2S sample rate");
     close();
     return false;
   }
+  // Release pairs with the acquire in close(): everything above is visible
+  // to the task before it sees a session.
+  running_.store(true, std::memory_order_release);
+  xTaskNotifyGive(task_);
+  return true;
+}
+
+bool VorbisBackend::ensureTask() {
+  if (task_) return true;
   // Pinned to core 0 at priority 3, like the library's audio task, so it
   // never competes with LVGL on core 1.
   if (xTaskCreatePinnedToCore(&VorbisBackend::taskTrampoline, "vorbis",
                               kTaskStackBytes, this, /*priority=*/3, &task_,
                               /*core=*/0) != pdPASS) {
-    Serial.println("[vorbis] could not start the decode task");
-    close();
+    task_ = nullptr;
+    Serial.printf("[vorbis] could not start the decode task (internal free=%u largest=%u)\n",
+                  static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+                  static_cast<unsigned>(
+                      heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)));
     return false;
   }
   return true;
 }
 
 void VorbisBackend::close() {
-  if (task_) {
+  // A session in progress checks the flag between chunks (at most ~23 ms of
+  // audio) and parks itself; wait for it before freeing anything. Acquire
+  // pairs with the release store in runSession().
+  if (running_.load(std::memory_order_acquire)) {
     stopRequested_.store(true, std::memory_order_relaxed);
-    // The decode loop checks the flag between chunks (at most ~23 ms of
-    // audio) and deletes itself; wait for it before freeing anything.
-    // Acquire pairs with the release store in decodeLoop().
     while (running_.load(std::memory_order_acquire)) delay(2);
-    task_ = nullptr;
   }
   if (stream_) {
     stb_vorbis_close(stream_);
@@ -95,7 +111,6 @@ void VorbisBackend::close() {
   sampleRate_ = 0;
   durationSeconds_ = 0;
   currentSample_.store(0, std::memory_order_relaxed);
-  running_.store(false, std::memory_order_relaxed);
 }
 
 bool VorbisBackend::seekToSample(uint32_t sample) {
@@ -107,11 +122,19 @@ bool VorbisBackend::seekToSample(uint32_t sample) {
 }
 
 void VorbisBackend::taskTrampoline(void *self) {
-  static_cast<VorbisBackend *>(self)->decodeLoop();
+  static_cast<VorbisBackend *>(self)->decodeTask();
 }
 
-void VorbisBackend::decodeLoop() {
+void VorbisBackend::decodeTask() {
+  for (;;) {
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    runSession();
+  }
+}
+
+void VorbisBackend::runSession() {
   auto &stage = audioOutputStage();
+  if (startSample_ != 0) stb_vorbis_seek(stream_, startSample_);
   while (!stopRequested_.load(std::memory_order_relaxed)) {
     const uint32_t seekTo = seekRequest_.exchange(kNoSeek, std::memory_order_relaxed);
     // seek_frame, not seek: the exact-sample version decodes and discards
@@ -142,8 +165,8 @@ void VorbisBackend::decodeLoop() {
   // Release pairs with the acquire load in close()'s wait loop: close()
   // frees stream_/frames_ right after observing this false, so that free
   // must not be reordered ahead of the work above.
+  // The task never touches stream_/frames_ again until the next session.
   running_.store(false, std::memory_order_release);
-  vTaskDelete(nullptr);
 }
 
 }  // namespace knobify::drivers

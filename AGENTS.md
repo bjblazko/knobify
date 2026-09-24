@@ -447,6 +447,22 @@ duplicating it.
   already holds). Found 2026-09-18 by logging the writer's own state over
   serial; every value involved looked correct read in isolation, which is
   why guessing would not have found it.
+- **Ogg Vorbis: the decode task's 32 KB stack must be one contiguous block
+  of internal RAM, and stb_vorbis must never run on the main loop's stack.**
+  Two bugs found 2026-09-24 with a Herr-der-Ringe audio play (30 x 25 min
+  Ogg): (1) `VorbisBackend` created and deleted that task per track; after
+  3-4 auto-advances the largest free internal block had fallen to 32756 B
+  (< 32768 + TCB), every start failed (`largest=` in the log), and because a
+  failed start left the state machine "Playing" with a dead driver, the main
+  loop's finished-detection skipped the whole queue at one track per second.
+  The task is now created once and parked between tracks, and a failed
+  start stops playback. Baseline internal free is only ~70 KB with no Ogg
+  playing, so any new ~6 KB internal allocation can fragment it again.
+  (2) Resuming an Ogg ("Continue") called `stb_vorbis_seek()` from
+  `open()` on the loop task and overflowed its stack (core dump: stack
+  watchpoint in `inverse_mdct`); the initial seek now runs inside the
+  decode task. The files themselves were fine -- all 30 decode cleanly on
+  the host with the vendored `stb_vorbis.c`.
 - **knobify decodes audio two ways**: ESP32-audioI2S for MP3/M4A/WAV/FLAC,
   and knobify's own stb_vorbis-based backend for Ogg Vorbis, dispatched by
   file extension in `Esp32AudioI2SDriver`. `AudioGain` and

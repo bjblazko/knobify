@@ -280,7 +280,14 @@ class PlaybackStateMachine {
       trackStartMs_ = nowMs;
       pausedAccumMs_ = 0;
       ++trackGeneration_;
+      return;
     }
+    // A track that cannot start leaves the driver not running, which the
+    // main loop reads as "finished" and would advance again -- through the
+    // whole queue at one track per second. Stop instead.
+    driver_.stop();
+    state_ = PlaybackState::Stopped;
+    cued_ = false;
   }
 
   PlaybackDriver &driver_;

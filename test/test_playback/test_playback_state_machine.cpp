@@ -168,6 +168,27 @@ void test_track_finished_stops_after_last_track() {
   TEST_ASSERT_TRUE(sm.state() == PlaybackState::Stopped);
 }
 
+void test_a_failed_start_after_a_finished_track_stops_instead_of_skipping_on() {
+  // A track that cannot start leaves the driver not running; the main loop
+  // reads that as "finished" and would advance again, through the whole
+  // queue at one track per second (2026-09-24, Ogg decode task out of RAM).
+  FakeDriver driver;
+  FakeStore store;
+  VolumePersistence volume(store);
+  PlaybackStateMachine sm(driver, volume);
+  sm.begin();
+  sm.play({"/a.ogg", "/b.ogg", "/c.ogg"}, 0, 0);
+  driver.playSucceeds = false;
+  driver.playCount = 0;
+
+  sm.onTrackFinished(0);
+
+  TEST_ASSERT_EQUAL_INT(1, driver.playCount);
+  TEST_ASSERT_TRUE(sm.state() == PlaybackState::Stopped);
+  sm.onTrackFinished(1);  // What the loop would do next if still "Playing".
+  TEST_ASSERT_EQUAL_INT(1, driver.playCount);
+}
+
 void test_stop_releases_the_file_and_keeps_the_queue() {
   FakeDriver driver;
   FakeStore store;
@@ -501,6 +522,7 @@ int main(int argc, char **argv) {
   RUN_TEST(test_seek_by_keeps_elapsed_when_driver_refuses);
   RUN_TEST(test_seek_by_ignored_when_stopped);
   RUN_TEST(test_can_seek_mp3_m4a_wav_and_ogg_with_a_track);
+  RUN_TEST(test_a_failed_start_after_a_finished_track_stops_instead_of_skipping_on);
   RUN_TEST(test_stop_releases_the_file_and_keeps_the_queue);
   RUN_TEST(test_track_generation_increments_on_play_next_and_restart);
   RUN_TEST(test_track_generation_unchanged_by_pause_resume_and_cued_resume);
